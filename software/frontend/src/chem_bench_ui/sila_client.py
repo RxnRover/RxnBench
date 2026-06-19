@@ -1,24 +1,30 @@
 """
-SiLA client, raw protobuf codec, and domain types for Chem Bench UI.
+SiLA client for Chem Bench UI.
 
-Wire-format notes (traced from the unitelabs-sila source):
-  Feature RPC package : sila2.edu.iastate.ames.chembench.motionplatform.v0
-  Service name        : MotionPlatform
-  Subscribe_Position  : unary_stream, empty request, returns Position {x,y,z: Real}
-  Subscribe_State     : unary_stream, empty request, returns String state
-  UnobservableCommands: unary_unary, empty request  (HomeAuto etc.)
-  Jog (Observable)    : unary_unary, Jog_Parameters {Dx,Dy,Dz: Real}  → initiate only
-  SiLA Real           : protobuf LEN field; inner field 1 I64 = double
+Uses grpcio-tools-generated stubs from the proto/ package for all
+serialization. Field numbers are structurally guaranteed to match the
+CDK wire format because gen_proto.py derives them from the same
+dataclasses.fields() source the CDK runtime uses.
+
+Regenerate stubs when backend dataclasses change:
+    cd software/backend
+    uv run python scripts/gen_proto.py \\
+        > ../frontend/src/chem_bench_ui/proto/motion_platform.proto
+    python -m grpc_tools.protoc \\
+        -I ../frontend/src/chem_bench_ui/proto \\
+        --python_out=../frontend/src/chem_bench_ui/proto \\
+        ../frontend/src/chem_bench_ui/proto/motion_platform.proto
 """
 
 import base64
 import dataclasses
 import re
-import struct
 import threading
 
 import grpc
 from PySide6.QtCore import QObject, Signal
+
+from .proto import motion_platform_pb2 as _mp
 
 # ── Machine limits (SV08 defaults) ──────────────────────────────────────────
 X_MAX, Y_MAX, Z_MAX = 350.0, 350.0, 340.0
@@ -42,125 +48,6 @@ _KNOWN_FEATURES: list[dict] = [
 ]
 
 
-# ── Minimal protobuf encode/decode (no generated stubs needed) ───────────────
-
-def _varint(n: int) -> bytes:
-    out = []
-    while n > 0x7F:
-        out.append((n & 0x7F) | 0x80)
-        n >>= 7
-    out.append(n)
-    return bytes(out)
-
-def _read_varint(buf: bytes, pos: int) -> tuple[int, int]:
-    n, shift = 0, 0
-    while pos < len(buf):
-        b = buf[pos]; pos += 1
-        n |= (b & 0x7F) << shift
-        if not (b & 0x80):
-            return n, pos
-        shift += 7
-    return 0, pos
-
-def _len_fields(buf: bytes) -> dict[int, bytes]:
-    """Return {field_number: inner_bytes} for every LEN (wire-type 2) field."""
-    result: dict[int, bytes] = {}
-    pos = 0
-    while pos < len(buf):
-        tag, pos = _read_varint(buf, pos)
-        field, wire = tag >> 3, tag & 7
-        if wire == 2:
-            length, pos = _read_varint(buf, pos)
-            result[field] = buf[pos:pos + length]
-            pos += length
-        elif wire == 0: _, pos = _read_varint(buf, pos)
-        elif wire == 1: pos += 8
-        elif wire == 5: pos += 4
-    return result
-
-def _decode_real(buf: bytes) -> float:
-    """Decode a SiLA Real message: inner field 1 is an I64 double."""
-    pos = 0
-    while pos < len(buf):
-        tag, pos = _read_varint(buf, pos)
-        field, wire = tag >> 3, tag & 7
-        if field == 1 and wire == 1:
-            return struct.unpack_from('<d', buf, pos)[0]
-        if wire == 0: _, pos = _read_varint(buf, pos)
-        elif wire == 1: pos += 8
-        elif wire == 2:
-            length, pos = _read_varint(buf, pos)
-            pos += length
-        elif wire == 5: pos += 4
-    return 0.0
-
-def _decode_position(data: bytes) -> tuple[float, float, float]:
-    """Decode Subscribe_Position_Responses → (x, y, z)."""
-    outer = _len_fields(data)       # field 1 = Position structure
-    if 1 not in outer:
-        return 0.0, 0.0, 0.0
-    pos_fields = _len_fields(outer[1])   # fields 1,2,3 = x,y,z Real messages
-    return (
-        _decode_real(pos_fields.get(1, b'')),
-        _decode_real(pos_fields.get(2, b'')),
-        _decode_real(pos_fields.get(3, b'')),
-    )
-
-def _decode_state(data: bytes) -> str:
-    """Decode Subscribe_State_Responses → state string."""
-    outer = _len_fields(data)
-    if 1 not in outer: return ""
-    inner = _len_fields(outer[1])
-    if 1 not in inner: return ""
-    return inner[1].decode("utf-8", errors="replace")
-
-def _encode_real_field(value: float, field_num: int) -> bytes:
-    """Encode a SiLA Real as protobuf LEN field N."""
-    inner = (b'\x09' + struct.pack('<d', value)) if value != 0.0 else b''
-    return _varint((field_num << 3) | 2) + _varint(len(inner)) + inner
-
-def _encode_xyz(x: float, y: float, z: float) -> bytes:
-    return _encode_real_field(x, 1) + _encode_real_field(y, 2) + _encode_real_field(z, 3)
-
-def _encode_string_field(value: str, field_num: int) -> bytes:
-    """Encode a SiLA String as protobuf LEN field N."""
-    utf8 = value.encode("utf-8")
-    inner = _varint((1 << 3) | 2) + _varint(len(utf8)) + utf8
-    return _varint((field_num << 3) | 2) + _varint(len(inner)) + inner
-
-def _decode_bool(buf: bytes) -> bool:
-    """Decode a SiLA Boolean message: inner field 1 is a varint."""
-    pos = 0
-    while pos < len(buf):
-        tag, pos = _read_varint(buf, pos)
-        field, wire = tag >> 3, tag & 7
-        if field == 1 and wire == 0:
-            val, pos = _read_varint(buf, pos)
-            return bool(val)
-        if wire == 0:   _, pos = _read_varint(buf, pos)
-        elif wire == 1: pos += 8
-        elif wire == 2:
-            length, pos = _read_varint(buf, pos); pos += length
-        elif wire == 5: pos += 4
-    return False
-
-def _decode_string(buf: bytes) -> str:
-    """Decode a SiLA String message: inner field 1 is UTF-8 bytes."""
-    pos = 0
-    while pos < len(buf):
-        tag, pos = _read_varint(buf, pos)
-        field, wire = tag >> 3, tag & 7
-        if field == 1 and wire == 2:
-            length, pos = _read_varint(buf, pos)
-            return buf[pos:pos + length].decode("utf-8", errors="replace")
-        if wire == 0:   _, pos = _read_varint(buf, pos)
-        elif wire == 1: pos += 8
-        elif wire == 2:
-            length, pos = _read_varint(buf, pos); pos += length
-        elif wire == 5: pos += 4
-    return ""
-
-
 # ── Domain types ─────────────────────────────────────────────────────────────
 
 @dataclasses.dataclass
@@ -180,30 +67,6 @@ class ToolheadInfo:
     requires_manual_z: bool = True
     requires_manual_homing: bool = False
     toolhead_mounted: bool = False
-
-
-def _decode_toolhead_info(data: bytes) -> ToolheadInfo:
-    """Decode Subscribe_ToolheadInfo_Responses → ToolheadInfo."""
-    outer = _len_fields(data)
-    if 1 not in outer:
-        return ToolheadInfo()
-    f = _len_fields(outer[1])
-    return ToolheadInfo(
-        active              = _decode_bool(f.get(1, b'')),
-        name                = _decode_string(f.get(2, b'')),
-        display_name        = _decode_string(f.get(3, b'')),
-        footprint_x         = _decode_real(f.get(4, b'')),
-        footprint_y         = _decode_real(f.get(5, b'')),
-        offset_x            = _decode_real(f.get(6, b'')),
-        offset_y            = _decode_real(f.get(7, b'')),
-        tip_offset_z        = _decode_real(f.get(8, b'')),
-        z_engage            = _decode_real(f.get(9, b'')),
-        tip_x               = _decode_real(f.get(10, b'')),
-        tip_y               = _decode_real(f.get(11, b'')),
-        requires_manual_z   = _decode_bool(f.get(12, b'')),
-        requires_manual_homing = _decode_bool(f.get(13, b'')),
-        toolhead_mounted    = _decode_bool(f.get(14, b'')),
-    )
 
 
 # ── SiLA client ──────────────────────────────────────────────────────────────
@@ -296,8 +159,12 @@ class SilaClient(QObject):
                     if first:
                         self.feature_state_changed.emit("Motion Platform", True)
                         first = False
-                    x, y, z = _decode_position(bytes(msg))
-                    self.position_updated.emit(x, y, z)
+                    resp = _mp.Subscribe_Position_Responses.FromString(bytes(msg))
+                    self.position_updated.emit(
+                        resp.Position.x.value,
+                        resp.Position.y.value,
+                        resp.Position.z.value,
+                    )
             except Exception:
                 self.feature_state_changed.emit("Motion Platform", False)
                 if not self._stop.wait(3.0):
@@ -310,7 +177,8 @@ class SilaClient(QObject):
                 for msg in call(b""):
                     if self._stop.is_set():
                         return
-                    self.state_updated.emit(_decode_state(bytes(msg)))
+                    resp = _mp.Subscribe_State_Responses.FromString(bytes(msg))
+                    self.state_updated.emit(resp.State.value)
             except Exception:
                 if not self._stop.wait(3.0):
                     continue
@@ -322,7 +190,24 @@ class SilaClient(QObject):
                 for msg in call(b""):
                     if self._stop.is_set():
                         return
-                    self.toolhead_updated.emit(_decode_toolhead_info(bytes(msg)))
+                    resp = _mp.Subscribe_ToolheadInfo_Responses.FromString(bytes(msg))
+                    th = resp.ToolheadInfo
+                    self.toolhead_updated.emit(ToolheadInfo(
+                        active              = th.active.value,
+                        name                = th.name.value,
+                        display_name        = th.display_name.value,
+                        footprint_x         = th.footprint_x.value,
+                        footprint_y         = th.footprint_y.value,
+                        offset_x            = th.offset_x.value,
+                        offset_y            = th.offset_y.value,
+                        tip_offset_z        = th.tip_offset_z.value,
+                        z_engage            = th.z_engage.value,
+                        tip_x               = th.tip_x.value,
+                        tip_y               = th.tip_y.value,
+                        requires_manual_z   = th.requires_manual_z.value,
+                        requires_manual_homing = th.requires_manual_homing.value,
+                        toolhead_mounted    = th.toolhead_mounted.value,
+                    ))
             except Exception:
                 if not self._stop.wait(3.0):
                     continue
@@ -334,10 +219,8 @@ class SilaClient(QObject):
                 for msg in call(b""):
                     if self._stop.is_set():
                         return
-                    f = _len_fields(bytes(msg))
-                    inner = _len_fields(f.get(1, b''))
-                    val = bool(inner.get(1, b'\x00')[0]) if inner.get(1) else False
-                    self.saved_state_updated.emit(val)
+                    resp = _mp.Subscribe_HasSavedState_Responses.FromString(bytes(msg))
+                    self.saved_state_updated.emit(resp.HasSavedState.value)
             except Exception:
                 if not self._stop.wait(5.0):
                     continue
@@ -372,23 +255,46 @@ class SilaClient(QObject):
         threading.Thread(target=self._call, args=(method, request), daemon=True).start()
 
     # ── Commands ──
+
     def home_auto(self):              self._fire("HomeAuto")
     def start_manual_homing(self):    self._fire("StartManualHoming")
     def finish_homing(self):          self._fire("FinishHoming")
-    def set_toolhead(self, name: str):
-        self._fire("SetToolhead", _encode_string_field(name, 1))
     def clear_toolhead(self):         self._fire("ClearToolhead")
     def confirm_toolhead_mounted(self): self._fire("ConfirmToolheadMounted")
     def clear_toolhead_mounted(self):   self._fire("ClearToolheadMounted")
     def save_and_park(self):            self._fire("SaveAndPark")
+    def confirm_x_min(self):            self._fire("ConfirmXMin")
+    def confirm_x_max(self):            self._fire("ConfirmXMax")
+    def confirm_y_min(self):            self._fire("ConfirmYMin")
+    def confirm_y_max(self):            self._fire("ConfirmYMax")
+    def confirm_z_reference(self):      self._fire("ConfirmZReference")
+
+    def set_toolhead(self, name: str):
+        params = _mp.SetToolhead_Parameters()
+        params.name.value = name
+        self._fire("SetToolhead", params.SerializeToString())
+
+    def jog(self, dx=0.0, dy=0.0, dz=0.0):
+        params = _mp.Jog_Parameters()
+        params.dx.value = dx
+        params.dy.value = dy
+        params.dz.value = dz
+        self._fire("Jog", params.SerializeToString())
+
+    def move_to(self, x: float, y: float, z: float):
+        params = _mp.MoveTo_Parameters()
+        params.x.value = x
+        params.y.value = y
+        params.z.value = z
+        self._fire("MoveTo", params.SerializeToString())
 
     def fetch_toolhead_list(self) -> list[tuple[str, str]]:
         """Blocking call — run in a thread. Returns [(name, display_name), ...]."""
         try:
             raw = self._channel.unary_unary(self._method("ListToolheads"))(b"", timeout=5.0)
-            text = _decode_string(_len_fields(bytes(raw)).get(1, b''))
+            resp = _mp.ListToolheads_Responses.FromString(bytes(raw))
             result = []
-            for line in text.splitlines():
+            for line in resp.Toolheads.value.splitlines():
                 parts = line.split("|", 1)
                 if len(parts) == 2:
                     result.append((parts[0].strip(), parts[1].strip()))
@@ -396,16 +302,3 @@ class SilaClient(QObject):
         except Exception as e:
             self.error_occurred.emit(f"fetch_toolhead_list: {e}")
             return []
-
-    def confirm_x_min(self):       self._fire("ConfirmXMin")
-    def confirm_x_max(self):       self._fire("ConfirmXMax")
-    def confirm_y_min(self):       self._fire("ConfirmYMin")
-    def confirm_y_max(self):       self._fire("ConfirmYMax")
-    def confirm_z_reference(self): self._fire("ConfirmZReference")
-
-    def jog(self, dx=0.0, dy=0.0, dz=0.0):
-        # Jog is ObservableCommand — calling Jog initiates it; result stream ignored
-        self._fire("Jog", _encode_xyz(dx, dy, dz))
-
-    def move_to(self, x: float, y: float, z: float):
-        self._fire("MoveTo", _encode_xyz(x, y, z))
