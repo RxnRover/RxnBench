@@ -1,0 +1,10 @@
+name: ph_probe
+display_name: Atlas Scientific pH Probe
+
+geometry:
+  footprint_x: 44     # mm, physical width of the toolhead body
+  footprint_y: 25     # mm, physical depth of the toolhead body
+  offset_x: 0       # mm, tool center from carriage mount in X
+  offset_y: -25        # mm, tool center from carriage mount in Y
+  tip_offset_z: 110    # mm, how far the probe tip hangs below the carriage mount
+  z_engage: 25 #temp        # mm, how far the probe lowers into the well when sampling

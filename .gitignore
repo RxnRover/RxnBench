@@ -1,6 +1,12 @@
 
 questions.md
 
-docs/notes/
+notes/
+
+__pycache__/
+
+uv.lock
+
+.venv/
 
 TODO.md

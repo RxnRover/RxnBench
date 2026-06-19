@@ -1,0 +1,31 @@
+# well_plate_config_template.yaml
+# Copy this into a subfolder named after your plate (e.g. 96_well_standard/)
+# and rename it to match (e.g. 96_well_standard.yaml).
+#
+# Author: John Brittain
+# Date: Jun 18 2026
+
+name: 96_well_standard           # internal name, matches the folder and filename
+display_name: 96-Well Standard   # shown in UIs
+
+layout:
+  rows: 8                  # number of rows    (A–H for 96-well)
+  columns: 12              # number of columns (1–12 for 96-well)
+
+dimensions:
+  length: 127.76           # mm, long axis (X)  — ANSI/SBS: 127.76
+  width:   85.48           # mm, short axis (Y) — ANSI/SBS: 85.48
+  height:  14.22           # mm, plate height
+
+well:
+  diameter:  6.94          # mm, inner diameter
+  depth:    10.67          # mm, well depth
+  volume_ul: 360           # µL, nominal volume
+
+spacing:
+  row_spacing: 9.0         # mm, center-to-center between rows
+  col_spacing: 9.0         # mm, center-to-center between columns
+
+origin:                    # position of well A1 center from plate corner
+  x: 14.38                 # mm
+  y: 11.24                 # mm

@@ -1,0 +1,16 @@
+# toolhead_config_template.yaml
+# Schema and defaults for all toolhead configs.
+# Copy this into your toolhead folder and fill in the values.
+#
+# Author: John Brittain
+# Date: Jun 11 2026
+
+name: toolhead_name          # internal name, matches the folder
+display_name: Toolhead Name  # shown in UIs and SiLA
+
+geometry:
+  footprint_x: 0.0           # mm, physical width in X
+  footprint_y: 0.0           # mm, physical depth in Y
+  offset_x: 0.0              # mm, tool center from mount point in X
+  offset_y: 0.0              # mm, tool center from mount point in Y
+  z_engage: 0.0              # mm, depth below clearance height when working

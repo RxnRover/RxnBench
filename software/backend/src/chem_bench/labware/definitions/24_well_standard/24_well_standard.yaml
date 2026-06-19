@@ -1,0 +1,32 @@
+# 24-Well Standard Plate (ANSI/SBS footprint)
+# Corning Costar 3526 reference dimensions.
+# Verify origin offsets against physical plate stock before first use.
+#
+# Author: John Brittain
+# Date: Jun 18 2026
+
+name: 24_well_standard
+display_name: 24-Well Standard
+labware_type: well_plate
+
+layout:
+  rows: 4        # A–D
+  columns: 6     # 1–6
+
+dimensions:
+  length: 127.76   # mm, long axis (X) — ANSI/SBS standard
+  width:   85.48   # mm, short axis (Y) — ANSI/SBS standard
+  height:  20.10   # mm, total plate height
+
+well:
+  diameter:  15.62   # mm, inner well diameter
+  depth:     17.40   # mm, well depth from top surface
+  volume_ul: 3470.0  # µL, nominal working volume
+
+spacing:
+  row_spacing: 19.30  # mm, center-to-center (Y axis, A→B→…)
+  col_spacing: 19.30  # mm, center-to-center (X axis, 1→2→…)
+
+origin:               # well A1 center relative to plate bottom-left corner
+  x: 24.76            # mm
+  y: 17.05            # mm

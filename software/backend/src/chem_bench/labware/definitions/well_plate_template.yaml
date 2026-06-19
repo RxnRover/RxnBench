@@ -1,0 +1,38 @@
+# Well Plate Definition Template
+# Copy this file into:  definitions/<plate_name>/<plate_name>.yaml
+# Then fill in all fields.
+#
+# Coordinate convention:
+#   - origin is the bottom-left corner of the plate (when A1 is top-left)
+#   - X increases toward column 12 (right)
+#   - Y increases toward row H (bottom)
+#   - All distances in millimetres
+#
+# Author: John Brittain
+# Date: Jun 18 2026
+
+name: your_plate_name          # matches the folder name and filename (no spaces)
+display_name: Your Plate Name  # shown in the UI
+labware_type: well_plate       # keep as-is for well plates
+
+layout:
+  rows: 8        # number of rows    (A = row 0)
+  columns: 12    # number of columns (column 1 = col 0)
+
+dimensions:
+  length: 0.0    # mm, long axis (X direction)
+  width:  0.0    # mm, short axis (Y direction)
+  height: 0.0    # mm, total plate height
+
+well:
+  diameter:  0.0   # mm, inner well diameter
+  depth:     0.0   # mm, well depth from top surface
+  volume_ul: 0.0   # µL, nominal working volume
+
+spacing:
+  row_spacing: 0.0  # mm, center-to-center between adjacent rows    (Y axis)
+  col_spacing: 0.0  # mm, center-to-center between adjacent columns (X axis)
+
+origin:              # well A1 center relative to plate bottom-left corner (mm)
+  x: 0.0
+  y: 0.0

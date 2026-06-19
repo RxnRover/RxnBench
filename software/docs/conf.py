@@ -1,0 +1,61 @@
+import os
+import sys
+
+# Both packages must be importable during autodoc
+sys.path.insert(0, os.path.abspath("../backend/src"))
+sys.path.insert(0, os.path.abspath("../frontend/src"))
+
+project = "Automated Chem Bench"
+copyright = "2026, John Brittain"
+author = "John Brittain"
+release = "0.1"
+
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.intersphinx",
+]
+
+autosummary_generate = True
+
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": True,
+    "show-inheritance": True,
+    "special-members": "__init__",
+}
+
+# Google-style and NumPy-style docstrings both supported
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = True
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+}
+
+# Mock heavy/platform-specific packages so autodoc can import source files
+# on any machine without requiring all runtime deps to be installed.
+autodoc_mock_imports = [
+    "grpc",
+    "unitelabs",
+    "zeroconf",
+    "PySide6",
+    "smbus2",
+    "requests",
+    "yaml",
+]
+
+templates_path = ["_templates"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+html_theme = "furo"
+html_static_path = ["_static"]
+html_title = "Automated Chem Bench"
+
+html_theme_options = {
+    "sidebar_hide_name": False,
+    "navigation_with_keys": True,
+}
