@@ -16,8 +16,8 @@ chem-bench = "chem_bench._cli:main"
 [project.optional-dependencies]
 rpi = ["smbus2>=0.4.3"]
 
-[tool.uv]
-dev-dependencies = ["grpcio-tools>=1.60.0"]
+[dependency-groups]
+dev = ["grpcio-tools>=1.60.0"]
 
 [[tool.uv.index]]
 name = "unitelabs"
