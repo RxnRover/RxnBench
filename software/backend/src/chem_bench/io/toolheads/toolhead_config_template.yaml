@@ -1,5 +1,5 @@
 # toolhead_config_template.yaml
-# Schema and defaults for all toolhead configs.
+# Dfaults for all toolhead configs.
 # Copy this into your toolhead folder and fill in the values.
 #
 # Author: John Brittain
@@ -7,10 +7,17 @@
 
 name: toolhead_name          # internal name, matches the folder
 display_name: Toolhead Name  # shown in UIs and SiLA
+sensor_type: null            # optional sensor key, e.g. 'ph', 'force'. Must match a key in
+                             # the sensor_registry passed to MotionPlatformController.
 
 geometry:
-  footprint_x: 0.0           # mm, physical width in X
-  footprint_y: 0.0           # mm, physical depth in Y
-  offset_x: 0.0              # mm, tool center from mount point in X
-  offset_y: 0.0              # mm, tool center from mount point in Y
+  footprint_x: 0.0           # mm, physical width in X (body outline)
+  footprint_y: 0.0           # mm, physical depth in Y (body outline)
+  offset_x: 0.0              # mm, body centre from carriage mount in X
+  offset_y: 0.0              # mm, body centre from carriage mount in Y
+  tip_x: 0.0                 # mm, actual tip from body centre in X (default 0 = centred)
+  tip_y: 0.0                 # mm, actual tip from body centre in Y (default 0 = centred)
+  tip_offset_z: 0.0          # mm, how far the tip hangs below the carriage mount
   z_engage: 0.0              # mm, depth below clearance height when working
+  requires_manual_z: true    # must manually home Z when this toolhead is mounted (set false only for bare carriage)
+  requires_manual_homing: false  # true for wide brackets that overhang rails and can't use endstops

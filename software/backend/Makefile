@@ -1,4 +1,4 @@
-.PHONY: install start stop install-service check-proto gen-proto
+.PHONY: install start stop install-service check-proto gen-proto test
 
 install:
 	bash install.sh
@@ -20,6 +20,11 @@ gen-proto:
 		-I ../frontend/src/chem_bench_ui/proto \
 		--python_out=../frontend/src/chem_bench_ui/proto \
 		$(PROTO_FILE)
+
+# Run smoke tests. PYTHONPATH is cleared to prevent ROS2 pytest plugins
+# (registered in the system Python's entry_points) from interfering.
+test:
+	PYTHONPATH="" uv run pytest tests/ -v
 
 # Fail CI if the committed .proto is out of date with the backend dataclasses.
 check-proto:

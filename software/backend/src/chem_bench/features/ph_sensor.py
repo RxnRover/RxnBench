@@ -12,13 +12,13 @@ import asyncio
 
 from unitelabs.cdk import sila
 
-from chem_bench.io.ph.atlas_ph_sensor import AtlasPHSensor
+from chem_bench.io.interfaces.ph_sensor import PHSensorProtocol
 from chem_bench.io.interfaces.enums import CalibrationPoint
 
 
 class PHSensor(sila.Feature):
 
-    def __init__(self, sensor: AtlasPHSensor):
+    def __init__(self, sensor: PHSensorProtocol):
         super().__init__(
             originator="edu.iastate.ames",
             category="chembench",

@@ -17,7 +17,7 @@ chem-bench = "chem_bench._cli:main"
 rpi = ["smbus2>=0.4.3"]
 
 [dependency-groups]
-dev = ["grpcio-tools>=1.60.0"]
+dev = ["grpcio-tools>=1.60.0", "pytest>=8.0"]
 
 [[tool.uv.index]]
 name = "unitelabs"
@@ -29,3 +29,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chem_bench"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-p", "no:launch_testing",
+    "-p", "no:launch_testing_ros_pytest_entrypoint",
+    "-p", "no:ament-lint",
+    "-p", "no:ament-copyright",
+    "-p", "no:ament-flake8",
+    "-p", "no:ament-pep257",
+    "-p", "no:ament-xmllint",
+]

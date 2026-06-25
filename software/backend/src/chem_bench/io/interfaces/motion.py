@@ -2,9 +2,9 @@
 Interface contracts for the motion layer.
 
 MotionClientProtocol  — the surface MoonrakerClient and MockMoonrakerClient must satisfy.
-                         MotionPlatformController depends on this, not on a concrete client.
+                         GantryController depends on this, not on a concrete client.
 
-MotionControllerProtocol — the surface MotionPlatform (SiLA feature) depends on.
+GantryControllerProtocol — the surface Gantry (SiLA feature) depends on.
                             Decouples the feature from the concrete controller so an
                             alternative gantry implementation can be swapped in without
                             touching the feature code.
@@ -14,7 +14,7 @@ Date: Jun 18 2026
 """
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from chem_bench.io.toolheads.toolhead_config import ToolheadGeometry
 
@@ -24,7 +24,7 @@ class MotionClientProtocol(Protocol):
     """Low-level motion hardware client.
 
     Implemented by MoonrakerClient (real hardware) and MockMoonrakerClient
-    (in-memory simulation).  MotionPlatformController depends on this interface,
+    (in-memory simulation).  GantryController depends on this interface,
     not on either concrete class.
     """
 
@@ -65,12 +65,12 @@ class MotionClientProtocol(Protocol):
 
 
 @runtime_checkable
-class MotionControllerProtocol(Protocol):
-    """High-level motion controller interface.
+class GantryControllerProtocol(Protocol):
+    """High-level gantry controller interface.
 
-    Implemented by MotionPlatformController.  The MotionPlatform SiLA feature
-    depends on this interface so a different gantry controller can be substituted
-    without modifying any feature code.
+    Implemented by GantryController.  The Gantry SiLA feature depends on this
+    interface so a different gantry controller can be substituted without
+    modifying any feature code.
     """
 
     # --- state ---
@@ -148,3 +148,23 @@ class MotionControllerProtocol(Protocol):
     # --- session persistence ---
 
     def save_and_park(self) -> None: ...
+
+    # --- machine limits ---
+
+    def get_limits(self) -> str: ...
+
+    # --- toolhead sensor ---
+
+    def get_toolhead_sensor(self) -> Any: ...
+
+    # --- workspace ---
+
+    def set_workspace(self, name: str) -> None: ...
+
+    def load_workspace_from_yaml(self, content: str) -> None: ...
+
+    def move_to_well(self, label: str) -> None: ...
+
+    def list_workspaces(self) -> list[str]: ...
+
+    def get_workspace_name(self) -> str: ...

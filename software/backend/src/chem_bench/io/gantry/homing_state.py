@@ -28,6 +28,7 @@ def save(
     y_max: float,
     clearance_z: float,
     toolhead_name: str,
+    is_calibrated: bool = True,
 ) -> None:
     _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     data = {
@@ -38,6 +39,7 @@ def save(
         "clearance_z": clearance_z,
         "toolhead_name": toolhead_name,
         "clean_shutdown": True,
+        "is_calibrated": is_calibrated,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     _STATE_FILE.write_text(json.dumps(data, indent=2))

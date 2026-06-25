@@ -6,6 +6,8 @@ Stack: RPi -> HTTP -> Moonraker -> Klipper -> MCU -> stepper motors
 POST /printer/gcode/script blocks until Klipper finishes the script,
 so appending M400 (wait for moves) makes move() synchronous for free.
 
+Implements: MotionClientProtocol (io/interfaces/motion.py)
+
 Author: John Brittain
 Date: Jun 17 2026
 """

@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from chem_bench.features.motion_platform import Position, ToolheadInfo  # noqa: E402
+from chem_bench.features.gantry import Position, ToolheadInfo  # noqa: E402
 
 # Python annotation type → SiLA proto wrapper message name
 _SILA_TYPE: dict[type, str] = {
@@ -52,7 +52,7 @@ syntax = "proto3";
 //       --python_out=../frontend/src/chem_bench_ui/proto \\
 //       ../frontend/src/chem_bench_ui/proto/motion_platform.proto
 
-package sila2.edu.iastate.ames.chembench.motionplatform.v0;
+package sila2.edu.iastate.ames.chembench.gantry.v0;
 
 // ── SiLA primitive wrappers ───────────────────────────────────────────────────
 // Each scalar is wrapped in a length-delimited message so that the CDK can
@@ -82,19 +82,24 @@ message Subscribe_HasSavedState_Responses  { Boolean HasSavedState = 1; }
 
 message Empty {}
 
-// Field order matches function signature order in motion_platform.py.
+// Field order matches function signature order in gantry.py.
 message MoveTo_Parameters        { Real    x     = 1; Real y  = 2; Real z = 3; }
 message Jog_Parameters           { Real    dx    = 1; Real dy = 2; Real dz = 3; }
 message EngageTool_Parameters    { Real    depth = 1; }
 message DisengageTool_Parameters { Real    depth = 1; }
 message SetZ_Parameters          { Real    z     = 1; }
 message SetToolhead_Parameters   { SString name  = 1; }
+message SetWorkspace_Parameters        { SString name    = 1; }
+message LoadWorkspaceYaml_Parameters   { SString content = 1; }
+message MoveToWell_Parameters          { SString label   = 1; }
 
-message ListToolheads_Responses  { SString Toolheads = 1; }
+message ListToolheads_Responses  { SString Toolheads  = 1; }
+message GetLimits_Responses      { SString Limits      = 1; }
+message ListWorkspaces_Responses { SString Workspaces  = 1; }
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
-service MotionPlatform {
+service Gantry {
   // Observable properties (server-streaming)
   rpc Subscribe_Position      (Subscribe_Position_Parameters)      returns (stream Subscribe_Position_Responses);
   rpc Subscribe_State         (Subscribe_State_Parameters)         returns (stream Subscribe_State_Responses);
@@ -106,23 +111,28 @@ service MotionPlatform {
   rpc Jog           (Jog_Parameters)           returns (Empty);
   rpc EngageTool    (EngageTool_Parameters)    returns (Empty);
   rpc DisengageTool (DisengageTool_Parameters) returns (Empty);
+  rpc MoveToWell    (MoveToWell_Parameters)    returns (Empty);
 
   // Unobservable commands
-  rpc HomeAuto                (Empty)                  returns (Empty);
-  rpc StartManualHoming       (Empty)                  returns (Empty);
-  rpc ConfirmXMin             (Empty)                  returns (Empty);
-  rpc ConfirmXMax             (Empty)                  returns (Empty);
-  rpc ConfirmYMin             (Empty)                  returns (Empty);
-  rpc ConfirmYMax             (Empty)                  returns (Empty);
-  rpc ConfirmZReference       (Empty)                  returns (Empty);
-  rpc FinishHoming            (Empty)                  returns (Empty);
-  rpc SetZ                    (SetZ_Parameters)        returns (Empty);
-  rpc SetToolhead             (SetToolhead_Parameters) returns (Empty);
-  rpc ClearToolhead           (Empty)                  returns (Empty);
-  rpc ConfirmToolheadMounted  (Empty)                  returns (Empty);
-  rpc ClearToolheadMounted    (Empty)                  returns (Empty);
-  rpc ListToolheads           (Empty)                  returns (ListToolheads_Responses);
-  rpc SaveAndPark             (Empty)                  returns (Empty);
+  rpc HomeAuto                (Empty)                              returns (Empty);
+  rpc StartManualHoming       (Empty)                              returns (Empty);
+  rpc ConfirmXMin             (Empty)                              returns (Empty);
+  rpc ConfirmXMax             (Empty)                              returns (Empty);
+  rpc ConfirmYMin             (Empty)                              returns (Empty);
+  rpc ConfirmYMax             (Empty)                              returns (Empty);
+  rpc ConfirmZReference       (Empty)                              returns (Empty);
+  rpc FinishHoming            (Empty)                              returns (Empty);
+  rpc SetZ                    (SetZ_Parameters)                    returns (Empty);
+  rpc SetToolhead             (SetToolhead_Parameters)             returns (Empty);
+  rpc ClearToolhead           (Empty)                              returns (Empty);
+  rpc ConfirmToolheadMounted  (Empty)                              returns (Empty);
+  rpc ClearToolheadMounted    (Empty)                              returns (Empty);
+  rpc ListToolheads           (Empty)                              returns (ListToolheads_Responses);
+  rpc SaveAndPark             (Empty)                              returns (Empty);
+  rpc GetLimits               (Empty)                              returns (GetLimits_Responses);
+  rpc SetWorkspace            (SetWorkspace_Parameters)            returns (Empty);
+  rpc LoadWorkspaceYaml       (LoadWorkspaceYaml_Parameters)       returns (Empty);
+  rpc ListWorkspaces          (Empty)                              returns (ListWorkspaces_Responses);
 }
 """
 

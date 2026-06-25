@@ -1,13 +1,15 @@
 """
 Atlas Scientific EZO-pH sensor, implements BaseSensor.
 
+Satisfies: PHSensorProtocol (io/interfaces/ph_sensor.py)
+
 Author: John Brittain
 Date: Jun 11 2026
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from chem_bench.io.base_sensor import BaseSensor, SensorReading, command, observable
+from chem_bench.io.base_sensor import BaseSensor, SensorReading
 from chem_bench.io.ph.atlas_scientific_driver import AtlasScientificEZO, DEFAULT_I2C_ADDRESS
 
 
@@ -59,7 +61,6 @@ class AtlasPHSensor(BaseSensor):
     # BaseSensor interface
     # ------------------------------------
 
-    @observable(display_name='pH', unit='pH', description='Instantaneous pH of the solution.')
     def read(self) -> PHReading:
         """Take a single pH reading.
 
@@ -76,7 +77,10 @@ class AtlasPHSensor(BaseSensor):
         value = self._driver.read_ph()
         return PHReading(value=value, sensor_id=self.sensor_id)
 
-    @command(display_name='Calibrate', description='Calibrate at a known pH buffer.')
+    # ------------------------------------
+    # pH-specific
+    # ------------------------------------
+
     def calibrate(self, point: str, value: float) -> None:
         """Calibrate at a known buffer value.
 
@@ -118,12 +122,6 @@ class AtlasPHSensor(BaseSensor):
             'voltage': float(parts[2]) if len(parts) > 2 else None,
         }
 
-    # ------------------------------------
-    # pH-specific
-    # ------------------------------------
-
-    @command(display_name='Set Temperature Compensation',
-             description='Update the temperature used to compensate pH readings.')
     def set_temperature(self, temp: float) -> None:
         """Set temperature compensation. Call this if the solution temperature changes.
 
@@ -134,8 +132,6 @@ class AtlasPHSensor(BaseSensor):
         """
         self._driver.set_temperature_compensation(temp)
 
-    @observable(display_name='Temperature Compensation', unit='°C',
-                description='Temperature currently used for pH compensation.')
     def get_temperature(self) -> float:
         """Check what temperature is set for compensation.
 
@@ -146,8 +142,6 @@ class AtlasPHSensor(BaseSensor):
         """
         return self._driver.get_temperature_compensation()
 
-    @observable(display_name='Probe Slope', unit='%',
-                description='Acid/base slope percentages, close to 100% means healthy probe.')
     def slope(self) -> tuple[float, float]:
         """Get probe slope to check if the probe is still good.
 
@@ -158,8 +152,6 @@ class AtlasPHSensor(BaseSensor):
         """
         return self._driver.get_slope()
 
-    @observable(display_name='Calibration Points', unit='points',
-                description='How many calibration points are currently stored (0–3).')
     def calibration_status(self) -> int:
         """Check how many calibration points are stored.
 
@@ -170,8 +162,6 @@ class AtlasPHSensor(BaseSensor):
         """
         return self._driver.get_calibration_status()
 
-    @observable(display_name='Device Info', unit='',
-                description='Device type and firmware version.')
     def info(self) -> str:
         """Get device type and firmware version string.
 
@@ -186,17 +176,14 @@ class AtlasPHSensor(BaseSensor):
     # Device management
     # ------------------------------------
 
-    @command(display_name='Find Device', description='Flash the LED to identify this device on the bus.')
     def find(self) -> None:
         """Flash the LED white to find this device on the bus."""
         self._driver.find()
 
-    @command(display_name='Sleep', description='Put the device into low-power sleep.')
     def sleep(self) -> None:
         """Put the device to sleep. Send any command to wake it."""
         self._driver.sleep()
 
-    @command(display_name='Set LED', description='Turn the status LED on or off.')
     def set_led(self, enabled: bool) -> None:
         """Turn the status LED on or off.
 
@@ -206,7 +193,6 @@ class AtlasPHSensor(BaseSensor):
         """
         self._driver.set_led(enabled)
 
-    @observable(display_name='LED State', unit='', description='Whether the status LED is on.')
     def get_led(self) -> bool:
         """Check if the status LED is on.
 
