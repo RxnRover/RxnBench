@@ -1,0 +1,13 @@
+name: ph_probe
+display_name: Atlas Scientific pH Probe
+sensor_type: ph
+
+geometry:
+  footprint_x: 44       # mm
+  footprint_y: 25       # mm
+  offset_x: 0           # mm
+  offset_y: -35         # mm
+  tip_x: 0              # mm
+tip_y: -25              # mm
+tip_offset_z: 110     # mm, below carriage mount
+  z_engage: 25          # mm, depth into well

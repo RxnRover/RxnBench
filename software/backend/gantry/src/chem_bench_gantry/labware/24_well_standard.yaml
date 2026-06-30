@@ -1,0 +1,9 @@
+# 24-Well Standard Plate 
+
+rows: 4           # A–D
+columns: 6        # 1–6
+spacing_mm: 19.3  # centre-to-centre, both axes
+well_diameter_mm: 15.62
+well_depth_mm: 17.4
+a1_offset_x: 24.65   # mm, A1 from corner
+a1_offset_y: 16.74   # mm, A1 from corner

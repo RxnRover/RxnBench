@@ -1,33 +1,41 @@
-.PHONY: install start stop install-service check-proto gen-proto test
+.PHONY: install start-gantry start-ph start-mock test-gantry test-ph test gen-proto check-proto
+
+FRONTEND_PROTO_DIR := ../frontend/src/chem_bench_ui/proto
+FRONTEND_PROTO     := $(FRONTEND_PROTO_DIR)/motion_platform.proto
 
 install:
-	bash install.sh
+	uv sync
 
-start:
-	uv run chem-bench
+start-gantry:
+	cd gantry && uv run chem-bench-gantry
 
-install-service:
-	bash scripts/install_service.sh
+start-ph:
+	cd ph_sensor && uv run chem-bench-ph
 
-# Regenerate motion_platform.proto from backend dataclasses and recompile.
-# Run this after any change to Position or ToolheadInfo field order.
-PROTO_FILE := ../frontend/src/chem_bench_ui/proto/motion_platform.proto
-PB2_FILE   := ../frontend/src/chem_bench_ui/proto/motion_platform_pb2.py
+start-mock:
+	CHEM_BENCH_MOCK=1 uv run --package chem-bench-gantry chem-bench-gantry &
+	CHEM_BENCH_MOCK=1 uv run --package chem-bench-ph chem-bench-ph
+
+
+# PYTHONPATH is cleared to prevent ROS2 pytest plugins from interfering.
+test-gantry:
+	PYTHONPATH="" uv run --package chem-bench-gantry pytest gantry/tests/ -v
+
+test-ph:
+	PYTHONPATH="" uv run --package chem-bench-ph pytest ph_sensor/tests/ -v
+
+test: test-gantry test-ph
+
+# Position and ToolheadInfo dataclasses live in chem_bench_gantry.feature.
 
 gen-proto:
-	uv run python scripts/gen_proto.py > $(PROTO_FILE)
+	uv run python gantry/scripts/gen_proto.py > $(FRONTEND_PROTO)
 	uv run python -m grpc_tools.protoc \
-		-I ../frontend/src/chem_bench_ui/proto \
-		--python_out=../frontend/src/chem_bench_ui/proto \
-		$(PROTO_FILE)
+		-I $(FRONTEND_PROTO_DIR) \
+		--python_out=$(FRONTEND_PROTO_DIR) \
+		$(FRONTEND_PROTO)
 
-# Run smoke tests. PYTHONPATH is cleared to prevent ROS2 pytest plugins
-# (registered in the system Python's entry_points) from interfering.
-test:
-	PYTHONPATH="" uv run pytest tests/ -v
-
-# Fail CI if the committed .proto is out of date with the backend dataclasses.
 check-proto:
-	@uv run python scripts/gen_proto.py | diff - $(PROTO_FILE) \
+	@uv run python gantry/scripts/gen_proto.py | diff - $(FRONTEND_PROTO) \
 		|| (echo "\nERROR: motion_platform.proto is out of date. Run 'make gen-proto'." && exit 1)
 	@echo "OK: motion_platform.proto matches backend dataclasses."

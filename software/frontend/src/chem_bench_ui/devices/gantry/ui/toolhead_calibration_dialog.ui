@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ToolheadCalibrationDialog</class>
+ <widget class="QWidget" name="ToolheadCalibrationDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>520</width><height>500</height></rect>
+  </property>
+  <property name="windowTitle"><string>Toolhead Calibration</string></property>
+
+  <layout class="QVBoxLayout" name="dialog_root">
+   <property name="spacing"><number>12</number></property>
+   <property name="leftMargin"><number>16</number></property>
+   <property name="topMargin"><number>16</number></property>
+   <property name="rightMargin"><number>16</number></property>
+   <property name="bottomMargin"><number>16</number></property>
+
+   <item>
+    <widget class="QStackedWidget" name="page_stack">
+
+     <!-- ── Page 0: Intro ── -->
+     <widget class="QWidget" name="page_intro">
+      <layout class="QVBoxLayout" name="intro_layout">
+       <property name="spacing"><number>12</number></property>
+       <item>
+        <widget class="QLabel" name="intro_title">
+         <property name="text"><string>Toolhead Offset Calibration</string></property>
+         <property name="font"><font><pointsize>14</pointsize><bold>true</bold></font></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="toolhead_name_lbl">
+         <property name="text"><string>Calibrating: —</string></property>
+         <property name="font"><font><bold>true</bold></font></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="cal_ref_well_lbl">
+         <property name="text"><string>Reference well: —</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="intro_body">
+         <property name="text"><string>Move the gantry to the nominal reference well position, then jog the tip to 4 rim points (NW → NE → SE → SW) to find the true centre. The average of those 4 points is saved as the tip offset.</string></property>
+         <property name="wordWrap"><bool>true</bool></property>
+        </widget>
+       </item>
+       <item>
+        <spacer>
+         <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+        </spacer>
+       </item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item>
+          <spacer>
+           <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="start_cal_btn">
+           <property name="text"><string>Start Calibration →</string></property>
+           <property name="minimumWidth"><number>140</number></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- ── Page 1: Corner sequence ── -->
+     <widget class="QWidget" name="page_corners">
+      <layout class="QVBoxLayout" name="corners_layout">
+       <property name="spacing"><number>8</number></property>
+
+       <item>
+        <widget class="QLabel" name="corner_title_lbl">
+         <property name="text"><string>Point 1 of 4 — NW rim</string></property>
+         <property name="font"><font><pointsize>13</pointsize><bold>true</bold></font></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="corner_instruction_lbl">
+         <property name="text"><string>Jog the tip to the North West rim of the reference well, then confirm.</string></property>
+         <property name="wordWrap"><bool>true</bool></property>
+        </widget>
+       </item>
+
+       <!-- Diagram + progress side by side -->
+       <item>
+        <layout class="QHBoxLayout">
+         <property name="spacing"><number>16</number></property>
+         <item>
+          <widget class="QLabel" name="corner_diagram_lbl">
+           <property name="minimumSize"><size><width>200</width><height>200</height></size></property>
+           <property name="maximumSize"><size><width>200</width><height>200</height></size></property>
+           <property name="frameShape"><enum>QFrame::Shape::NoFrame</enum></property>
+           <property name="text"><string></string></property>
+           <property name="alignment"><set>Qt::AlignmentFlag::AlignCenter</set></property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QVBoxLayout">
+           <property name="spacing"><number>6</number></property>
+           <item>
+            <widget class="QLabel">
+             <property name="text"><string>Progress</string></property>
+             <property name="font"><font><bold>true</bold></font></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="corner1_status_lbl">
+             <property name="text"><string>○  NW rim</string></property>
+             <property name="font"><font><family>monospace</family></font></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="corner2_status_lbl">
+             <property name="text"><string>○  NE rim</string></property>
+             <property name="font"><font><family>monospace</family></font></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="corner3_status_lbl">
+             <property name="text"><string>○  SE rim</string></property>
+             <property name="font"><font><family>monospace</family></font></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="corner4_status_lbl">
+             <property name="text"><string>○  SW rim</string></property>
+             <property name="font"><font><family>monospace</family></font></property>
+            </widget>
+           </item>
+           <item>
+            <spacer>
+             <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+             <property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property>
+            </spacer>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </item>
+
+       <!-- Jog controls -->
+       <item>
+        <widget class="QGroupBox" name="jog_group">
+         <property name="title"><string>Jog</string></property>
+         <layout class="QHBoxLayout" name="jog_outer">
+          <property name="spacing"><number>20</number></property>
+          <item>
+           <layout class="QGridLayout" name="xy_jog_grid">
+            <property name="spacing"><number>2</number></property>
+            <item row="0" column="1">
+             <widget class="QPushButton" name="jog_y_pos_btn">
+              <property name="text"><string>▲</string></property>
+              <property name="maximumWidth"><number>40</number></property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QPushButton" name="jog_x_neg_btn">
+              <property name="text"><string>◄</string></property>
+              <property name="maximumWidth"><number>40</number></property>
+             </widget>
+            </item>
+            <item row="1" column="2">
+             <widget class="QPushButton" name="jog_x_pos_btn">
+              <property name="text"><string>►</string></property>
+              <property name="maximumWidth"><number>40</number></property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QPushButton" name="jog_y_neg_btn">
+              <property name="text"><string>▼</string></property>
+              <property name="maximumWidth"><number>40</number></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout">
+            <item>
+             <widget class="QPushButton" name="jog_z_pos_btn">
+              <property name="text"><string>Z ▲</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="jog_z_neg_btn">
+              <property name="text"><string>Z ▼</string></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout">
+            <item>
+             <widget class="QLabel">
+              <property name="text"><string>Step (mm)</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDoubleSpinBox" name="jog_step_spin">
+              <property name="minimum"><double>0.100000000000000</double></property>
+              <property name="maximum"><double>10.000000000000000</double></property>
+              <property name="singleStep"><double>0.100000000000000</double></property>
+              <property name="value"><double>0.500000000000000</double></property>
+              <property name="maximumWidth"><number>80</number></property>
+             </widget>
+            </item>
+            <item>
+             <spacer>
+              <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+              <property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+
+       <!-- Bottom bar -->
+       <item>
+        <layout class="QHBoxLayout">
+         <item>
+          <widget class="QPushButton" name="abort_cal_btn">
+           <property name="text"><string>Abort</string></property>
+           <property name="maximumWidth"><number>70</number></property>
+          </widget>
+         </item>
+         <item>
+          <spacer>
+           <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="confirm_corner_btn">
+           <property name="text"><string>Confirm Rim Point 1 ✓</string></property>
+           <property name="minimumWidth"><number>150</number></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+
+      </layout>
+     </widget>
+
+     <!-- ── Page 2: Results ── -->
+     <widget class="QWidget" name="page_results">
+      <layout class="QVBoxLayout" name="results_layout">
+       <property name="spacing"><number>16</number></property>
+       <item>
+        <widget class="QLabel" name="results_title">
+         <property name="text"><string>Calibration Complete</string></property>
+         <property name="font"><font><pointsize>14</pointsize><bold>true</bold></font></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="offset_group">
+         <property name="title"><string>Calculated Well Centre</string></property>
+         <layout class="QVBoxLayout">
+          <item>
+           <widget class="QLabel" name="offset_x_lbl">
+            <property name="text"><string>X centre:   ---  mm</string></property>
+            <property name="font"><font><family>monospace</family><pointsize>12</pointsize></font></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="offset_y_lbl">
+            <property name="text"><string>Y centre:   ---  mm</string></property>
+            <property name="font"><font><family>monospace</family><pointsize>12</pointsize></font></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="results_note">
+         <property name="text"><string>Accept to record this as the tip offset for this toolhead session, or redo to repeat the calibration.</string></property>
+         <property name="wordWrap"><bool>true</bool></property>
+        </widget>
+       </item>
+       <item>
+        <spacer>
+         <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+       </item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item>
+          <widget class="QPushButton" name="redo_cal_btn">
+           <property name="text"><string>↺  Redo</string></property>
+          </widget>
+         </item>
+         <item>
+          <spacer>
+           <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="accept_cal_btn">
+           <property name="text"><string>Accept &amp; Save ✓</string></property>
+           <property name="minimumWidth"><number>130</number></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

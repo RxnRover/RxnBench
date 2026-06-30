@@ -1,0 +1,18 @@
+# toolhead_config_template.yaml
+# Dfaults for all toolhead configs.
+# Copy this into your toolhead folder and fill in the values.
+#
+
+name: toolhead_name          # internal name, matches the folder
+display_name: Toolhead Name  # shown in UIs and SiLA
+sensor_type: null            # optional, e.g. 'ph'. Must match a key in sensor_registry.
+
+geometry:
+  footprint_x: 0.0           # mm
+  footprint_y: 0.0           # mm
+  offset_x: 0.0              # mm
+  offset_y: 0.0              # mm
+  tip_x: 0.0                 # mm
+  tip_y: 0.0                 # mm
+  tip_offset_z: 0.0          # mm, below carriage mount
+  z_engage: 0.0              # mm

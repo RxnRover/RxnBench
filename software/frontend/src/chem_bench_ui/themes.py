@@ -8,7 +8,7 @@ Primary brand colors: orange (#f97316) and blue (#3b82f6).
 """
 
 # ---------------------------------------------------------------------------
-# Dark theme (default) — dark navy bg, orange + blue accents
+# Dark theme (default) - dark navy bg, orange + blue accents
 # ---------------------------------------------------------------------------
 DARK = {
     # Base surfaces
@@ -52,6 +52,13 @@ DARK = {
     "dot_warn":     "#f97316",
     "dot_err":      "#ef4444",
 
+    # Device panel / widget surfaces (slightly raised above the MDI canvas)
+    "widget_bg":    "#1c2333",
+
+    # Server cards
+    "card_bg":      "#1c2333",
+    "card_border":  "#3a4570",
+
     # Grid / canvas
     "grid_bg":       "#0a0d14",
     "grid_line":     "#1a2035",
@@ -66,7 +73,7 @@ DARK = {
 }
 
 # ---------------------------------------------------------------------------
-# Light theme — white bg, same orange/blue accents
+# Light theme - white bg, same orange/blue accents
 # ---------------------------------------------------------------------------
 LIGHT = {
     "bg":           "#f8fafc",
@@ -81,16 +88,16 @@ LIGHT = {
     "text_muted":   "#64748b",
     "text_dim":     "#94a3b8",
 
-    "accent":       "#ea6c00",
-    "accent_dim":   "#fed7aa",
-    "accent_text":  "#431407",
+    "accent":       "#f97316",
+    "accent_dim":   "#c2560a",
+    "accent_text":  "#ffffff",
 
     "accent2":      "#2563eb",
     "accent2_dim":  "#bfdbfe",
     "accent2_text": "#1e3a8a",
 
     "success":      "#16a34a",
-    "warning":      "#ea6c00",
+    "warning":      "#f97316",
     "error":        "#dc2626",
     "error_bg":     "#fee2e2",
     "error_text":   "#7f1d1d",
@@ -100,8 +107,15 @@ LIGHT = {
     "btn_hover":    "#cbd5e1",
     "btn_pressed":  "#94a3b8",
     "dot_ok":       "#16a34a",
-    "dot_warn":     "#ea6c00",
+    "dot_warn":     "#f97316",
     "dot_err":      "#dc2626",
+
+    # Device panel / widget surfaces (lighter than the MDI canvas in light mode)
+    "widget_bg":    "#ffffff",
+
+    # Server cards
+    "card_bg":      "#ffffff",
+    "card_border":  "#94a3b8",
 
     "grid_bg":       "#f1f5f9",
     "grid_line":     "#cbd5e1",
@@ -195,6 +209,13 @@ def build_qss(t: dict) -> str:
             border-radius: 4px;
         }}
         QLabel {{ background: transparent; }}
+        QMdiSubWindow {{
+            background: {t['widget_bg']};
+            border: 2px solid {t['border']};
+        }}
+        QMdiArea {{
+            border: none;
+        }}
         QMenuBar {{
             background: {t['bg_surface']};
             color: {t['text']};

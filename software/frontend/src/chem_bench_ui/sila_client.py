@@ -20,35 +20,60 @@ import base64
 import dataclasses
 import re
 import threading
+from typing import Callable
 
 import grpc
 from PySide6.QtCore import QObject, Signal
 
 from .proto import motion_platform_pb2 as _mp
+from .proto import sila_service_pb2 as _ss
 
-# ── Machine limits (SV08 defaults) ──────────────────────────────────────────
-X_MAX, Y_MAX, Z_MAX = 350.0, 350.0, 340.0
 SILA_PORT = 50051
 
-# ── SiLA feature constants ───────────────────────────────────────────────────
-_PKG = "sila2.edu.iastate.ames.chembench.motionplatform.v0"
-_SVC = "MotionPlatform"
+_PKG = "sila2.edu.iastate.ames.rxnbench.gantry.v0"
+_SVC = "Gantry"
 
-# Registry of every feature the desktop knows about.
-# "probe" is a lightweight unary method used to detect presence.
-_KNOWN_FEATURES: list[dict] = [
-    {
-        "name": "Motion Platform",
-        "pkg":  _PKG,
-        "svc":  _SVC,
-        "probe": "ListToolheads",
-    },
-    # Future features go here:
-    # {"name": "pH Probe", "pkg": "...", "svc": "PHProbe", "probe": "GetStatus"},
+_SS_PKG = "sila2.org.silastandard.core.silaservice.v1"
+_SS_SVC = "SiLAService"
+
+
+@dataclasses.dataclass(frozen=True)
+class FeatureDescriptor:
+    """Maps a server-reported feature identifier to a UI display name.
+
+    'identifier' is the fully-qualified SiLA2 feature identifier returned by
+    SiLAService.GetImplementedFeatures, e.g. 'edu.iastate.ames/rxnbench/MotionPlatform/v0'.
+    The rpc_package form is: sila2.<originator>.<category>.<feature_lower>.v<major>.
+
+    'start_streams' is called once after discovery is confirmed for this generation.
+    Signature: (client: SilaClient, gen: int) -> None
+    """
+    name: str        # UI label used by MainWindow to select the right tab builder
+    identifier: str  # Fully-qualified feature identifier (case-insensitive match)
+    start_streams: Callable[["SilaClient", int], None]
+
+
+def _start_motion_streams(client: "SilaClient", gen: int) -> None:
+    """Start the four Motion Platform subscription threads for this connection generation."""
+    threading.Thread(target=client._stream_position,    args=(gen,), daemon=True).start()
+    threading.Thread(target=client._stream_state,       args=(gen,), daemon=True).start()
+    threading.Thread(target=client._stream_toolhead,    args=(gen,), daemon=True).start()
+    threading.Thread(target=client._stream_saved_state, args=(gen,), daemon=True).start()
+
+
+_FEATURE_REGISTRY: list[FeatureDescriptor] = [
+    FeatureDescriptor(
+        name="Gantry",
+        identifier="edu.iastate.ames/rxnbench/Gantry/v0",
+        start_streams=_start_motion_streams,
+    ),
+    # FeatureDescriptor(
+    #     name="pH Sensor",
+    #     identifier="edu.iastate.ames/rxnbench/PHSensor/v0",
+    #     start_streams=_start_ph_streams,
+    # ),
 ]
 
-
-# ── Domain types ─────────────────────────────────────────────────────────────
 
 @dataclasses.dataclass
 class ToolheadInfo:
@@ -64,12 +89,8 @@ class ToolheadInfo:
     z_engage: float = 0.0
     tip_x: float = 0.0
     tip_y: float = 0.0
-    requires_manual_z: bool = True
-    requires_manual_homing: bool = False
     toolhead_mounted: bool = False
 
-
-# ── SiLA client ──────────────────────────────────────────────────────────────
 
 class SilaClient(QObject):
     """Connects to the SiLA server, discovers features, and exposes commands as Qt signals."""
@@ -81,12 +102,20 @@ class SilaClient(QObject):
     features_discovered = Signal(list)    # emits list[str] of found feature names
     feature_state_changed = Signal(str, bool)  # (feature name, streams ok)
     saved_state_updated = Signal(bool)    # True = saved homing state loaded on server
+    limits_updated      = Signal(float, float, float, float, float, float)  # x_min,x_max,y_min,y_max,z_min,z_max
 
     def __init__(self):
         super().__init__()
         self._channel: grpc.Channel | None = None
         self._stop = threading.Event()
         self._host = ""
+        # Incremented on each connect_to(); stream threads exit when self._gen no longer
+        # matches, ensuring only one active set of threads per connection.
+        self._gen: int = 0
+
+    @property
+    def host(self) -> str:
+        return self._host
 
     def connect_to(self, host: str, port: int = SILA_PORT):
         self._stop.set()
@@ -94,12 +123,13 @@ class SilaClient(QObject):
             self._channel.close()
 
         self._host = host
+        self._gen += 1
+        my_gen = self._gen
         self._stop = threading.Event()
         self._channel = grpc.insecure_channel(f"{host}:{port}")
 
-        # Emit connection_changed directly from the gRPC channel state machine so
-        # the indicator dot turns green as soon as the TCP handshake succeeds —
-        # regardless of whether any stream data has arrived yet.
+        # Subscribe to the gRPC channel state machine so the indicator dot
+        # reflects TCP connectivity before any stream data arrives.
         _stop_ref = self._stop
         def _on_channel_state(connectivity):
             if not _stop_ref.is_set():
@@ -108,56 +138,58 @@ class SilaClient(QObject):
                 )
         self._channel.subscribe(_on_channel_state, try_to_connect=True)
 
-        # Probe features first, then start streams for the ones that exist.
-        threading.Thread(target=self._discover_and_stream, daemon=True).start()
+        threading.Thread(target=self._discover_and_stream, args=(my_gen,), daemon=True).start()
 
     def disconnect(self):
         self._stop.set()
 
-    # ── Feature discovery ──────────────────────────────────────────────────
+    def _fetch_implemented_features(self) -> list[str]:
+        """Call SiLAService.GetImplementedFeatures; return list of feature identifier strings."""
+        path = f"/{_SS_PKG}.{_SS_SVC}/Get_ImplementedFeatures"
+        try:
+            raw = self._channel.unary_unary(path)(b"", timeout=5.0)
+            resp = _ss.Get_ImplementedFeatures_Responses.FromString(bytes(raw))
+            return [item.value for item in resp.ImplementedFeatures]
+        except Exception:
+            return []
 
-    def _discover_and_stream(self):
-        """Probe every known feature and emit features_discovered, then start streams."""
-        found: list[str] = []
-        for feat in _KNOWN_FEATURES:
-            if self._probe_feature(feat["pkg"], feat["svc"], feat["probe"]):
-                found.append(feat["name"])
+    def _discover_and_stream(self, gen: int):
+        """Ask the server what features it implements, filter through registry, start streams."""
+        server_ids = self._fetch_implemented_features()
+        found_descs: list[FeatureDescriptor] = [
+            fd for fd in _FEATURE_REGISTRY
+            if any(sid.lower() == fd.identifier.lower() for sid in server_ids)
+        ]
+        found = [fd.name for fd in found_descs]
 
         self.features_discovered.emit(found)
 
-        if "Motion Platform" in found:
-            threading.Thread(target=self._stream_position,    daemon=True).start()
-            threading.Thread(target=self._stream_state,       daemon=True).start()
-            threading.Thread(target=self._stream_toolhead,    daemon=True).start()
-            threading.Thread(target=self._stream_saved_state, daemon=True).start()
+        if self._gen != gen:
+            return
 
-    def _probe_feature(self, pkg: str, svc: str, method: str) -> bool:
-        """Return True if the gRPC service is reachable (even if the call itself errors)."""
-        full = f"/{pkg}.{svc}/{method}"
-        try:
-            self._channel.unary_unary(full)(b"", timeout=4.0)
-            return True
-        except grpc.RpcError as e:
-            # Any response other than UNAVAILABLE means the service is there.
-            return e.code() != grpc.StatusCode.UNAVAILABLE
-        except Exception:
-            return False
+        for fd in found_descs:
+            if self._gen == gen:  # re-check per feature in case of rapid reconnect
+                fd.start_streams(self, gen)
 
-    # ── Subscription streams ───────────────────────────────────────────────
+        if self._gen == gen and any(sid.lower() == _FEATURE_REGISTRY[0].identifier.lower()
+                                    for sid in server_ids):
+            limits = self.fetch_limits()
+            if limits is not None:
+                self.limits_updated.emit(*limits)
 
     def _method(self, name: str) -> str:
         return f"/{_PKG}.{_SVC}/{name}"
 
-    def _stream_position(self):
-        while not self._stop.is_set():
+    def _stream_position(self, gen: int):
+        while self._gen == gen and not self._stop.is_set():
             try:
                 call = self._channel.unary_stream(self._method("Subscribe_Position"))
                 first = True
                 for msg in call(b""):
-                    if self._stop.is_set():
+                    if self._gen != gen or self._stop.is_set():
                         return
                     if first:
-                        self.feature_state_changed.emit("Motion Platform", True)
+                        self.feature_state_changed.emit("Gantry", True)
                         first = False
                     resp = _mp.Subscribe_Position_Responses.FromString(bytes(msg))
                     self.position_updated.emit(
@@ -166,29 +198,29 @@ class SilaClient(QObject):
                         resp.Position.z.value,
                     )
             except Exception:
-                self.feature_state_changed.emit("Motion Platform", False)
-                if not self._stop.wait(3.0):
-                    continue
+                self.feature_state_changed.emit("Gantry", False)
+                if self._gen != gen or self._stop.wait(3.0):
+                    return
 
-    def _stream_state(self):
-        while not self._stop.is_set():
+    def _stream_state(self, gen: int):
+        while self._gen == gen and not self._stop.is_set():
             try:
                 call = self._channel.unary_stream(self._method("Subscribe_State"))
                 for msg in call(b""):
-                    if self._stop.is_set():
+                    if self._gen != gen or self._stop.is_set():
                         return
                     resp = _mp.Subscribe_State_Responses.FromString(bytes(msg))
                     self.state_updated.emit(resp.State.value)
             except Exception:
-                if not self._stop.wait(3.0):
-                    continue
+                if self._gen != gen or self._stop.wait(3.0):
+                    return
 
-    def _stream_toolhead(self):
-        while not self._stop.is_set():
+    def _stream_toolhead(self, gen: int):
+        while self._gen == gen and not self._stop.is_set():
             try:
                 call = self._channel.unary_stream(self._method("Subscribe_ToolheadInfo"))
                 for msg in call(b""):
-                    if self._stop.is_set():
+                    if self._gen != gen or self._stop.is_set():
                         return
                     resp = _mp.Subscribe_ToolheadInfo_Responses.FromString(bytes(msg))
                     th = resp.ToolheadInfo
@@ -204,31 +236,29 @@ class SilaClient(QObject):
                         z_engage            = th.z_engage.value,
                         tip_x               = th.tip_x.value,
                         tip_y               = th.tip_y.value,
-                        requires_manual_z   = th.requires_manual_z.value,
-                        requires_manual_homing = th.requires_manual_homing.value,
                         toolhead_mounted    = th.toolhead_mounted.value,
                     ))
             except Exception:
-                if not self._stop.wait(3.0):
-                    continue
+                if self._gen != gen or self._stop.wait(3.0):
+                    return
 
-    def _stream_saved_state(self):
-        while not self._stop.is_set():
+    def _stream_saved_state(self, gen: int):
+        while self._gen == gen and not self._stop.is_set():
             try:
                 call = self._channel.unary_stream(self._method("Subscribe_HasSavedState"))
                 for msg in call(b""):
-                    if self._stop.is_set():
+                    if self._gen != gen or self._stop.is_set():
                         return
                     resp = _mp.Subscribe_HasSavedState_Responses.FromString(bytes(msg))
                     self.saved_state_updated.emit(resp.HasSavedState.value)
             except Exception:
-                if not self._stop.wait(5.0):
-                    continue
+                if self._gen != gen or self._stop.wait(5.0):
+                    return
 
     @staticmethod
     def _format_error(method: str, exc: Exception) -> str:
         raw = str(exc)
-        # SiLA/Moonraker errors arrive as base64-encoded proto in the gRPC details field
+        # gRPC error details are base64-encoded proto; decode to extract the human-readable message
         m = re.search(r'details\s*=\s*"([A-Za-z0-9+/=]{20,})"', raw)
         if m:
             try:
@@ -254,9 +284,6 @@ class SilaClient(QObject):
     def _fire(self, method: str, request: bytes = b""):
         threading.Thread(target=self._call, args=(method, request), daemon=True).start()
 
-    # ── Commands ──
-
-    def home_auto(self):              self._fire("HomeAuto")
     def start_manual_homing(self):    self._fire("StartManualHoming")
     def finish_homing(self):          self._fire("FinishHoming")
     def clear_toolhead(self):         self._fire("ClearToolhead")
@@ -289,7 +316,7 @@ class SilaClient(QObject):
         self._fire("MoveTo", params.SerializeToString())
 
     def fetch_toolhead_list(self) -> list[tuple[str, str]]:
-        """Blocking call — run in a thread. Returns [(name, display_name), ...]."""
+        """Blocking call - run in a thread. Returns [(name, display_name), ...]."""
         try:
             raw = self._channel.unary_unary(self._method("ListToolheads"))(b"", timeout=5.0)
             resp = _mp.ListToolheads_Responses.FromString(bytes(raw))
@@ -302,3 +329,39 @@ class SilaClient(QObject):
         except Exception as e:
             self.error_occurred.emit(f"fetch_toolhead_list: {e}")
             return []
+
+    def set_workspace(self, name: str):
+        params = _mp.SetWorkspace_Parameters()
+        params.name.value = name
+        self._fire("SetWorkspace", params.SerializeToString())
+
+    def move_to_well(self, label: str):
+        params = _mp.MoveToWell_Parameters()
+        params.label.value = label
+        self._fire("MoveToWell", params.SerializeToString())
+
+    def fetch_workspace_list(self) -> list[str]:
+        """Blocking call - run in a thread. Returns list of workspace names."""
+        try:
+            raw = self._channel.unary_unary(self._method("ListWorkspaces"))(b"", timeout=5.0)
+            resp = _mp.ListWorkspaces_Responses.FromString(bytes(raw))
+            return [w for w in resp.Workspaces.value.splitlines() if w]
+        except Exception as e:
+            self.error_occurred.emit(f"fetch_workspace_list: {e}")
+            return []
+
+    def fetch_limits(self) -> tuple[float, float, float, float, float, float] | None:
+        """Blocking call - fetch calibrated axis limits from the server.
+
+        Returns (x_min, x_max, y_min, y_max, z_min, z_max) or None on error.
+        Call at connection time to cache limits for the session.
+        """
+        try:
+            raw = self._channel.unary_unary(self._method("GetLimits"))(b"", timeout=5.0)
+            resp = _mp.GetLimits_Responses.FromString(bytes(raw))
+            parts = [float(v) for v in resp.Limits.value.split("|")]
+            if len(parts) == 6:
+                return (parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
+        except Exception:
+            pass
+        return None

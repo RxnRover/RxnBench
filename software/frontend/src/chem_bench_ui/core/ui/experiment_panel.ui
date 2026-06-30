@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ExperimentPanel</class>
+ <widget class="QWidget" name="ExperimentPanel">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>520</width><height>280</height></rect>
+  </property>
+  <property name="windowTitle"><string>Experiment</string></property>
+
+  <layout class="QVBoxLayout" name="root_layout">
+   <property name="spacing"><number>6</number></property>
+   <property name="leftMargin"><number>8</number></property>
+   <property name="topMargin"><number>8</number></property>
+   <property name="rightMargin"><number>8</number></property>
+   <property name="bottomMargin"><number>8</number></property>
+
+   <!-- Script row -->
+   <item>
+    <layout class="QHBoxLayout" name="file_row">
+     <property name="spacing"><number>6</number></property>
+     <item>
+      <widget class="QLabel" name="script_label">
+       <property name="text"><string>Script</string></property>
+       <property name="minimumWidth"><number>60</number></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="script_path_edit">
+       <property name="readOnly"><bool>true</bool></property>
+       <property name="placeholderText"><string>No script loaded</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="browse_btn">
+       <property name="text"><string>Browse…</string></property>
+       <property name="maximumWidth"><number>80</number></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <!-- Log folder row -->
+   <item>
+    <layout class="QHBoxLayout" name="log_folder_row">
+     <property name="spacing"><number>6</number></property>
+     <item>
+      <widget class="QLabel" name="log_folder_label">
+       <property name="text"><string>Log folder</string></property>
+       <property name="minimumWidth"><number>60</number></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="log_folder_edit">
+       <property name="readOnly"><bool>true</bool></property>
+       <property name="placeholderText"><string>Optional — log folder</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="log_folder_btn">
+       <property name="text"><string>Browse…</string></property>
+       <property name="maximumWidth"><number>80</number></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="log_folder_clear_btn">
+       <property name="text"><string>✕</string></property>
+       <property name="maximumWidth"><number>28</number></property>
+       <property name="toolTip"><string>Clear log folder (disable file logging)</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <!-- Controls row -->
+   <item>
+    <layout class="QHBoxLayout" name="controls_row">
+     <property name="spacing"><number>6</number></property>
+     <item>
+      <widget class="QPushButton" name="play_btn">
+       <property name="enabled"><bool>false</bool></property>
+       <property name="text"><string>▶  Run</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="pause_btn">
+       <property name="enabled"><bool>false</bool></property>
+       <property name="text"><string>⏸  Pause</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="stop_btn">
+       <property name="enabled"><bool>false</bool></property>
+       <property name="text"><string>■  Stop</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="run_status_lbl">
+       <property name="text"><string>Ready</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <item>
+    <widget class="QPlainTextEdit" name="log_output">
+     <property name="font">
+      <font><family>monospace</family><pointsize>10</pointsize></font>
+     </property>
+     <property name="readOnly"><bool>true</bool></property>
+     <property name="placeholderText"><string>Script output will appear here…</string></property>
+    </widget>
+   </item>
+
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

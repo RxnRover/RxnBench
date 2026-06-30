@@ -1,8 +1,190 @@
 # Automated Chem Bench — Architecture Review
 
-**Date:** June 2026  
-**Reviewer:** Architectural analysis of commit `e7c34c9`; updated after interface layer migration, proto codegen migration, and Architecture Stabilization Pass  
+**Date:** June 2026 (last updated June 29 2026)
+**Reviewer:** Architectural analysis of commit `e7c34c9`; updated through frontend plugin restructure and rxnbench namespace rename (June 29 2026)
 **Scope:** Full codebase review — all first-party Python source, YAML configs, and tooling
+
+---
+
+## Frontend Rebuild + Plugin Architecture — June 29 2026
+
+*Replaces the previous non-functional `app.py` stub and flat `widgets/` layout.*
+
+### What Changed
+
+The frontend is now a fully functional PySide6 desktop application. The flat `widgets/` + `ui/` directories have been reorganised into a `core/` shell and a `devices/` plugin tree.
+
+#### New directory layout
+
+```
+software/frontend/src/chem_bench_ui/
+├── app.py                         ← entry point (was a 21-line stub; now launches full UI)
+├── discovery.py                   ← SiLA mDNS + probe discovery
+├── themes.py                      ← DARK/LIGHT palettes + build_qss(); widget_bg key added
+├── sila_client.py / ph_client.py  ← gRPC stream clients
+├── assets/                        ← app-wide assets (rxnbench_logo.png)
+├── proto/                         ← motion_platform.proto + compiled _pb2.py
+├── core/                          ← app shell — not a plugin
+│   ├── main_window.py             ← QMainWindow; MDI canvas + Add Device tab
+│   ├── server_browser.py          ← SiLA server scan/browse/connect cards
+│   ├── device_registry.py         ← auto-discovers devices via devices.all_devices()
+│   ├── generic_device.py          ← fallback widget for unrecognised SiLA servers
+│   └── ui/                        ← main_window.ui / server_browser.ui / server_card.ui
+└── devices/                       ← one sub-package per device type
+    ├── __init__.py                ← all_devices() via pkgutil.iter_modules
+    ├── gantry/
+    │   ├── __init__.py            ← FEATURE_FRAGMENTS + create_widget()
+    │   ├── widget.py              ← GantryWidget (PySide6)
+    │   ├── workspace_loader.py    ← YAML workspace load/apply panel
+    │   ├── experiment_panel.py
+    │   ├── homing_dialog.py / toolhead_calibration_dialog.py
+    │   ├── assets/                ← gantry-specific images
+    │   └── ui/                    ← *.ui files for every gantry sub-panel
+    └── ph_sensor/
+        ├── __init__.py            ← FEATURE_FRAGMENTS + create_widget()
+        ├── widget.py              ← PHSensorWidget (PySide6)
+        └── ui/
+```
+
+#### Plugin contract
+
+Each device package's `__init__.py` must export two things:
+
+```python
+FEATURE_FRAGMENTS: list[str]          # matched (case-insensitive) against SiLA feature identifiers
+def create_widget(server, theme: dict) -> QWidget: ...
+```
+
+`devices/__init__.py` auto-discovers sub-packages at import time:
+
+```python
+import importlib, pkgutil
+
+def all_devices():
+    return [
+        importlib.import_module(f".{name}", package=__name__)
+        for _, name, ispkg in pkgutil.iter_modules(__path__)
+        if ispkg
+    ]
+```
+
+`core/device_registry.py` calls `all_devices()` — the hardcoded `REGISTRY` list is gone. Adding a new device = drop a new folder under `devices/` with the required exports. Zero changes to core.
+
+### UI Features Implemented
+
+| Feature | Details |
+|---------|---------|
+| Dual theme | `DARK` / `LIGHT` switchable at runtime via Settings → Theme menu |
+| MDI canvas | `QMdiArea` floating sub-windows; one per connected device; resizable/movable |
+| Server browser | mDNS scan + manual probe; classifies servers as Rxn Bench Known Devices vs unknown SiLA |
+| Server cards | Rxn Bench logo injected for rxnbench devices; feature list; orange `+` add button |
+| Gantry widget | Position display, XYZ jog, toolhead selector, homing, workspace YAML loader |
+| pH sensor widget | Live pH reading chart, calibration controls, connection state dot indicator |
+| Theme persistence | `set_theme()` on every widget restores connection-state visuals (e.g. green dot) |
+| `widget_bg` key | New theme key (`#ffffff` light / `#1c2333` dark) for device panel surfaces, distinct from the MDI canvas (`bg_surface`) |
+| Generic device | `GenericDeviceWidget` shown for recognised-but-unmapped SiLA servers |
+
+### What Was Removed / Replaced
+
+| Removed | Replaced by |
+|---------|-------------|
+| `app.py` stub (21 lines, no window) | Full `MainWindow` with MDI workspace + Add Device tab |
+| `widgets/` flat directory | `core/` (shell) + `devices/` (plugins) |
+| `ui/` flat directory | `core/ui/` + per-device `devices/<name>/ui/` |
+| Hardcoded `REGISTRY` list in `device_registry.py` | `devices.all_devices()` dynamic discovery |
+| `_FEATURE_REGISTRY` + `_on_features_discovered` tab injection | Per-device `FEATURE_FRAGMENTS` matched in `core/device_registry.py` |
+
+---
+
+## Feature Namespace Rename — June 29 2026
+
+All SiLA feature identifier strings have been renamed from `/rxnbench/` to `/rxnbench/` across the entire codebase.
+
+### What Changed
+
+| Location | Before | After |
+|----------|--------|-------|
+| `discovery.py` — filter | `/rxnbench/` | `/rxnbench/` |
+| `discovery.py` — property | `chembench_features` | `rxnbench_features` |
+| `discovery.py` — signal | `chembench_server_found` | `rxnbench_server_found` |
+| `core/server_browser.py` — variables | `chembench` | `rxnbench` |
+| `devices/gantry/widget.py` | `FEATURE_ID = "edu.iastate.ames/rxnbench/Gantry/v0"` | `…/rxnbench/…` |
+| `devices/gantry/workspace_loader.py` | `_GANTRY_BASE = "/sila2.…chembench…"` | `…rxnbench…` |
+| `sila_client.py` / `ph_client.py` | identifier strings | `rxnbench` |
+| `scripts/scan_sila.py` | `/rxnbench/` tag | `/rxnbench/` |
+| **Backend** `chem_bench_gantry/feature.py` | `category="chembench"` | `category="rxnbench"` |
+| **Backend** `chem_bench_ph/feature.py` | `category="chembench"` | `category="rxnbench"` |
+| **Backend** `device_template/feature.py` | `category="chembench"` | `category="rxnbench"` |
+| **Backend** `gantry/tests/test_feature_discovery.py` | identifier strings | `rxnbench` |
+| **Backend** `gantry/scripts/gen_proto.py` | package name | `sila2.edu.iastate.ames.rxnbench.gantry.v0` |
+| `proto/motion_platform.proto` | package name | `sila2.edu.iastate.ames.rxnbench.gantry.v0` |
+| `proto/motion_platform_pb2.py` | compiled binary | recompiled from updated `.proto` |
+
+The proto recompile was done with `grpcio-tools` from the backend uv workspace (frontend venv does not include `grpcio-tools`). The workflow is unchanged: `make gen-proto` in `software/backend/` regenerates and recompiles.
+
+---
+
+## Package Restructure — June 2026
+
+*Replaces the previous monolithic `src/chem_bench/` package.*
+
+### What Changed
+
+The single `chem-bench` package has been split into three independently deployable Python packages, each its own uv workspace member under `software/backend/`:
+
+| Package dir | Package name | Entry point | Port | Runs on |
+|-------------|--------------|-------------|------|---------|
+| `gantry/` | `chem-bench-gantry` | `chem-bench-gantry` | 50051 | Raspberry Pi |
+| `ph_sensor/` | `chem-bench-ph` | `chem-bench-ph` | 50052 | Raspberry Pi |
+| `client/` | `chem-bench-client` | *(library only)* | — | Backend machine |
+
+The root `software/backend/pyproject.toml` is now a uv workspace root:
+
+```toml
+[tool.uv.workspace]
+members = ["gantry", "ph_sensor", "client"]
+```
+
+### Why
+
+- Each device will eventually live in its own repo. The package boundary enforces that isolation now — `chem_bench_gantry` has no import dependency on `chem_bench_ph` and vice versa.
+- Per-device SiLA servers align with the UniteLabs CDK convention: one feature family per Connector process.
+- Separate processes mean one device crashing (e.g. I2C hang on pH sensor) cannot take down the gantry.
+
+### What Was Removed
+
+- `software/backend/src/chem_bench/` — entire old monolithic package (deleted)
+- `software/backend/tests/` — old test directory (tests migrated to `gantry/tests/`)
+- `software/backend/scripts/gen_proto.py` — moved to `gantry/scripts/gen_proto.py`
+- `software/backend/configs/` — now per-package (`gantry/configs/`, `ph_sensor/configs/`)
+
+### Old → New Module Path Map
+
+| Old path | New path |
+|----------|----------|
+| `chem_bench.features.gantry` | `chem_bench_gantry.feature` |
+| `chem_bench.features.ph_sensor` | `chem_bench_ph.feature` |
+| `chem_bench.io.gantry.gantry_controller` | `chem_bench_gantry.controller` |
+| `chem_bench.io.gantry.motion_engine` | `chem_bench_gantry.motion_engine` |
+| `chem_bench.io.gantry.homing_manager` | `chem_bench_gantry.homing_manager` |
+| `chem_bench.io.gantry.toolhead_manager` | `chem_bench_gantry.toolhead_manager` |
+| `chem_bench.io.gantry.workspace_manager` | `chem_bench_gantry.workspace_manager` |
+| `chem_bench.io.gantry.moonraker_client` | `chem_bench_gantry.moonraker_client` |
+| `chem_bench.io.gantry.mock_moonraker` | `chem_bench_gantry.mock_moonraker` |
+| `chem_bench.io.gantry.homing_state` | `chem_bench_gantry.homing_state` |
+| `chem_bench.io.gantry.moonraker_discovery` | `chem_bench_gantry.moonraker_discovery` |
+| `chem_bench.io.labware.plate_geometry` | `chem_bench_gantry.plate_geometry` |
+| `chem_bench.io.workspace.workspace_config` | `chem_bench_gantry.workspace_config` |
+| `chem_bench.io.interfaces.motion` | `chem_bench_gantry.interfaces` |
+| `chem_bench.io.toolheads.toolhead_config` | `chem_bench_gantry.toolhead_config` |
+| `chem_bench.io.base_sensor` | `chem_bench_ph.base_sensor` |
+| `chem_bench.io.base_driver` | `chem_bench_ph.base_driver` |
+| `chem_bench.io.interfaces.ph_sensor` | `chem_bench_ph.interfaces` |
+| `chem_bench.io.interfaces.enums` | `chem_bench_ph.enums` |
+| `chem_bench.io.ph.atlas_scientific_driver` | `chem_bench_ph.atlas_scientific_driver` |
+| `chem_bench.io.ph.atlas_ph_sensor` | `chem_bench_ph.atlas_ph_sensor` |
+| `chem_bench.io.ph.mock_ph_sensor` | `chem_bench_ph.mock_ph_sensor` |
+| `chem_bench.client` | `chem_bench_client.client` |
 
 ---
 
@@ -15,13 +197,13 @@
 The 120-line hand-coded varint/LEN codec in `sila_client.py` has been replaced with `grpcio-tools`-generated protobuf stubs. The new pipeline:
 
 ```
-software/backend/src/chem_bench/features/motion_platform.py
+software/backend/gantry/src/chem_bench_gantry/feature.py
   └── dataclasses.fields(Position)      ← field order: [x, y, z]
   └── dataclasses.fields(ToolheadInfo)  ← field order: [active, name, ..., toolhead_mounted]
           │
           ▼
-software/backend/scripts/gen_proto.py   (reads dataclasses only, no CDK internals)
-          │  uv run python scripts/gen_proto.py
+software/backend/gantry/scripts/gen_proto.py   (reads dataclasses only, no CDK internals)
+          │  uv run python gantry/scripts/gen_proto.py
           ▼
 software/frontend/src/chem_bench_ui/proto/motion_platform.proto
           │  python -m grpc_tools.protoc --python_out=...
@@ -58,7 +240,7 @@ _mp.Jog_Parameters().SerializeToString()
 
 ### Drift Protection
 
-`make check-proto` (added to `software/backend/Makefile`) runs the generator and diffs the output against the committed `.proto`. It fails if they diverge. Run before every commit that changes backend dataclass field order.
+`make check-proto` (in `software/backend/Makefile`) runs the generator and diffs the output against the committed `.proto`. It fails if they diverge. Run before every commit that changes backend dataclass field order.
 
 ```
 make check-proto   # verify (CI)
@@ -75,11 +257,12 @@ make gen-proto     # regenerate + recompile (development)
 
 | File | Contents |
 |------|----------|
-| `io/interfaces/motion.py` | `MotionClientProtocol`, `MotionControllerProtocol` |
-| `io/interfaces/ph_sensor.py` | `PHSensorProtocol` |
-| `io/interfaces/camera.py` | `CameraClientProtocol` |
+| `gantry/src/chem_bench_gantry/interfaces.py` | `MotionClientProtocol`, `GantryControllerProtocol` |
+| `ph_sensor/src/chem_bench_ph/interfaces.py` | `PHSensorProtocol` |
 
 All protocols use `typing.Protocol` (structural typing) and are `@runtime_checkable`.
+
+`CameraClientProtocol` has not yet been migrated to the new package structure — camera support is Phase 2.
 
 ### Dependency Improvements
 
@@ -94,19 +277,14 @@ MotionPlatform (SiLA)  →  MotionPlatformController (concrete)
 
 **After:**
 ```
-MotionPlatform (SiLA)  →  MotionControllerProtocol  ←  MotionPlatformController
+Gantry (SiLA feature)  →  GantryControllerProtocol  ←  GantryController
                                MotionClientProtocol  ←  MoonrakerClient
                                                      ←  MockMoonrakerClient
 ```
 
 Key changes:
-- `MotionPlatformController` no longer imports `MoonrakerClient`. The concrete client is
-  injected by `__main__.py`, which now owns the wiring decision.
-- `moonraker_host` parameter removed from `MotionPlatformController.__init__` — the
-  controller no longer knows what Moonraker is.
-- `MockMoonrakerClient` divergence is now statically detectable: adding a method to
-  `MoonrakerClient` without adding it to `MockMoonrakerClient` will surface as a type
-  error against `MotionClientProtocol`.
+- `GantryController` no longer imports `MoonrakerClient`. The concrete client is injected by `server.py`, which owns the wiring decision.
+- `MockMoonrakerClient` divergence is now statically detectable: adding a method to `MoonrakerClient` without adding it to `MockMoonrakerClient` will surface as a type error against `MotionClientProtocol`.
 
 #### pH stack (before → after)
 
@@ -120,58 +298,15 @@ PHSensor (SiLA)  →  AtlasPHSensor (concrete Atlas-specific class)
 PHSensor (SiLA)  →  PHSensorProtocol  ←  AtlasPHSensor
 ```
 
-Key change: `PHSensor.__init__` now accepts any object with `read()`, `calibrate()`,
-and `slope()`. A future pH probe (different chip, USB bridge, networked sensor) can be
-wired in without touching the feature.
-
-#### Camera stack (before → after)
-
-**Before:**
-```
-CrowsnestClient — no interface, only __init__ stub
-```
-
-**After:**
-```
-CameraClientProtocol  ←  CrowsnestClient (get_snapshot, get_stream_url stubs)
-```
-
-`CrowsnestClient` now has a committed method surface. A future camera SiLA feature
-can be written against `CameraClientProtocol` before any HTTP implementation exists.
+Key change: `PHSensor.__init__` now accepts any object with `read()`, `calibrate()`, and `slope()`. A future pH probe can be wired in without touching the feature.
 
 ### Remaining Coupling
 
 | Item | Location | Notes |
 |------|----------|-------|
-| `CalibrationPoint` enum is pH-specific but lives in `io/interfaces/enums.py` | `io/interfaces/enums.py` | Low priority; will grow into a problem only if other devices also need calibration enums. Move to `io/interfaces/ph_sensor.py` when convenient. |
-| ~~Frontend hardcodes `X_MAX, Y_MAX, Z_MAX = 350, 350, 340`~~ | ~~`sila_client.py`~~ | **FIXED** — `GetLimits` SiLA command added; limits fetched at connect time and broadcast via `limits_updated` signal. |
-| `MotionPlatformController` still returns concrete `ToolheadGeometry` dataclass | `io/interfaces/motion.py:get_toolhead` | Acceptable — `ToolheadGeometry` is a pure data class (no I/O, no side effects), not a hardware driver. |
-| No mock `I2C` bus — `PHSensor` still cannot run in mock mode | `__main__.py:47-49` | Needs a `MockI2CBus` before the sensor chain can be exercised without hardware. Phase 2 item. |
-| `CrowsnestClient.get_snapshot` raises `NotImplementedError` | `io/camera/camera_crowsnest_client.py` | HTTP implementation is a Phase 2 item. |
-
-### Future Instrument Integration Assessment
-
-Adding a new instrument now requires the following steps:
-
-**New pH probe (different chip):**
-1. Implement a driver (subclass `AbstractI2CDriver` or write from scratch).
-2. Implement a sensor class satisfying `PHSensorProtocol` — three methods.
-3. Pass it to `PHSensor(sensor=...)` in `__main__.py`. Feature code unchanged.
-
-**New motion platform (different gantry/CNC):**
-1. Implement a client satisfying `MotionClientProtocol` — nine methods.
-2. Implement a controller satisfying `MotionControllerProtocol` — ~25 methods.
-3. Pass the controller to `MotionPlatform(controller=...)`. Feature code unchanged.
-
-**New camera:**
-1. Implement a client satisfying `CameraClientProtocol` — two methods.
-2. Pass it to a camera SiLA feature when written. Feature code will be interface-clean from day one.
-
-The interfaces make the extension cost explicit and bounded. Before this change, adding a
-new pH probe required editing a SiLA feature. After, it requires only satisfying a
-three-method Protocol.
-
----
+| `CalibrationPoint` enum is pH-specific | `chem_bench_ph/enums.py` | Now correctly co-located with pH code after package split. |
+| `GantryController` still returns concrete `ToolheadGeometry` dataclass | `chem_bench_gantry/interfaces.py:get_toolhead` | Acceptable — `ToolheadGeometry` is a pure data class. |
+| No mock I2C bus — `PHSensor` still cannot run in mock mode end-to-end | `chem_bench_ph/server.py` | Needs a `MockI2CBus` before the sensor chain can be exercised without hardware. Phase 2 item. |
 
 ---
 
@@ -199,89 +334,118 @@ three-method Protocol.
 ### System Topology
 
 ```
-Operator Machine (Linux/Mac/Win)          Raspberry Pi                   Sovol SV08
-──────────────────────────────────        ─────────────────              ─────────────────
-chem_bench_ui (PySide6 + gRPC)            chem_bench (SiLA2 server)      H616 ARM (Linux)
-  SilaClient                              Gantry feature ──────────────> Moonraker :7125
-  ├─ raw gRPC :50051                      PHSensor feature                 └─ Klipper
-  └─ grpcio-tools generated stubs         GantryController                  └─ MCU (serial)
-      (motion_platform_pb2)               MoonrakerClient                    └─ steppers
-                                          AtlasPHSensor (mock or real I2C)
-                                          homing_state.json (~/.chem_bench/)
-                                          machine.yaml (~/.chem_bench/)
+Operator Machine (Linux/Mac/Win)          Raspberry Pi                        Sovol SV08
+──────────────────────────────────        ──────────────────────────────────  ─────────────────
+chem_bench_ui (PySide6 + gRPC)            chem-bench-gantry :50051            H616 ARM (Linux)
+  SilaClient (grpcio stubs)               ├─ Gantry (SiLA feature)  ────────> Moonraker :7125
+  ├─ raw gRPC :50051 (gantry)             │    └─ GantryController               └─ Klipper
+  └─ raw gRPC :50052 (pH)                 │         └─ MoonrakerClient              └─ MCU
+      └─ motion_platform_pb2              │
+                                          chem-bench-ph :50052
+  experiment_script.py                    └─ PHSensor (SiLA feature)
+    └─ ChemBenchClient                         └─ AtlasPHSensor (mock or real I2C)
+         (chem_bench_client)
+         connects to both servers         Persistent state (~/.chem_bench/)
+                                          ├─ homing_state.json
+                                          ├─ workspace.yaml
+                                          └─ machine.yaml
 ```
 
-The backend runs on a Raspberry Pi (or any Linux host) and exposes a SiLA2 gRPC server on port 50051. The frontend runs on the operator's machine and connects to that server. The SV08 runs Moonraker on the onboard H616 SoC; the backend drives it over HTTP.
+Two separate SiLA server processes run on the Raspberry Pi — one per device. The frontend and experiment scripts connect to both. The SV08 runs Moonraker on its onboard H616 SoC; the gantry server drives it over HTTP.
 
 ### Module Map
 
-#### Backend (`software/backend/src/chem_bench/`)
+#### Gantry Package (`software/backend/gantry/src/chem_bench_gantry/`)
+
+*Flat layout — no `io/` nesting. The package IS the gantry.*
 
 | File | Purpose |
 |------|---------|
-| `__main__.py` | App factory. Loads `MachineConfig`, discovers Moonraker, wires `GantryController` into `Gantry` feature. Registers `PHSensor` (mock under `CHEM_BENCH_MOCK=1`, real `AtlasPHSensor` on RPi). Camera is an empty stub. |
-| `machine_config.py` | `MachineConfig` dataclass. Loads from `~/.chem_bench/machine.yaml`; falls back to built-in defaults. Owns axis limits and `moonraker_fallback_host`. |
-| `_cli.py` | `chem-bench` console script. Locates `config.json` and shims into `unitelabs.cdk.cli.connector`. |
-| `features/gantry.py` | SiLA2 Gantry feature. ObservableProperties: `position`, `state`, `toolhead_info`, `has_saved_state`. Commands: `move_to`, `jog`, `engage_tool`, `disengage_tool`, homing suite, toolhead management, workspace management (`set_workspace`, `load_workspace_yaml`, `move_to_well`, `list_workspaces`), `save_and_park`, `get_limits`. |
-| `features/ph_sensor.py` | SiLA2 feature for pH. Registered in `__main__.py` when a pH sensor is available. |
-| `features/camera_feature.py` | Empty docstring stub. |
-| `io/base_driver.py` | `AbstractI2CDriver` ABC. Handles send/read/delay pattern over I2C so subclasses only implement `_parse_response`. |
-| `io/base_sensor.py` | `BaseSensor` ABC + `SensorReading` dataclass. Enforces `read()`. Sensor identity only — capability metadata is owned by the CDK layer. |
-| `io/errors.py` | Domain exceptions: `DeviceNotFoundError`, `DeviceCommunicationError`, `CalibrationError`, `MotionLimitError`. |
-| `io/interfaces/enums.py` | `CalibrationPoint` enum (pH-specific; co-location will need revisiting as more devices are added). |
-| `io/interfaces/motion.py` | `MotionClientProtocol`, `GantryControllerProtocol`. Structural protocols for hardware injection and mock seams. |
-| `io/interfaces/ph_sensor.py` | `PHSensorProtocol`. Three-method interface: `read()`, `calibrate()`, `slope()`. |
-| `io/interfaces/camera.py` | `CameraClientProtocol`. Two-method interface: `get_snapshot()`, `get_stream_url()`. |
-| `io/gantry/gantry_controller.py` | Thin orchestrator. Owns cross-subsystem logic: toolhead offset compensation, footprint-aware bounds checking, `_safe_clearance_z`. Delegates to `ToolheadManager`, `HomingManager`, `MotionEngine`, `WorkspaceManager`. Satisfies `GantryControllerProtocol`. |
-| `io/gantry/toolhead_manager.py` | `ToolheadManager`. Active toolhead config, mount state, and `sensor_type`. Hardware agnostic — loads from YAML. Exposes `sensor_type: str | None` for sensor registry lookup. |
-| `io/gantry/homing_manager.py` | `HomingManager`. Axis limits, manual/auto homing state machine, kinematic-reset jog trick, JSON persistence. |
-| `io/gantry/motion_engine.py` | `MotionEngine`. Safe clearance travel sequence (raise → XY → lower). Depends only on `MotionClientProtocol`. |
-| `io/gantry/workspace_manager.py` | `WorkspaceManager`. Loads `WorkspaceConfig` YAML (by name or raw string). Resolves well labels to world-space XYZ. Applies plate orientation (`standard` / `rotated_90`). No tip-offset logic — `GantryController.move_to()` handles hardware offsets. |
-| `io/gantry/moonraker_client.py` | Synchronous HTTP client for Moonraker REST API (port 7125). POST `/printer/gcode/script` blocks until Klipper completes the move. |
-| `io/gantry/mock_moonraker.py` | In-memory drop-in for development without hardware. Activated via `CHEM_BENCH_MOCK=1`. |
-| `io/gantry/moonraker_discovery.py` | Parallel mDNS (`zeroconf`) + IPv6 link-local scan. Returns first responding host. |
-| `io/gantry/homing_state.py` | JSON persistence of calibrated axis limits in `~/.chem_bench/homing_state.json`. |
-| `io/labware/plate_geometry.py` | `PlateGeometry` frozen dataclass. Uniform-spacing plate geometry (ANSI/SLAS standard). `well_position(label)` → `(x, y)` in mm from plate corner. `parse_label("A1")` → `(0, 0)`. `load(name)` / `list_available()` from `io/labware/definitions/`. |
-| `io/labware/definitions/96_well_standard.yaml` | ANSI/SBS 96-well standard (9 mm pitch, 8×12, 10.67 mm depth). |
-| `io/labware/definitions/24_well_standard.yaml` | ANSI/SBS 24-well standard (19.3 mm pitch, 4×6, 17.4 mm depth). |
-| `io/workspace/workspace_config.py` | `WorkspaceConfig` frozen dataclass + YAML loader. `PlacedPlate` (id, plate_type, origin XYZ, orientation). `Orientation` enum: `standard` / `rotated_90`. `from_yaml()`, `load(name)`, `list_available()`. |
-| `io/workspace/definitions/_workspace_template.yaml` | Template for new workspace definitions (prefixed `_` so `list_available()` skips it). |
-| `io/ph/atlas_scientific_driver.py` | `AtlasScientificEZO`: raw EZO I2C command set. No pH logic — just protocol. |
-| `io/ph/atlas_ph_sensor.py` | `AtlasPHSensor(BaseSensor)`: pH-specific logic (calibration, slope, temperature compensation). |
-| `io/ph/mock_ph_sensor.py` | `MockPHSensor`. Returns fixed pH 7.00, no-op calibration. Used under `CHEM_BENCH_MOCK=1`. |
-| `io/toolheads/toolhead_config.py` | `ToolheadConfig` + `ToolheadGeometry` dataclasses. `sensor_type: str | None` lives on `ToolheadConfig` (not `ToolheadGeometry`) — it describes the attached sensor, not physical shape. |
-| `io/toolheads/ph_probe/ph_probe_toolhead.yaml` | Real toolhead config: 44×25 mm footprint, 110 mm tip depth, 25 mm engage depth. Declares `sensor_type: ph`. |
-| `io/toolheads/toolhead_config_template.yaml` | Template for adding new toolheads. |
-| `io/camera/camera_crowsnest_client.py` | 15-line stub. `CrowsnestClient.__init__` only; no HTTP calls. |
+| `server.py` | `create_app()` factory. Loads `MachineConfig`, discovers Moonraker, wires `GantryController` into the `Gantry` SiLA feature. Activates `MockMoonrakerClient` under `CHEM_BENCH_MOCK=1`. |
+| `_cli.py` | `chem-bench-gantry` console script. Searches `~/.chem_bench/gantry.json` then `./configs/gantry.json`, then shims into `unitelabs.cdk.cli.connector`. |
+| `feature.py` | SiLA2 Gantry feature. Defines `Position` and `ToolheadInfo` dataclasses (source of truth for proto generation). ObservableProperties: `Position`, `State`, `ToolheadInfo`, `HasSavedState`. All motion, homing, toolhead management, and workspace commands. |
+| `interfaces.py` | `MotionClientProtocol`, `GantryControllerProtocol`. Structural protocols for hardware injection and mock seams. |
+| `controller.py` | `GantryController`. Thin orchestrator: cross-subsystem calculations only (`_safe_clearance_z`, `_check_bounds`, offset compensation). Delegates to `ToolheadManager`, `HomingManager`, `MotionEngine`, `WorkspaceManager`. Satisfies `GantryControllerProtocol`. |
+| `toolhead_manager.py` | `ToolheadManager`. Active toolhead config, mount state, `sensor_type`. Hardware agnostic — loads from YAML. |
+| `homing_manager.py` | `HomingManager`. Axis limits, manual/auto homing state machine, kinematic-reset jog trick, JSON persistence. |
+| `motion_engine.py` | `MotionEngine`. Safe clearance travel sequence (raise → XY → lower). Depends only on `MotionClientProtocol`. |
+| `workspace_manager.py` | `WorkspaceManager`. Loads `WorkspaceConfig` YAML. Resolves well labels to world-space XYZ. Applies plate orientation (`standard` / `rotated_90`). Persists last-used workspace to `~/.chem_bench/workspace.yaml`; auto-restores on startup. |
+| `moonraker_client.py` | Synchronous HTTP client for Moonraker REST API (port 7125). |
+| `mock_moonraker.py` | In-memory drop-in. Activated via `CHEM_BENCH_MOCK=1`. |
+| `moonraker_discovery.py` | Parallel mDNS + IPv6 link-local scan. Returns first responding host. |
+| `homing_state.py` | JSON persistence of calibrated axis limits in `~/.chem_bench/homing_state.json`. |
+| `toolhead_config.py` | `ToolheadConfig` + `ToolheadGeometry` dataclasses. `sensor_type: str \| None`. |
+| `plate_geometry.py` | `PlateGeometry` frozen dataclass. ANSI/SLAS uniform-spacing well plates. `well_position(label)` → `(x, y)` in mm. `load(name)` / `list_available()` from bundled `labware/` directory. |
+| `workspace_config.py` | `WorkspaceConfig` frozen dataclass + YAML loader. `PlacedPlate`, `Orientation` enum. |
+| `machine_config.py` | `MachineConfig` dataclass. Loads from `~/.chem_bench/machine.yaml`; falls back to built-in defaults. |
+| `errors.py` | `MotionLimitError`. |
+| `labware/96_well_standard.yaml` | ANSI/SBS 96-well standard (9 mm pitch, 8×12, 10.67 mm depth). |
+| `labware/24_well_standard.yaml` | ANSI/SBS 24-well standard (19.3 mm pitch, 4×6, 17.4 mm depth). |
+| `toolheads/ph_probe/ph_probe_toolhead.yaml` | Real toolhead config: 44×25 mm footprint, 110 mm tip depth, 25 mm engage depth. `sensor_type: ph`. |
+| `workspace/definitions/_workspace_template.yaml` | Template for new workspace definitions. |
+
+#### pH Sensor Package (`software/backend/ph_sensor/src/chem_bench_ph/`)
+
+| File | Purpose |
+|------|---------|
+| `server.py` | `create_app()` factory. Registers `PHSensor` (mock or real). |
+| `_cli.py` | `chem-bench-ph` console script. |
+| `feature.py` | SiLA2 PHSensor feature. ObservableProperty: `Ph`. Commands: `Calibrate`, `ReadSlope`. |
+| `interfaces.py` | `PHSensorProtocol`. Three-method interface: `read()`, `calibrate()`, `slope()`. |
+| `atlas_ph_sensor.py` | `AtlasPHSensor(BaseSensor)`. pH-specific logic (calibration, slope, temperature compensation). |
+| `atlas_scientific_driver.py` | `AtlasScientificEZO`. Raw EZO I2C command set — no pH logic. |
+| `base_sensor.py` | `BaseSensor` ABC + `SensorReading` dataclass. |
+| `base_driver.py` | `AbstractI2CDriver` ABC. Send/read/delay pattern over I2C. |
+| `mock_ph_sensor.py` | `MockPHSensor`. Returns fixed pH 7.00, no-op calibration. |
+| `enums.py` | `CalibrationPoint` enum. |
+
+#### Client Package (`software/backend/client/src/chem_bench_client/`)
+
+| File | Purpose |
+|------|---------|
+| `client.py` | `ChemBenchClient`. Blocking wrapper around two `sila2.SilaClient` instances (gantry :50051, pH :50052). Used in experiment scripts that run on the backend machine. Exposes common operations as Python methods; raw feature access available via `bench.sila["gantry"]`. |
 
 #### Frontend (`software/frontend/src/chem_bench_ui/`)
 
-*Mid-rebuild. The previous widget set was deleted; a new UI is being designed. Only the SiLA client layer and two canvas widgets survive.*
+*Fully rebuilt as of June 29 2026. Plugin architecture replaces the previous flat `widgets/` layout.*
+
+**Core files:**
 
 | File | Purpose |
 |------|---------|
-| `app.py` | 21-line stub with `# TODO: build and show main window`. Not functional. |
+| `app.py` | Entry point. Launches `MainWindow` with light theme. |
+| `discovery.py` | SiLA mDNS discovery + blocking scan. `DiscoveredServer.rxnbench_features` filters `/rxnbench/` identifiers. `SilaDiscovery.rxnbench_server_found` signal. |
 | `sila_client.py` | gRPC channel management, `grpcio-tools`-generated stub codec, Qt signals for position/state/toolhead/connection, background streaming threads. |
-| `themes.py` | `DARK`/`LIGHT` color palettes as dicts. `build_qss(t)` generates a QSS stylesheet string. |
-| `proto/motion_platform.proto` | Proto3 source generated by `gen_proto.py`. Committed; regenerate with `make gen-proto`. |
-| `proto/motion_platform_pb2.py` | Compiled Python stubs. Committed; regenerate with `make gen-proto`. |
+| `ph_client.py` | gRPC client for pH server. |
+| `themes.py` | `DARK`/`LIGHT` color palettes as dicts. `build_qss(t)` generates QSS. Key `widget_bg` distinguishes device panel surfaces from the MDI canvas. |
+| `proto/motion_platform.proto` | Proto3 source. Package: `sila2.edu.iastate.ames.rxnbench.gantry.v0`. Regenerate with `make gen-proto`. |
+| `proto/motion_platform_pb2.py` | Compiled stubs. Regenerate with `make gen-proto`. |
 | `proto/sila_service_pb2.py` | Compiled stubs for `SiLAService.GetImplementedFeatures`. |
 
-**Widgets surviving the rebuild (`widgets/`):**
+**Core shell (`core/`):**
 
-| File / Class | Role |
-|--------------|------|
-| `position_grid.py` / `PositionGrid` | Custom `QPainter` 2D top-down XY canvas. Shows gantry rails, carriage, toolhead footprint, tip crosshair, click-to-move target. |
-| `zbar.py` / `ZBar` | Custom `QPainter` vertical Z indicator. Shows tip depth and engage range markers. |
+| File | Purpose |
+|------|---------|
+| `main_window.py` | `MainWindow`. QMdiArea canvas tab + Add Device tab. Theme switcher. Propagates `set_theme()` to all open panels. |
+| `server_browser.py` | `ServerBrowserDialog`. mDNS scan, manual probe, server cards. Emits `device_requested(DiscoveredServer)`. |
+| `device_registry.py` | `is_recognized()` / `panel_for()`. Calls `devices.all_devices()` — no hardcoded device list. |
+| `generic_device.py` | Fallback `QWidget` for recognised-but-unmapped SiLA servers. |
 
-**Deleted (pending rebuild):** `main_window.py`, `homing_panel.py`, `jog_panel.py`, `server_panel.py`, `toolhead_diagram.py`, `toolhead_panel.py`.
+**Device plugins (`devices/`):**
+
+| Package | FEATURE_FRAGMENTS | Key files |
+|---------|-------------------|-----------|
+| `devices/gantry/` | `Gantry`, `LinearMotion`, `XYZStage`, `PositioningXY`, `AxisSystem` | `widget.py`, `workspace_loader.py`, `experiment_panel.py`, `homing_dialog.py`, `toolhead_calibration_dialog.py` |
+| `devices/ph_sensor/` | `PHSensor`, `PHMeasurement`, `pHController`, `PhMeter`, `PotentialMeasure` | `widget.py` |
 
 ### Communication Layer
 
 | Layer | Transport | Details |
 |-------|-----------|---------|
-| Frontend → Backend | gRPC (insecure, port 50051) | Raw `grpc.Channel` with `grpcio-tools`-generated stubs (`motion_platform_pb2`). ObservableProperties → `unary_stream`. Commands → `unary_unary`. |
-| Backend → SV08 | HTTP REST (port 7125) | `requests.post("/printer/gcode/script")` blocks until Klipper finishes. `requests.get` for position/state queries. |
+| Frontend → Gantry server | gRPC (insecure, port 50051) | Raw `grpc.Channel` with `grpcio-tools`-generated stubs (`motion_platform_pb2`). ObservableProperties → `unary_stream`. Commands → `unary_unary`. |
+| Frontend → pH server | *(not yet wired)* | pH not yet connected in `sila_client.py`. Planned Phase 2. |
+| Experiment scripts → Both servers | `sila2.SilaClient` (insecure) | `ChemBenchClient` wraps both; no pre-compiled stubs needed — `sila2` fetches FDL from server at connect time. |
+| Backend → SV08 | HTTP REST (port 7125) | `requests.post("/printer/gcode/script")` blocks until Klipper finishes. |
 | SV08 internal | Serial (ttyS3) | H616 → MCU for real-time stepper pulses. Transparent to this codebase. |
 | Discovery (Moonraker) | mDNS + IPv6 | `_moonraker._tcp.local.` via zeroconf + fe80:: neighbor probe in parallel. |
 | Discovery (SiLA) | Manual | Operator enters hostname in the connection bar. |
@@ -290,12 +454,15 @@ The backend runs on a Raspberry Pi (or any Linux host) and exposes a SiLA2 gRPC 
 
 | Component | Details |
 |-----------|---------|
-| Backend runtime | Python 3.12, `uv`, systemd service via `scripts/install_service.sh` |
-| Backend dependencies | `unitelabs-cdk` (SiLA2), `requests`, `pyyaml`, `zeroconf`; optional `smbus2` for RPi I2C |
+| Backend runtime | Python 3.12, `uv` workspace, two systemd services (one per device) |
+| Gantry deps | `unitelabs-cdk`, `requests>=2.31.0`, `pyyaml>=6.0`, `zeroconf>=0.131.0`; dev: `grpcio-tools>=1.60.0`, `pytest>=8.0` |
+| pH sensor deps | `unitelabs-cdk`; optional `rpi = ["smbus2>=0.4.3"]` |
+| Client deps | `sila2>=0.14.0` |
 | Frontend runtime | Python 3.12, `uv`, started via `chem-bench-ui` console script |
 | Frontend dependencies | `PySide6`, `grpcio>=1.60.0`, `protobuf>=6.33.5`, `zeroconf` |
 | SiLA CDK version | `unitelabs-cdk==0.11.2`, `unitelabs-sila==0.8.0` |
-| Config | `config.json` (SiLA server identity, TLS off, UUID `a9a1052f`) |
+| Gantry config | `gantry/configs/gantry.json` (port 50051, UUID `a9a1052f`) |
+| pH config | `ph_sensor/configs/ph_sensor.json` (port 50052, UUID `c1876353`) |
 
 ---
 
@@ -304,34 +471,41 @@ The backend runs on a Raspberry Pi (or any Linux host) and exposes a SiLA2 gRPC 
 ```
 chem_bench_ui.app  (stub — frontend rebuild pending)
   └── SilaClient
-        ├── grpc.Channel ──────────────────────────────────→ chem_bench SiLA server :50051
+        ├── grpc.Channel ──────────────────────────────────→ chem-bench-gantry :50051
         └── motion_platform_pb2 (grpcio-tools generated)
               └── derives from motion_platform.proto
-                    └── generated by gen_proto.py
+                    └── generated by gantry/scripts/gen_proto.py
                           └── dataclasses.fields(Position, ToolheadInfo)
+                                from chem_bench_gantry.feature
 
-_FEATURE_REGISTRY (display name → identifier mapping)
-  └── _fetch_implemented_features() → SiLAService.GetImplementedFeatures
+experiment_script.py
+  └── ChemBenchClient (chem_bench_client)
+        ├── sila2.SilaClient ──────────────────────────────→ chem-bench-gantry :50051
+        └── sila2.SilaClient ──────────────────────────────→ chem-bench-ph :50052
 
-chem_bench.__main__  (app factory)
+chem_bench_gantry.server  (app factory for gantry server)
   ├── MachineConfig.load() ────────────────────────────→ ~/.chem_bench/machine.yaml (or defaults)
   ├── Connector (unitelabs-cdk)
-  ├── Gantry feature
-  │     └── GantryController  (satisfies GantryControllerProtocol)
-  │           ├── ToolheadManager ──────────────────────→ io/toolheads/*/name_toolhead.yaml
-  │           │     sensor_type: str | None ────────────→ sensor_registry lookup
-  │           ├── HomingManager
-  │           │     ├── MotionClientProtocol
-  │           │     └── homing_state ─────────────────→ ~/.chem_bench/homing_state.json
-  │           ├── MotionEngine
-  │           │     └── MotionClientProtocol (move, jog, get_position, get_state)
-  │           │           ├── MoonrakerClient ─────────→ SV08 Moonraker :7125
-  │           │           │     └── requests.post/get      └─ Klipper → MCU → motors
-  │           │           └── MockMoonrakerClient (CHEM_BENCH_MOCK=1)
-  │           └── WorkspaceManager
-  │                 ├── WorkspaceConfig ──────────────→ io/workspace/definitions/*.yaml
-  │                 └── PlateGeometry ────────────────→ io/labware/definitions/*.yaml
-  └── PHSensor feature  [registered when sensor available]
+  └── Gantry feature (chem_bench_gantry.feature)
+        └── GantryController  (satisfies GantryControllerProtocol)
+              ├── ToolheadManager ──────────────────────→ toolheads/*/name_toolhead.yaml
+              │     sensor_type: str | None
+              ├── HomingManager
+              │     ├── MotionClientProtocol
+              │     └── homing_state ─────────────────→ ~/.chem_bench/homing_state.json
+              ├── MotionEngine
+              │     └── MotionClientProtocol
+              │           ├── MoonrakerClient ─────────→ SV08 Moonraker :7125
+              │           │     └── requests.post/get      └─ Klipper → MCU → motors
+              │           └── MockMoonrakerClient (CHEM_BENCH_MOCK=1)
+              └── WorkspaceManager
+                    ├── WorkspaceConfig ──────────────→ workspace/definitions/*.yaml
+                    │   └── auto-restore ─────────────→ ~/.chem_bench/workspace.yaml
+                    └── PlateGeometry ────────────────→ labware/*.yaml
+
+chem_bench_ph.server  (app factory for pH server)
+  ├── Connector (unitelabs-cdk)
+  └── PHSensor feature (chem_bench_ph.feature)
         ├── AtlasPHSensor → AtlasScientificEZO → smbus2.SMBus(1)  (real hardware)
         └── MockPHSensor  (CHEM_BENCH_MOCK=1)
 ```
@@ -340,75 +514,69 @@ chem_bench.__main__  (app factory)
 
 ## Architectural Strengths
 
-**1. Clean three-layer I/O stack**
-Driver → Sensor → Feature, each with a single responsibility. `AtlasScientificEZO` knows only I2C bytes. `AtlasPHSensor` knows pH chemistry and the `BaseSensor` contract. `PHSensor` knows only SiLA endpoints and delegates everything else. Hardware can be swapped at the driver or sensor layer without touching the SiLA interface.
+**1. Per-device process isolation**
+Each device runs as a separate SiLA server process. A pH sensor I2C hang cannot block gantry motion. Devices can be restarted independently. The boundary also prepares for the eventual one-device-per-repo split.
 
-**2. Config-driven hardware registration**
-Toolheads and well plates are YAML files in named subdirectories. Adding a new toolhead requires zero Python changes — drop in a folder matching the schema and it appears in `ListToolheads`. The same pattern is established (but not yet exploited) for well plates.
+**2. Clean three-layer I/O stack**
+Driver → Sensor → Feature, each with a single responsibility. `AtlasScientificEZO` knows only I2C bytes. `AtlasPHSensor` knows pH chemistry and the `BaseSensor` contract. `PHSensor` knows only SiLA endpoints and delegates everything else.
 
-**3. Structural mock seam**
-`MotionPlatformController` accepts any `client` object with the right methods. `MockMoonrakerClient` is a complete in-memory drop-in. Development and CI can run the full SiLA server without physical hardware via `CHEM_BENCH_MOCK=1`.
+**3. Config-driven hardware registration**
+Toolheads and well plates are YAML files in named subdirectories. Adding a new toolhead requires zero Python changes — drop in a folder matching the schema and it appears in `ListToolheads`.
 
-**4. Session persistence**
-Calibrated axis limits survive a clean shutdown via `homing_state.json`. The "Restore from previous session" banner in the UI informs the operator when limits were restored, prompting them to verify position before running experiments.
+**4. Structural mock seam**
+`GantryController` accepts any `client` object with the right methods. `MockMoonrakerClient` is a complete in-memory drop-in. Development and CI can run the full SiLA server without physical hardware via `CHEM_BENCH_MOCK=1`.
 
-**5. Dynamic feature tab injection**
-`_FEATURE_REGISTRY` + `_on_features_discovered` (dispatching via `_tab_inject_handlers` / `_tab_remove_handlers` dicts) inserts and removes UI tabs based on what the server reports via `SiLAService.GetImplementedFeatures`. The UI is not hardwired to a fixed feature set at compile time.
+**5. Session persistence**
+Calibrated axis limits survive a clean shutdown via `homing_state.json`. Workspace layout auto-restores from `workspace.yaml` on startup regardless of how the server stopped.
 
-**6. `BaseSensor` — sensor identity and reading envelope**
-`BaseSensor` provides `sensor_id`, `display_name`, `description`, and the `SensorReading` timestamped reading dataclass. Capability metadata (commands, observables, types) is owned by the SiLA CDK layer (`@sila.ObservableProperty`, `@sila.UnobservableCommand`, FDL generation) — the CDK is the correct place for AI-assisted onboarding and UI generation since it operates at the protocol layer that clients actually consume. The `@command`/`@observable` decorators and `manifest()` method that previously lived here were a parallel annotation system to the CDK and have been removed.
+**6. Dynamic device panel injection**
+`devices.all_devices()` + `core/device_registry.py` selects the correct widget for each discovered server based on `FEATURE_FRAGMENTS`. Adding a new device requires only a new `devices/<name>/` package — no edits to core.
 
-**7. Moonraker auto-discovery**
-mDNS and IPv6 link-local probes run in parallel via thread executor. The backend finds the SV08 without any IP configuration for both WiFi and direct-cable topologies. Falls back to a static IP if both fail.
+**7. `BaseSensor` — sensor identity and reading envelope**
+`BaseSensor` provides `sensor_id`, `display_name`, `description`, and the `SensorReading` timestamped dataclass. Capability metadata is owned by the CDK layer — the correct place for AI-assisted onboarding since it operates at the protocol layer clients consume.
 
-**8. Toolhead-aware bounds checking**
-`_check_bounds` applies footprint half-widths and tip Z offset, so a wide toolhead can't move to a position where its edge leaves the build envelope. This is enforced in the controller, not left to callers.
+**8. Moonraker auto-discovery**
+mDNS and IPv6 link-local probes run in parallel. The backend finds the SV08 without IP configuration for both WiFi and direct-cable topologies.
 
-**9. Safe clearance travel**
-`move_to` always raises Z to `clearance_z` (adjusted for tip length) before XY travel, then lowers to the target Z. This is an invariant in `MotionPlatformController`, not a convention that callers must remember.
+**9. Toolhead-aware bounds checking**
+`_check_bounds` applies footprint half-widths and tip Z offset. Enforced in the controller, not left to callers.
 
-**10. Homing state machine with manual mode**
-The kinematic pre-reset trick in `jog()` during manual homing (`_HOMING_SAFE_MID`) enables axis limit discovery with a toolhead mounted, working around Klipper's position bounds. The accumulated displacement approach in `confirm_x_max`/`confirm_y_max` tracks real travel without relying on Klipper's reported position (which is meaningless after kinematic resets).
+**10. Safe clearance travel**
+`move_to` always raises Z to `clearance_z` (adjusted for tip length) before XY travel, then lowers to the target Z. An invariant in `GantryController`, not a convention.
+
+**11. Homing state machine with manual mode**
+The kinematic pre-reset trick in `jog()` during manual homing enables axis limit discovery with a toolhead mounted, working around Klipper's position bounds.
 
 ---
 
 ## Architectural Weaknesses
 
 **1. ~~`PHSensor` feature is coupled to the concrete implementation class~~ FIXED**
-`PHSensor` now accepts `PHSensorProtocol` (`io/interfaces/ph_sensor.py`). Any sensor satisfying `read()`, `calibrate()`, `slope()` can be used without touching the feature.
+`PHSensor` now accepts `PHSensorProtocol`. Any sensor satisfying `read()`, `calibrate()`, `slope()` can be used without touching the feature.
 
 **2. ~~`MoonrakerClient` has no enforced interface contract~~ FIXED**
-`MotionClientProtocol` (`io/interfaces/motion.py`) defines the full nine-method surface. `MoonrakerClient` and `MockMoonrakerClient` both satisfy it structurally. Divergence is now statically detectable.
+`MotionClientProtocol` defines the full nine-method surface. Divergence between `MoonrakerClient` and `MockMoonrakerClient` is now statically detectable.
 
 **3. ~~Blocking synchronous I/O in async SiLA handlers~~ FIXED**
-All `MotionPlatform` handlers now use `await asyncio.to_thread(...)` for every call reaching `MoonrakerClient`. In-memory reads (`ToolheadManager`, `HomingManager`) intentionally unwrapped to avoid thread-pool overhead on high-frequency observables.
+All `Gantry` handlers use `await asyncio.to_thread(...)` for every call reaching `MoonrakerClient`.
 
-**4. ~~Frontend is a 2000-line monolith~~ FIXED**
-`app.py` has been split into focused modules: `sila_client.py`, `main_window.py`, `themes.py`, and `widgets/` (seven widget files). See Phase 4 migration notes.
+**4. ~~Backend is a 2000+ line monolith~~ FIXED**
+Split into three packages (`chem_bench_gantry`, `chem_bench_ph`, `chem_bench_client`) with flat module layout in each. See Package Restructure section above.
 
 **5. ~~Hand-coded protobuf in the frontend~~ FIXED**
-`sila_client.py` now uses `grpcio-tools`-generated stubs (`motion_platform_pb2.py`). Field numbers are derived from `dataclasses.fields()` in `gen_proto.py`, matching the CDK runtime. Drift is detected by `make check-proto`. See Communication Layer Review above.
+`sila_client.py` now uses `grpcio-tools`-generated stubs. Field numbers derived from `dataclasses.fields()` in `gen_proto.py`. Drift detected by `make check-proto`.
 
-**6. Well plates are not connected to anything**
-`WellPlate` (`labware/well_plate.py`) is complete with coordinate model, label parsing, and well iteration, but has no SiLA feature, no workflow, and no UI. A motion command currently requires raw XYZ coordinates. The system cannot express "move to well A3 of plate P." Phase 3 adds the SiLA `WellPlate` feature.
+**6. Frontend not yet connected to pH server**
+`sila_client.py` connects only to the gantry server. pH readings are accessible to experiment scripts via `ChemBenchClient` but not yet visible in the UI. Phase 2 item.
 
-**7. `CalibrationPoint` enum lives in `interfaces/enums.py` but is pH-specific**
-As more devices are added, this shared file risks becoming a dumping ground for unrelated enums. Device-specific enums should live co-located with their device modules.
+**7. No TLS in the production config**
+Both server configs have `"tls": false`. Acceptable for isolated development; requires a plan before shared-network lab deployment.
 
-**8. ~~Frontend hardcodes machine axis limits~~ FIXED**
-`X_MAX, Y_MAX, Z_MAX` constants removed from `sila_client.py`. The `GetLimits` SiLA command is fetched at connect time; `limits_updated(x_min, x_max, y_min, y_max, z_min, z_max)` signal propagates the values to `PositionGrid` and `ZBar`.
+**8. I2C bus is never instantiated**
+The path from the Raspberry Pi's I2C bus to `AtlasPHSensor` is fully designed but the `smbus2.SMBus(1)` call that wires it up is absent from `chem_bench_ph/server.py`. There is no mock I2C bus for development either.
 
-**9. I2C bus is never instantiated**
-The path from the Raspberry Pi's I2C bus to `AtlasPHSensor` is fully designed but the `smbus2.SMBus(1)` call that would wire it up is absent from `__main__.py`. There is no mock I2C bus for development either.
-
-**10. ~~Frontend accesses a private attribute~~ FIXED**
-`MainWindow` now uses `self._client.host` (public property). `SilaClient._host` is no longer accessed externally.
-
-**11. ~~No test coverage~~ FIXED**
-37 smoke tests added in `software/backend/tests/`. Covers `MotionPlatformController` (mock client), `ToolheadManager` YAML loading, `WellPlate` coordinate math, and `FeatureDescriptor` registry matching. Run with `make test`.
-
-**12. No TLS in the production config**
-`config.json` has `"tls": false`. Acceptable for isolated development, but requires a plan before lab deployment.
+**9. `install_service.sh` is stale**
+`gantry/scripts/install_service.sh` references the old `chem_bench.__main__:create_app` entry point and installs a single `chem-bench` service. The split architecture requires two separate systemd unit files (`chem-bench-gantry.service`, `chem-bench-ph.service`). Needs rewriting before any lab deployment.
 
 ---
 
@@ -416,18 +584,18 @@ The path from the Raspberry Pi's I2C bus to `AtlasPHSensor` is fully designed bu
 
 | Item | Location | Severity |
 |------|----------|----------|
-| pH probe `tip_x`/`tip_y` not yet measured — zeros used | `io/toolheads/ph_probe/ph_probe_toolhead.yaml` | Low |
-| `camera_feature.py` is an empty docstring — no implementation | `features/camera_feature.py` | Low |
-| `CrowsnestClient` is a stub with no HTTP logic | `io/camera/camera_crowsnest_client.py` | Low |
-| `CalibrationPoint` enum is pH-specific but lives in shared `io/interfaces/enums.py` | `io/interfaces/enums.py` | Low |
-| Frontend `app.py` is a non-functional stub — `MainWindow` and all widget panels were deleted and not yet replaced | `frontend/src/chem_bench_ui/app.py` | **High** — UI cannot run |
-| No workspace or labware UI on frontend — `WorkspaceManager` / `PlateGeometry` are backend-only | — | Medium |
-| Proto stubs committed as generated code; `make check-proto` guards drift in CI | `proto/motion_platform_pb2.py` | Low |
-| ~~PHSensor feature not registered, no mock pH sensor~~ **FIXED** — `MockPHSensor` added; `__main__.py` registers `PHSensor` in both mock and real paths | — | Resolved |
-| ~~Machine axis limits hardcoded in `__main__.py`~~ **FIXED** — `MachineConfig` loads from `~/.chem_bench/machine.yaml` with defaults | — | Resolved |
-| ~~`sensor_type` on `ToolheadGeometry` (wrong layer)~~ **FIXED** — moved to `ToolheadConfig`; `ToolheadManager.sensor_type` property exposed | — | Resolved |
-| ~~`WorkspaceManager.load_from_yaml` used unnecessary `StringIO`~~ **FIXED** | — | Resolved |
-| ~~`GantryControllerProtocol` missing `load_workspace_from_yaml`~~ **FIXED** | — | Resolved |
+| pH probe `tip_x`/`tip_y` not yet measured — zeros used | `chem_bench_gantry/toolheads/ph_probe/ph_probe_toolhead.yaml` | Low |
+| Camera support absent — no package, no feature, no client | — | Low (Phase 2) |
+| `install_service.sh` hardcodes old monolith entry point | `gantry/scripts/install_service.sh` | **Medium** — will silently fail on deployment |
+| `install.sh` references old `chem-bench` entry point | `software/backend/install.sh` | **Medium** — broken on fresh install |
+| ~~Frontend `app.py` is a non-functional stub~~ **FIXED** — full UI rebuilt | — | Resolved |
+| ~~Frontend not wired to pH server~~ **FIXED** — `ph_client.py` + `PHSensorWidget` added | — | Resolved |
+| ~~No workspace or labware UI on frontend~~ **FIXED** — `workspace_loader.py` + gantry canvas panel | — | Resolved |
+| Proto stubs committed as generated code; `make check-proto` guards drift | `proto/motion_platform_pb2.py` | Low |
+| ~~PHSensor feature not registered~~ **FIXED** — `MockPHSensor` added; `server.py` registers `PHSensor` in both mock and real paths | — | Resolved |
+| ~~Machine axis limits hardcoded~~ **FIXED** — `MachineConfig` loads from `~/.chem_bench/machine.yaml` | — | Resolved |
+| ~~`sensor_type` on wrong layer~~ **FIXED** — moved to `ToolheadConfig` | — | Resolved |
+| ~~Backend monolithic package~~ **FIXED** — split into `chem_bench_gantry`, `chem_bench_ph`, `chem_bench_client` | — | Resolved |
 
 ---
 
@@ -435,15 +603,16 @@ The path from the Raspberry Pi's I2C bus to `AtlasPHSensor` is fully designed bu
 
 | Risk | Location | Impact | Likelihood |
 |------|----------|--------|------------|
-| Proto version skew — `motion_platform_pb2.py` was compiled with `grpcio-tools==1.81.1` / `protobuf==6.33.6`. Upgrading grpcio-tools without regenerating stubs can cause import-time `ValidateProtobufRuntimeVersion` failures | `proto/motion_platform_pb2.py` | **Low** — caught at import not at runtime | Rare |
-| Observable Command response streams not consumed — `MoveTo` and `Jog` errors mid-move are silently discarded by the frontend | `sila_client.py` | **Low** — frontend only sees gRPC status errors, not structured progress/completion | Low |
-| No TLS — bare gRPC on any network the Pi is on | `config.json` | **Low** in isolated lab network, **High** if shared | Context-dependent |
-| ~~Blocking `requests.post()` in `async def` SiLA handlers~~ **FIXED** — all handlers use `await asyncio.to_thread(...)` | — | Resolved | — |
-| ~~Homing state saved with default (uncalibrated) limits~~ **FIXED** — `_is_calibrated` guard in `HomingManager.save()` | — | Resolved | — |
-| ~~Ghost threads on rapid reconnect~~ **FIXED** — generation counter `self._gen` in `SilaClient` | — | Resolved | — |
-| ~~`MockMoonrakerClient` can silently diverge from `MoonrakerClient`~~ **FIXED** — `MotionClientProtocol` enforces the shared surface | — | Resolved | — |
-| ~~PHSensor feature imports `AtlasPHSensor` directly~~ **FIXED** — feature now accepts `PHSensorProtocol` | — | Resolved | — |
-| ~~Hand-coded protobuf field numbers can silently mismatch CDK wire format~~ **FIXED** — stubs generated from same `dataclasses.fields()` source; drift caught by `make check-proto` | — | Resolved | — |
+| Proto version skew — `motion_platform_pb2.py` compiled with `grpcio-tools==1.81.1` / `protobuf==6.33.6`. Upgrading without regenerating stubs causes import-time failures. | `proto/motion_platform_pb2.py` | Low — loud, caught at import | Rare |
+| Observable Command response streams not consumed — `MoveTo` and `Jog` errors mid-move are silently discarded | `sila_client.py` | Low — frontend only sees gRPC status errors | Low |
+| No TLS — bare gRPC on any network the Pi is on | `gantry/configs/gantry.json`, `ph_sensor/configs/ph_sensor.json` | Low in isolated lab, High if shared | Context-dependent |
+| `ChemBenchClient` experiment scripts run arbitrary Python server-side with no auth | `chem_bench_client/client.py` | Low on isolated lab network; High if network is shared | Context-dependent |
+| ~~Blocking `requests.post()` in `async def` SiLA handlers~~ **FIXED** | — | Resolved | — |
+| ~~Homing state saved with default limits~~ **FIXED** | — | Resolved | — |
+| ~~Ghost threads on rapid reconnect~~ **FIXED** | — | Resolved | — |
+| ~~`MockMoonrakerClient` can silently diverge~~ **FIXED** | — | Resolved | — |
+| ~~PHSensor imports concrete class~~ **FIXED** | — | Resolved | — |
+| ~~Hand-coded protobuf field numbers~~ **FIXED** | — | Resolved | — |
 
 ---
 
@@ -451,53 +620,41 @@ The path from the Raspberry Pi's I2C bus to `AtlasPHSensor` is fully designed bu
 
 ### Phase 1 — Interface contracts and async correctness (Week 1)
 
-These are the highest-risk items. Fix them before adding new features.
-
-1. ✅ **Define `MotionClientProtocol` and `MotionControllerProtocol`** — done. Both live in `io/interfaces/motion.py`. `motion_platform_controller.py` now depends on `MotionClientProtocol`; `features/motion_platform.py` depends on `MotionControllerProtocol`.
-
-2. ✅ **Fix blocking I/O** — done. All `MoonrakerClient` calls wrapped in `await asyncio.to_thread(...)` at the SiLA feature layer.
-
-3. ✅ **Decouple `PHSensor` from concrete class** — done. `PHSensor.__init__` now accepts `PHSensorProtocol` (`io/interfaces/ph_sensor.py`). Atlas-specific pH-only methods (`slope`) are included in the protocol.
-
-4. ✅ **Expose `SilaClient.host` as a public property** — done. `MainWindow` uses `self._client.host`; `SilaClient._host` is no longer accessed externally.
+1. ✅ **Define `MotionClientProtocol` and `GantryControllerProtocol`** — done. Both live in `chem_bench_gantry/interfaces.py`.
+2. ✅ **Fix blocking I/O** — done. All `MoonrakerClient` calls wrapped in `await asyncio.to_thread(...)`.
+3. ✅ **Decouple `PHSensor` from concrete class** — done. `PHSensor.__init__` accepts `PHSensorProtocol`.
+4. ✅ **Expose `SilaClient.host` as a public property** — done.
 
 ### Phase 2 — Complete the sensor chain (Week 1-2)
 
-5. **Wire up `AtlasPHSensor` in `__main__.py`** — add smbus2 bus instantiation (or a mock I2C bus under `CHEM_BENCH_MOCK=1`) and register `PHSensor` feature. This is the path to any chemistry measurement.
-
-6. **Add mock I2C bus** — a `MockI2CBus` alongside `MockMoonrakerClient` so the full feature set (motion + pH) works in mock mode without any hardware.
-
-7. **Implement basic `CrowsnestClient`** — MJPEG snapshot via `requests.get`. Register a minimal camera SiLA feature.
+5. **Wire up `AtlasPHSensor` in `chem_bench_ph/server.py`** — add `smbus2.SMBus(1)` instantiation and mock I2C bus under `CHEM_BENCH_MOCK=1`.
+6. **Add mock I2C bus** — a `MockI2CBus` alongside `MockMoonrakerClient` so the full feature set works in mock mode without hardware.
+7. **Connect pH server in frontend `sila_client.py`** — wire pH observables to Qt signals.
+8. **Fix `install.sh` and `install_service.sh`** — update both for the two-server architecture.
 
 ### Phase 3 — Well plate workflow layer (Week 2)
 
-8. **Add `WellPlate` SiLA feature** — exposes `ListPlates`, `SetPlate(name)`, `MoveTo(label)`. Uses `WellPlate.well_position_by_label()` to translate well addresses to XYZ, then delegates to `MotionPlatformController.move_to()`.
-
-9. **Expose plate overlay in the frontend** — when a plate is set, draw the plate footprint and well grid on `PositionGrid`. Click-to-move snaps to the nearest well center.
-
-10. ✅ **Read axis limits from the server** — done. `GetLimits` SiLA command added end-to-end. Hardcoded `X_MAX, Y_MAX, Z_MAX` constants removed from `sila_client.py`.
+9. ✅ **WorkspaceManager + PlateGeometry** — done. `load_workspace_yaml`, `move_to_well` SiLA commands implemented.
+10. ✅ **Read axis limits from the server** — done. `GetLimits` SiLA command; hardcoded constants removed from frontend.
+11. **Expose plate overlay in the frontend** — plate footprint and well grid on `PositionGrid`.
 
 ### Phase 4 — Frontend decomposition (Week 2-3)
 
-11. ✅ **Split `app.py`** — done. Modules: `sila_client.py`, `main_window.py`, `themes.py`, `widgets/` (seven files). Proto codec replaced with generated stubs (`motion_platform_pb2`). See Communication Layer Review above.
-
-12. ✅ **Add pytest scaffold** — done. 37 smoke tests in `software/backend/tests/`. Run with `make test` (uses `PYTHONPATH=""` to isolate from ROS2 system plugins).
+12. ✅ **Split backend** — done. Three packages: `chem_bench_gantry`, `chem_bench_ph`, `chem_bench_client`.
+13. ✅ **Add pytest scaffold** — done. 56 smoke tests in `gantry/tests/`. Run with `make test-gantry`.
+14. ✅ **Rebuild frontend `MainWindow`** — done. Full PySide6 UI with MDI canvas, server browser, gantry + pH panels, dual themes, plugin device architecture.
 
 ### Phase 5 — Metadata-driven UI foundation (Week 3)
 
-13. **Add `DeviceInfo` SiLA feature** — returns structured JSON describing all registered features, sensor manifests, toolhead list, and plate list.
-
-14. ✅ **Migrate feature discovery to server-sourced** — `SiLAService.GetImplementedFeatures` replaces the `_KNOWN_FEATURES` probe loop. `_FEATURE_REGISTRY` maps identifiers to display names. `_probe_feature` removed.
-
-15. **Migrate configs to `pydantic` models** — replace plain dataclasses in `ToolheadConfig` and `WellPlate` with `pydantic.BaseModel`. This adds schema validation, JSON serialization, and makes AI-generated configs verifiable.
+15. **Add `DeviceInfo` SiLA feature** — returns structured JSON describing all registered features, toolhead list, and plate list.
+16. ✅ **Migrate feature discovery to server-sourced** — `SiLAService.GetImplementedFeatures` replaces the `_KNOWN_FEATURES` probe loop.
+17. **Migrate configs to `pydantic` models** — schema validation, JSON serialization, AI-verifiable configs.
 
 ### Phase 6 — AI onboarding scaffold (Week 4)
 
-16. **Define JSON manifest schema** — a versioned JSON Schema for each device type (toolhead, sensor, plate, instrument). The schema is the contract an AI must satisfy to onboard a new device.
-
-17. **Add `OnboardingFeature` SiLA service** — accepts a JSON device description, validates it against the schema, writes the config file, and hot-reloads the feature registry.
-
-18. **TLS config guide** — document the cert generation and `config.json` changes needed for lab deployment.
+18. **Define JSON manifest schema** — versioned JSON Schema per device type.
+19. **Add `OnboardingFeature` SiLA service** — accepts JSON device description, validates, writes config, hot-reloads feature registry.
+20. **TLS config guide** — document cert generation and `config.json` changes for lab deployment.
 
 ---
 
@@ -509,14 +666,10 @@ The system is at an early stage of capability-based design.
 |-----------|--------|-----|
 | Toolheads declare physical geometry | ✅ YAML configs, YAML-driven | Geometry only; no electrical/protocol capability declared |
 | Sensors self-describe via CDK decorators | ✅ CDK handles this at the SiLA layer | FDL/feature introspection not yet consumed by the frontend |
-| UI adapts to discovered features | ✅ `_on_features_discovered` inserts tabs | Server-driven via `SiLAService.GetImplementedFeatures`; tab content still hand-authored |
-| New instruments require minimal code | ⚠️ Backend: YAML drop-in | Frontend: requires new widget + one `FeatureDescriptor` in `_FEATURE_REGISTRY` |
+| UI adapts to discovered features | ✅ `device_registry.panel_for()` selects widget from plugin `FEATURE_FRAGMENTS` | Server-driven via `SiLAService.GetImplementedFeatures`; widget content still hand-authored per device |
+| New instruments require minimal code | ✅ Backend: YAML drop-in for toolheads, new package for new devices | Frontend: drop a new `devices/<name>/` package with `FEATURE_FRAGMENTS` + `create_widget()` — zero changes to core |
 | Workflows depend on capabilities, not hardware | ❌ Not yet | No workflow layer; SiLA commands are raw hardware operations |
-| Runtime capability registry | ❌ Not yet | Devices enumerated at startup in `__main__.py`; no runtime negotiation |
-
-The architecture is **capability-oriented at the configuration level** (YAML files, manifest decorators) but not yet at the **runtime level** (no registry, no negotiation, no capability query endpoint).
-
-The path from here to a full capability-based system is Phase 5 (`DeviceInfo` feature) and Phase 6 (`OnboardingFeature`). The CDK's FDL generation is the correct foundation for capability metadata — it operates at the protocol layer clients actually consume, making it the right input for AI-assisted onboarding and metadata-driven UI generation.
+| Runtime capability registry | ❌ Not yet | Devices enumerated at startup in `server.py`; no runtime negotiation |
 
 ---
 
@@ -524,24 +677,22 @@ The path from here to a full capability-based system is Phase 5 (`DeviceInfo` fe
 
 ### Existing foundations (strong)
 
-- The CDK's FDL generation (`@sila.ObservableProperty`, `@sila.UnobservableCommand`, etc.) produces the machine-readable feature description at the protocol layer. This is the correct metadata target for AI-assisted onboarding — it describes what clients see, not internal implementation details.
-- YAML-driven `ToolheadConfig` and `WellPlateConfig` are easy for an AI to generate from datasheet measurements. The templates provide the schema.
-- The Driver → Sensor → Feature separation means an AI can target the correct abstraction level when writing code for a new device.
+- The CDK's FDL generation (`@sila.ObservableProperty`, `@sila.UnobservableCommand`, etc.) produces the machine-readable feature description at the protocol layer.
+- YAML-driven `ToolheadConfig` and labware definitions are easy for an AI to generate from datasheet measurements.
+- The Driver → Sensor → Feature separation means an AI can target the correct abstraction level.
 - The mock infrastructure means an AI-generated driver can be tested in software before hardware is connected.
+- The per-device package structure means an AI can generate a complete new device package (following `chem_bench_ph` as the template) without touching existing code.
 
 ### Gaps to close
 
-1. **No pydantic validation** — AI-generated YAML configs cannot be automatically validated before use. A wrong field name fails silently (YAML loads the key, dataclass ignores extra keys or raises on missing ones). Pydantic models would catch this at load time with a clear error.
-
-2. **No runtime schema access** — The SiLA FDL (Feature Definition Language) XML is not accessible at runtime. An AI cannot programmatically introspect what parameters a SiLA command accepts. Parameter types and valid ranges exist only in Python source.
-
-3. **No device registry endpoint** — Currently requires a developer to write Python, drop in a YAML, and restart the server. There is no API call that says "register this new device." Phase 6's `OnboardingFeature` fills this gap.
-
-4. **No structured parameter schemas on SiLA commands** — Units, valid ranges, and semantic constraints (e.g. "z must be positive") are enforced in Python logic but not declared in a machine-readable way. An AI generating a workflow cannot know valid parameter ranges without reading the source.
+1. **No pydantic validation** — AI-generated YAML configs cannot be automatically validated before use.
+2. **No runtime schema access** — The SiLA FDL XML is not accessible at runtime for parameter introspection.
+3. **No device registry endpoint** — Currently requires a developer to write Python, drop in a YAML, and restart the server.
+4. **No structured parameter schemas on SiLA commands** — Units and valid ranges are enforced in Python logic but not declared in a machine-readable way.
 
 ### Recommended path
 
-The most impactful next step for AI onboarding is **pydantic models for configs** (Phase 5). Once `ToolheadConfig` and `WellPlateConfig` are pydantic models, a JSON Schema can be auto-generated from them and handed directly to an AI as the specification for generating a new config. This requires no architectural change to the runtime system.
+The most impactful next step for AI onboarding is **pydantic models for configs** (Phase 5). Once `ToolheadConfig` and `WorkspaceConfig` are pydantic models, a JSON Schema can be auto-generated and handed directly to an AI as the specification for generating a new config.
 
 ---
 
@@ -549,216 +700,10 @@ The most impactful next step for AI onboarding is **pydantic models for configs*
 
 | Week | Focus | Status | Key Deliverables |
 |------|-------|--------|-----------------|
-| **Week 1** | Interface contracts + async correctness | ✅ **Complete** | `MotionClientProtocol`/`GantryControllerProtocol`, `asyncio.to_thread` wrapping, `PHSensor` decoupled, `SilaClient.host` property, ghost-thread generation counter, homing state calibration guard |
-| **Week 2** | Sensor chain + workspace layer | ✅ **Complete** | `MockPHSensor` + `PHSensor` registered in `__main__.py`, `MachineConfig` externalises axis limits, `WorkspaceManager` + `PlateGeometry`, `load_workspace_yaml` SiLA command, 56 smoke tests |
-| **Week 3** | Frontend rebuild + `DeviceInfo` | **In progress** | `sila_client.py` / `themes.py` / `PositionGrid` / `ZBar` survive; `MainWindow` + panels pending rebuild; `DeviceInfo` SiLA feature pending; pydantic configs pending |
-| **Week 4** | AI onboarding scaffold + polish | Pending | JSON manifest schemas, `OnboardingFeature` SiLA service, TLS config guide, end-to-end mock-mode test run |
-
----
-
-*Generated from a full read of the codebase at commit `e7c34c9`. Updated after interface layer migration, proto codegen migration, and Architecture Stabilization Pass (June 2026).*
-
----
-
-## Decision Record: BaseSensor Simplification
-
-**Date:** June 2026
-
-### Decision
-
-Simplify `BaseSensor`. Remove `@command`/`@observable` decorators and `manifest()`. Keep `SensorReading`, `sensor_id`, `display_name`, `description`, and `read()` as abstract.
-
-### Reasoning
-
-`BaseSensor.manifest()` was designed as a runtime capability metadata layer — sensors would self-describe their commands and observables so UIs and AI tooling could consume the manifest without reading source code. This was architecturally sound in the abstract, but the UnitelabsCDK already owns this responsibility at a more useful layer.
-
-The CDK's `@sila.ObservableProperty`, `@sila.UnobservableCommand`, and FDL generation produce machine-readable feature descriptions at the SiLA/gRPC protocol layer — the layer that clients actually consume. An AI generating a new SiLA feature writes against CDK patterns, not `BaseSensor` patterns. An AI-generated UI reads from CDK-exposed feature metadata, not from `manifest()`. The `@command`/`@observable` decorators were a parallel annotation system to the CDK, operating at the wrong layer and never consumed by anything.
-
-### Future Architecture Impact
-
-- AI-assisted onboarding targets CDK decorator patterns (`sila.Feature` subclass, `@sila.UnobservableCommand`, `@sila.ObservableProperty`) — not `BaseSensor`.
-- Metadata-driven UI generation reads CDK FDL output — not `manifest()`.
-- `BaseSensor` remains the correct base for sensor identity and the `SensorReading` envelope.
-- Future sensors (temperature, ORP, conductivity) inherit `BaseSensor` and must implement `read()`. Device-specific capabilities (`calibrate`, `status`) are implemented on the subclass and exposed through the CDK feature layer.
-
-### Migration Notes
-
-- `io/base_sensor.py`: removed `import inspect`, `command()`, `observable()`, `manifest()`, `calibrate()` abstract, `status()` abstract.
-- `io/ph/atlas_ph_sensor.py`: removed `command, observable` imports and all decorator usages. Method implementations unchanged.
-- `io/interfaces/ph_sensor.py`: unchanged — still imports `SensorReading` from `base_sensor`.
-- `features/ph_sensor.py`: unchanged — depends on `PHSensorProtocol`, not `BaseSensor`.
-
----
-
-## Remaining Risks
-
-*Updated after Architecture Stabilization Pass, June 2026.*
-
-### Low
-
-**Proto stub / runtime version skew**
-`motion_platform_pb2.py` was compiled with `grpcio-tools==1.81.1` (protobuf runtime `6.33.6`). The generated stub calls `_runtime_version.ValidateProtobufRuntimeVersion(Domain.PUBLIC, 6, 33, 5, ...)` at import time. If the frontend environment installs `protobuf<6.x` or `protobuf>=7.x`, the import fails with a clear error rather than silently misencoding. This is a deployment risk, not a correctness risk — it is loud and caught early.
-
-**Observable Command response streams not consumed**
-`Jog` and `MoveTo` are `@sila.ObservableCommand()`. The frontend initiates them with `unary_unary` and ignores the server's response stream entirely (progress, completion, errors). A move that fails mid-execution (limit error, emergency stop) will emit an error on the unread stream, but the frontend only sees it if the gRPC status code is non-OK on the initiate call. Structured error responses from observable commands are silently discarded.
-
-**No TLS**
-`config.json` has `"tls": false`. Acceptable for an isolated bench-side Ethernet connection. Unacceptable if the RPi is on a shared network or accessed over WiFi.
-
-**~~Blocking synchronous I/O in async SiLA handlers~~ FIXED**
-All `MotionPlatform` command and observable property handlers now use `await asyncio.to_thread(...)` for every call that reaches `MoonrakerClient`. See Architecture Stabilization Pass.
-
-**~~Ghost streaming threads on rapid reconnect~~ FIXED**
-Generation counter (`self._gen`) in `SilaClient`. Each thread captures its `gen` at start and exits the moment `self._gen != gen`. Only ONE active set of stream threads per connection generation is now guaranteed.
-
-**~~Homing state saved with unverified axis limits~~ FIXED**
-`HomingManager._is_calibrated` tracks whether limits were freshly calibrated in this session. `save()` raises `RuntimeError` if `_is_calibrated` is `False` (default after restore-from-disk). `is_calibrated` and `timestamp` are now persisted in the JSON for auditing.
-
-**~~`_client._host` private access~~ FIXED**
-`MainWindow` now uses `self._client.host` (public property on `SilaClient`).
-
-**~~Frontend hardcodes machine axis limits~~ FIXED**
-`X_MAX, Y_MAX, Z_MAX` constants removed from `sila_client.py`. Limits are now fetched via the `GetLimits` SiLA command at connection time and propagated via the `limits_updated` signal.
-
----
-
-## Future Scaling Assessment
-
-*Assessed after proto codegen migration, June 2026.*
-
-### What scales well
-
-**Adding a new command to `MotionPlatform`**
-Adding a new `@sila.UnobservableCommand()` with no parameters requires only:
-1. Implement the method in `motion_platform.py`
-2. Add `rpc NewCommand (Empty) returns (Empty);` to the static section of `gen_proto.py`'s `_FOOTER`
-3. Run `make gen-proto`
-4. Add `def new_command(self): self._fire("NewCommand")` to `sila_client.py`
-
-Adding a command with parameters requires also adding a `message NewCommand_Parameters {...}` entry. The generator will assign correct field numbers if the parameters come from a dataclass, or they can be added to the static template for function-signature-based parameters.
-
-**Dataclass field additions at the end**
-If `Position` or `ToolheadInfo` gain new fields appended at the end (not inserted in the middle), the next `make gen-proto` + recompile produces correct stubs with no change to existing field numbers. The CDK and frontend both handle unknown trailing fields gracefully.
-
-**Multiple features**
-The current generator is `MotionPlatform`-specific. The pattern generalises cleanly: a single `gen_proto.py` could iterate over all features in the `features/` package, discover their dataclass return types and function signatures, and emit one `.proto` per feature (or a combined `.proto` with package namespacing). The CDK field-number rule (`dataclasses.fields()` order) applies uniformly to all features.
-
-### What doesn't scale
-
-**Field insertion in the middle of a dataclass**
-Inserting a field between existing fields in `Position` or `ToolheadInfo` shifts all subsequent field numbers. The server CDK and frontend stubs would encode/decode the same field numbers at different positions, producing silent data corruption. `make check-proto` catches this before a commit reaches CI, but the fix requires regenerating stubs AND being aware that any frontend version compiled against the old stubs will mis-decode until updated. There is no wire-level backwards compatibility for field insertions.
-
-**The generator is currently feature-specific**
-`gen_proto.py` hardcodes `from chem_bench.features.motion_platform import Position, ToolheadInfo` and has static templates for `MotionPlatform`-specific messages. Adding `PHSensor` or a `WellPlate` feature will require either a new generator script per feature or a refactored common generator that introspects the CDK feature class generically.
-
-**Observable Command responses are unsubscribed**
-When `MoveTo` or `Jog` fail mid-move (e.g. limit error), the observable command's response stream carries a structured error that the frontend currently ignores. As the experiment layer matures (Phase 3+), workflows will need to know whether a move completed successfully before dispensing reagents. This requires subscribing to the response stream, which means new `Subscribe_MoveTo_Responses` proto messages, a new gRPC stream thread, and a new Qt signal for move completion / error.
-
-**~~Frontend `_KNOWN_FEATURES` is static~~ PARTIALLY RESOLVED**
-Discovery is now server-driven via `SiLAService.GetImplementedFeatures`. Adding a second feature (`PHSensor`, `WellPlateFeature`) still requires: one `FeatureDescriptor` in `_FEATURE_REGISTRY`, a new proto file + compiled stub, and a new tab widget. The discovery step no longer requires code changes — only the display mapping and tab builder do.
-
-**Proto version pinning**
-The compiled `_pb2.py` is pinned to `protobuf 6.x`. When the `protobuf` library releases a new major version, the stubs must be regenerated. This is a one-command operation (`make gen-proto`) but requires coordination between backend dev environment (which has grpcio-tools) and frontend deployment (which just needs the `protobuf` runtime). Document this in the deployment guide before lab handoff.
-
----
-
-## MotionPlatformController Subsystem Refactor
-
-*June 2026 — single-class motion controller split into three focused subsystems.*
-
-### New Dependency Graph
-
-```
-MotionPlatformController  (orchestrator — owns cross-subsystem calculations only)
-  │
-  ├── ToolheadManager ─────────────────────────────────→ ToolheadConfig / ToolheadGeometry
-  │     (hardware agnostic, no client import)                  └─ io/toolheads/*/yaml
-  │
-  ├── HomingManager ───────────────────────────────────→ MotionClientProtocol
-  │     (independent of toolhead logic)                        (set_kinematic_position,
-  │                                            ┌───────────────  home, move, get_homed_axes)
-  │                                            └─────────────→ homing_state.py
-  │                                                               └─ ~/.chem_bench/homing_state.json
-  └── MotionEngine ────────────────────────────────────→ MotionClientProtocol (only import)
-        (safe clearance travel sequence only)                 (move, jog, get_position,
-                                                               get_state)
-```
-
-**Coupling rule enforced in each subsystem:**
-
-| Subsystem | Imports from motion layer | Imports toolhead? | Imports homing? |
-|-----------|--------------------------|-------------------|-----------------|
-| `ToolheadManager` | None | — | No |
-| `HomingManager` | `MotionClientProtocol` | No | — |
-| `MotionEngine` | `MotionClientProtocol` only | No | No |
-| `MotionPlatformController` | All three subsystems | Yes (reads geometry) | Yes (reads limits) |
-
-**Cross-subsystem interactions owned by the controller:**
-
-- `set_toolhead(name)` → `ToolheadManager.set_toolhead(name)` then `HomingManager.invalidate_state()` — controller wires the invalidation that previously lived inside the toolhead setter itself.
-- `jog()` in homing mode → `HomingManager.homing_jog_update(dx, dy, dz)` (kinematic reset) then `MotionEngine.jog(dx, dy, dz, speed)` (actual G0) — the two responsibilities are now in separate calls.
-- `_restore_state()` → `HomingManager.restore()` returns a `str` toolhead name; controller passes it to `ToolheadManager.set_toolhead()` — HomingManager never imports ToolheadManager.
-- `home_auto()` → controller checks `ToolheadManager.toolhead.requires_manual_homing`, then passes `self._safe_clearance_z` (a float) to `HomingManager.home_auto(safe_clearance_z)` — HomingManager needs no toolhead reference.
-- `save_and_park()` → controller parks via `MotionEngine`, then calls `HomingManager.save(toolhead_name=ToolheadManager.name)` — toolhead name crosses the boundary as a plain string.
-- `_safe_clearance_z` and `_check_bounds` — both read from HomingManager (limits) and ToolheadManager (geometry); neither subsystem computes these, the controller does.
-
----
-
-### Separation of Concerns Assessment
-
-| Concern | Before | After |
-|---------|--------|-------|
-| Toolhead config loading | Mixed into controller | `ToolheadManager` only |
-| Mount state | Mixed into controller | `ToolheadManager` only |
-| Axis limits | Mixed into controller | `HomingManager` only |
-| Homing state machine | Mixed into controller | `HomingManager` only |
-| Kinematic-reset jog trick | Inline in `jog()` | `HomingManager.homing_jog_update()` — clearly named and isolated |
-| JSON persistence | Mixed into controller | `HomingManager.save/restore/invalidate_state()` |
-| Safe clearance travel sequence | Mixed into controller | `MotionEngine.move_to()` |
-| Cross-subsystem offset math | Mixed into controller | Still in controller — correct, as it requires both toolhead geometry and axis limits |
-| Cross-subsystem bounds checking | Mixed into controller | Still in controller — correct, same reason |
-
-**What the controller is now:** a coordinator that reads two subsystems (HomingManager for limits, ToolheadManager for geometry), performs the two derived calculations that span both (`_safe_clearance_z`, `_check_bounds`, and offset compensation in `move_to`), and delegates everything else. It contains no state of its own — all mutable state lives in the three subsystems.
-
-**What was not moved and why:** `_check_bounds` and `_safe_clearance_z` are the only logic items left in the controller. Both require data from HomingManager (axis limits, z_min) AND ToolheadManager (footprint, tip_offset_z) simultaneously. Moving either into a subsystem would create a cross-dependency between HomingManager and ToolheadManager that would violate the isolation rules. The controller is the correct home for calculations that cross subsystem boundaries.
-
----
-
-### Future Toolhead Scaling Assessment
-
-**Adding a new toolhead type (e.g. pipette, gripper, camera mount)**
-
-1. Drop a folder under `io/toolheads/` with a YAML matching the `toolhead_config_template.yaml` schema.
-2. `ToolheadManager.list_toolheads()` discovers it automatically — zero Python changes.
-3. If the toolhead needs a new geometry field (e.g. `nozzle_diameter`), add it to `ToolheadGeometry` and `toolhead_config.py`. `ToolheadManager` is the only code to update — HomingManager and MotionEngine are unaffected.
-
-**Adding a toolhead that changes homing behavior**
-
-`requires_manual_homing` and `requires_manual_z` are already first-class fields in `ToolheadGeometry`. The check in `MotionPlatformController.home_auto()` reads `ToolheadManager.toolhead.requires_manual_homing`. Adding a new homing-behavior flag follows the same pattern: add the field to YAML + `ToolheadGeometry`, read it in the controller's homing delegation methods. HomingManager is not touched.
-
-**Adding a second motion platform (different gantry)**
-
-The refactor exposes a clean seam: `MotionEngine` and `HomingManager` both depend only on `MotionClientProtocol`. A new gantry requires only:
-1. A new client satisfying `MotionClientProtocol` (nine methods).
-2. Optionally, a new `HomingManager` subclass if the homing procedure differs (e.g. no endstop, optical homing).
-3. `MotionEngine` is unchanged — it only knows the safe travel sequence.
-4. `ToolheadManager` is unchanged — toolheads are hardware-agnostic geometry.
-
-**Adding a toolhead with its own sensor (e.g. integrated force probe) *(IMPLEMENTED)***
-
-`ToolheadGeometry` now declares `sensor_type: str | None`. `MotionPlatformController` accepts a `sensor_registry: dict[str, Any]` at construction and exposes `get_toolhead_sensor() -> Any`, which returns the registered sensor for the active toolhead's `sensor_type`, or `None`. `ToolheadManager`, `HomingManager`, and `MotionEngine` are untouched.
-
-To add a new sensor-bearing toolhead:
-1. Implement a driver + `Protocol` interface in `io/` (e.g. `ForceProbeProtocol`).
-2. Add `sensor_type: force` to the toolhead YAML.
-3. Pass `sensor_registry={"force": ForceProbeInstance()}` to `MotionPlatformController` in `__main__.py`.
-4. In the SiLA feature, call `controller.get_toolhead_sensor()` and cast to `ForceProbeProtocol`.
-
-The `ph_probe` toolhead already declares `sensor_type: ph`. Wiring up `AtlasPHSensor` to `sensor_registry={"ph": ...}` in `__main__.py` is the only remaining step to activate pH reading through this seam.
-
-**What still doesn't scale: multiple simultaneous toolheads**
-
-`ToolheadManager` holds a single active toolhead. A future multi-head gantry (two independent carriages) would require a `ToolheadManager` that holds a dict of active heads keyed by carriage ID, and `MotionPlatformController` would need to pass a carriage ID to `move_to`. This is a deliberate non-requirement for the current single-carriage SV08 platform and is the expected extension point if the platform grows.
+| **Week 1** | Interface contracts + async correctness | ✅ **Complete** | `MotionClientProtocol`/`GantryControllerProtocol`, `asyncio.to_thread` wrapping, `PHSensor` decoupled, ghost-thread generation counter, homing state calibration guard |
+| **Week 2** | Sensor chain + workspace layer + package split | ✅ **Complete** | `MockPHSensor`, `WorkspaceManager`, `PlateGeometry`, 56 smoke tests, per-device packages (`chem_bench_gantry` / `chem_bench_ph` / `chem_bench_client`), uv workspace |
+| **Week 3** | Frontend rebuild + `DeviceInfo` | ✅ **Complete** | Full PySide6 UI: `MainWindow`, `ServerBrowserDialog`, `GantryWidget`, `PHSensorWidget`, `WorkspaceLoader`, dual DARK/LIGHT themes, MDI canvas, plugin device architecture (`core/` + `devices/`), rxnbench namespace rename |
+| **Week 4** | AI onboarding scaffold + polish | Pending | JSON manifest schemas, `OnboardingFeature` SiLA service, TLS config guide, fix `install.sh` + `install_service.sh`, end-to-end mock-mode test run |
 
 ---
 
@@ -772,101 +717,48 @@ The `ph_probe` toolhead already declares `sensor_type: ph`. Wiring up `AtlasPHSe
 SiLAService.GetImplementedFeatures          (always present — mandatory SiLA2 core feature)
   │  returns list[str] of fully-qualified feature identifiers
   │  e.g. ["org.silastandard/core/SiLAService/v1",
-  │         "edu.iastate.ames/chembench/MotionPlatform/v0"]
+  │         "edu.iastate.ames/rxnbench/Gantry/v0"]
   ▼
-_FEATURE_REGISTRY  (sila_client.py)
-  │  list[FeatureDescriptor(name, identifier)]
-  │  filters server identifiers to display names the client knows how to handle
-  │  e.g. "edu.iastate.ames/chembench/MotionPlatform/v0" → "Motion Platform"
+core/device_registry.panel_for(server, theme)
+  │  calls devices.all_devices() → iterates FEATURE_FRAGMENTS on each plugin
+  │  first match wins → calls mod.create_widget(server, theme)
   ▼
-features_discovered  Qt signal  (emits list[str] of display names)
-  ▼
-MainWindow._on_features_discovered(features: list[str])
-  │  inserts/removes tabs based on display name
-  └─ "Motion Platform" → _build_motion_tab() → QTabWidget
+QMdiSubWindow added to MDI canvas
+  └─ GantryWidget / PHSensorWidget / GenericDeviceWidget
 ```
 
 ### What changed
 
 | Before | After |
 |--------|-------|
-| `_KNOWN_FEATURES: list[dict]` — hardcoded pkg/svc/probe for each feature | `_FEATURE_REGISTRY: list[FeatureDescriptor]` — identifier + display name + `start_streams` callback |
-| `_probe_feature(pkg, svc, method)` — one gRPC call per known feature | `_fetch_implemented_features()` — one call to SiLAService, always succeeds or returns [] |
-| `if "Motion Platform" in found:` stream start branch | `fd.start_streams(client, gen)` — callback registered in `FeatureDescriptor` |
-| `if "Motion Platform" in new/gone:` tab dispatch branches | `_tab_inject_handlers` / `_tab_remove_handlers` dicts in `MainWindow` |
-| Adding a feature required editing probe logic + multiple `if` branches | One `FeatureDescriptor` in `_FEATURE_REGISTRY` + one entry in each handler dict |
-| Private `_host` attribute accessed from `MainWindow` | `SilaClient.host` public property |
-
-### Key files
-
-| File | Role |
-|------|------|
-| `proto/sila_service.proto` | Static proto for SiLAService.GetImplementedFeatures. Standard-defined; no generator needed. |
-| `proto/sila_service_pb2.py` | Compiled stubs. Regenerate with `python -m grpc_tools.protoc -I proto --python_out=proto proto/sila_service.proto`. |
-| `sila_client.py: _FEATURE_REGISTRY` | One entry per feature the frontend knows how to display. Discovery itself is server-driven. |
-| `sila_client.py: _fetch_implemented_features()` | Single gRPC call to `/sila2.org.silastandard.core.silaservice.v1.SiLAService/Get_ImplementedFeatures`. |
-| `sila_client.py: _discover_and_stream()` | Intersects server identifiers with registry; emits display names. |
-
-### gRPC path derivation
-
-The SiLAService package is derived from the CDK's `FeatureIdentifier.rpc_package` formula:
-
-```
-"sila2." + originator + "." + category + "." + feature.lower() + ".v" + major_version
-= "sila2.org.silastandard.core.silaservice.v1"
-```
-
-The full method path: `/sila2.org.silastandard.core.silaservice.v1.SiLAService/Get_ImplementedFeatures`
-
-The `MotionPlatform` identifier returned by the server:
-```
-originator="edu.iastate.ames", category="chembench", class="MotionPlatform", version="0.1"
-→ "edu.iastate.ames/chembench/MotionPlatform/v0"
-```
+| `_KNOWN_FEATURES: list[dict]` — hardcoded pkg/svc/probe for each feature | `devices/<name>/__init__.py` — `FEATURE_FRAGMENTS` + `create_widget()` per plugin |
+| `_probe_feature(pkg, svc, method)` — one gRPC call per known feature | `SiLAService.GetImplementedFeatures` — one call; fragments matched against result |
+| `if "Motion Platform" in found:` stream start branch | Plugin `create_widget()` constructs and returns the correct `QWidget` |
+| Adding a device required editing `_FEATURE_REGISTRY` + multiple handler dicts | Drop a new `devices/<name>/` folder — zero core edits |
 
 ---
 
 ## Remaining Hardcoded Components
 
-*Updated after Architecture Stabilization Pass, June 2026.*
-
 | Component | Location | Notes |
 |-----------|----------|-------|
-| `_PKG`, `_SVC` constants | `sila_client.py` | Still required for stream/command method paths — `_method()` uses them. Correct to keep; Motion Platform streams are a concrete implementation detail, not a discovery concern. |
-| `_build_motion_tab()` | `main_window.py` | Tab layout for Motion Platform is hand-written. Each new feature still needs a dedicated tab builder. Not yet metadata-driven. |
-| Motion Platform proto stubs | `proto/motion_platform_pb2.py` | One proto per feature. New features need their own proto + compiled stub. |
-| ~~`X_MAX, Y_MAX, Z_MAX`~~ | ~~`sila_client.py`~~ | **REMOVED** — replaced by `GetLimits` SiLA command + `limits_updated(x_min,x_max,y_min,y_max,z_min,z_max)` signal. |
-| ~~`if "Motion Platform" in found:` stream start~~ | ~~`sila_client.py`~~ | **REMOVED** — `FeatureDescriptor.start_streams(client, gen)` callback in registry. |
-| ~~`if "Motion Platform" in new/gone:` tab dispatch~~ | ~~`main_window.py`~~ | **REMOVED** — `_tab_inject_handlers` / `_tab_remove_handlers` dicts. |
+| `_PKG`, `_SVC` constants | `sila_client.py` | Required for stream/command method paths — correct to keep. |
+| `GantryWidget`, `PHSensorWidget` layouts | `devices/gantry/widget.py`, `devices/ph_sensor/widget.py` | Hand-authored per device. `GenericDeviceWidget` provides a fallback for unknown servers. |
+| Motion Platform proto stubs | `proto/motion_platform_pb2.py` | One proto per feature; new features need their own proto + compiled stub. |
+| ~~`X_MAX, Y_MAX, Z_MAX`~~ | ~~`sila_client.py`~~ | **REMOVED** — replaced by `GetLimits` SiLA command + `limits_updated` signal. |
+| ~~`if "Motion Platform" in found:` stream start~~ | ~~`sila_client.py`~~ | **REMOVED** — `FeatureDescriptor.start_streams(client, gen)` callback. |
 
 ---
 
 ## Path Toward Metadata-Driven UI
 
-The current architecture handles Feature → Descriptor → Frontend Tab, but the tab content is still fully hand-authored. Moving toward metadata-driven UI generation requires two additional layers.
-
 ### Layer 1: Feature-scoped stream/command registry *(IMPLEMENTED)*
 
-`FeatureDescriptor` now carries a `start_streams` callback (stream startup) and tab injection/removal is handled via `_tab_inject_handlers` / `_tab_remove_handlers` dicts in `MainWindow`:
-
-```python
-@dataclasses.dataclass(frozen=True)
-class FeatureDescriptor:
-    name: str
-    identifier: str
-    start_streams: Callable[["SilaClient", int], None]  # gen-scoped, called after discovery
-```
-
-The `if "Motion Platform"` branches are gone from both `_discover_and_stream` and `_on_features_discovered`. Adding a second feature requires only one new `FeatureDescriptor` in `_FEATURE_REGISTRY` plus a new entry in the inject/remove handler dicts in `MainWindow`. No `if` branches to touch.
+`FeatureDescriptor` carries a `start_streams` callback. Tab injection/removal handled via `_tab_inject_handlers` / `_tab_remove_handlers` dicts in `MainWindow`. Adding a second feature requires one new `FeatureDescriptor` plus one handler dict entry. No `if` branches to touch.
 
 ### Layer 2: FDL-driven widget generation
 
-The SiLAService exposes `GetFeatureDefinition(identifier)` which returns the FDL (Feature Definition Language) XML for any implemented feature. This XML describes:
-- All commands and their parameter types/constraints
-- All observable/unobservable properties and their data types
-- All defined execution errors
-
-A UI generator could read this XML and produce a generic "commands + properties" tab for any feature without a hand-authored tab builder. This is the correct foundation for a metadata-driven UI:
+`SiLAService.GetFeatureDefinition(identifier)` returns FDL XML describing all commands, properties, and data types for any implemented feature. A UI generator could read this and produce a generic "commands + properties" tab without a hand-authored tab builder:
 
 ```
 GetFeatureDefinition(identifier)
@@ -878,44 +770,33 @@ GenericFeatureTab: auto-generated QWidget with one button per command,
                    one display row per observable property
 ```
 
-**Pre-conditions before this is feasible:**
-- Parameter types in FDL must be parseable to Qt input widgets (float → QDoubleSpinBox, string → QLineEdit, enum → QComboBox)
-- Valid ranges and units from FDL constraints must map to widget validators
-- Complex structure types (e.g. Position, ToolheadInfo) need either flattened display or a registered custom renderer
-
 The `GetFeatureDefinition` call already works — only the FDL parser and widget generator are missing.
 
 ---
 
 ## Path Toward AI-Assisted Device Onboarding
 
-### Current state
-
-The `_FEATURE_REGISTRY` is the one remaining manual step when adding a new instrument: a developer must write a `FeatureDescriptor` entry. Everything before that (backend feature registration, SiLA protocol exposure, CDK FDL generation) is already server-side. Everything after (tab generation) could become metadata-driven via Layer 1 and Layer 2 above.
-
 ### Minimal AI onboarding loop (near-term)
 
 Given a new instrument (e.g. a conductivity probe):
 
-1. **AI generates the backend feature** — writes a `ConductivitySensor(sila.Feature)` class following CDK patterns (`@sila.ObservableProperty`, `@sila.UnobservableCommand`). The Driver → Sensor → Feature pattern is explicit enough for an AI to follow from existing examples.
+1. **AI generates a new backend package** — follows `chem_bench_ph` as the template. Writes `feature.py`, `interfaces.py`, `server.py`, `_cli.py`. CDK patterns (`@sila.ObservableProperty`, `@sila.UnobservableCommand`) are explicit enough for an AI to follow from existing examples.
 
-2. **AI generates the YAML toolhead/config** — if the instrument has a toolhead, the schema in `toolhead_config_template.yaml` provides the contract. An AI can fill it from a datasheet.
+2. **AI generates the YAML toolhead/config** — the schema in `toolhead_config_template.yaml` provides the contract. An AI can fill it from a datasheet.
 
-3. **AI adds one `FeatureDescriptor` entry** — `_FEATURE_REGISTRY` in `sila_client.py`. This is the only frontend file that needs editing for discovery.
+3. **AI creates a `devices/<name>/` plugin** — `__init__.py` with `FEATURE_FRAGMENTS` + `create_widget()`, plus a `QWidget` subclass. No core files need editing; `device_registry.py` discovers it automatically.
 
-4. **Server restart** — `GetImplementedFeatures` now returns the new identifier. The frontend picks it up on next connect without any discovery code changes.
+4. **AI adds one workspace member** — `pyproject.toml` `[tool.uv.workspace] members` gains the new package dir.
+
+5. **Server restart** — `GetImplementedFeatures` returns the new identifier. Frontend picks it up on next connect.
 
 ### Gap: no `OnboardingFeature` API
 
-Steps 1–3 still require a developer or a code-generating AI with repo access. A future `OnboardingFeature` SiLA service (Phase 6 per migration plan) would accept a JSON device description, validate it against pydantic schemas, write the config, and hot-reload the feature registry — eliminating the need for any code changes at all.
+Steps 1–4 still require code changes. A future `OnboardingFeature` SiLA service (Phase 6) would accept a JSON device description, validate it, write the config, and hot-reload the feature registry.
 
 ### Gap: no pydantic validation on configs
 
-AI-generated `ToolheadConfig` YAMLs cannot be automatically validated before use. A wrong field name fails silently. Migrating `ToolheadConfig` to a pydantic model (Phase 5 per migration plan) produces a JSON Schema that an AI can treat as the exact contract for generating new configs — with automatic validation on load.
-
-### What the CDK already provides for AI
-
-The CDK's FDL generation (`@sila.ObservableProperty`, `@sila.UnobservableCommand`, `@sila.Feature`) produces machine-readable feature descriptions at the SiLA/gRPC layer. `GetFeatureDefinition` exposes this to clients at runtime. An AI writing a new SiLA feature targets these CDK patterns; an AI-generated UI reads CDK-exposed feature metadata. The `BaseSensor` layer is intentionally kept out of this loop — capability metadata belongs at the CDK layer, not the sensor identity layer.
+AI-generated `ToolheadConfig` YAMLs cannot be automatically validated before use. A wrong field name fails silently. Migrating to pydantic models produces a JSON Schema an AI can treat as the exact contract.
 
 ---
 
@@ -926,44 +807,27 @@ The CDK's FDL generation (`@sila.ObservableProperty`, `@sila.UnobservableCommand
 ### Phase 1 — Critical Runtime Fixes
 
 **1a. Blocking I/O in async SiLA handlers — FIXED**
-
-All `MotionPlatform` command and property handlers now use `await asyncio.to_thread(...)` for every call that reaches `MoonrakerClient` (synchronous `requests.post/get`). In-memory reads (`ToolheadManager`, `HomingManager`) are intentionally NOT wrapped — wrapping pure in-memory property reads would add per-yield thread-pool overhead on high-frequency observables with no benefit.
-
-Affected handlers: `position` (observable property), `toolhead_info`, `move_to`, `jog`, `home_auto`, `finish_homing`, `save_and_park`, `get_limits`.
+All `Gantry` command and property handlers use `await asyncio.to_thread(...)` for every call reaching `MoonrakerClient`. In-memory reads (`ToolheadManager`, `HomingManager`) intentionally NOT wrapped.
 
 **1b. Ghost stream threads on rapid reconnect — FIXED**
-
-`SilaClient` now maintains `self._gen: int`. Every call to `connect_to()` increments `_gen` and passes the new value to each thread as `my_gen`. Threads exit on the next loop iteration the moment `self._gen != my_gen`. This guarantees at most one active set of stream threads per connection at any time.
-
-```python
-# In each stream thread:
-while self._gen == gen and not self._stop.is_set():
-    ...
-```
+`SilaClient` maintains `self._gen: int`. Every `connect_to()` increments `_gen`. Threads exit the moment `self._gen != my_gen`.
 
 **1c. Unsafe homing state persistence — FIXED**
-
-`HomingManager` now tracks `self._is_calibrated: bool`. It is set `True` only by `home_auto()` or `finish_homing()`, and reset to `False` on `restore()` (state loaded from disk) or `invalidate_state()`. `save()` raises `RuntimeError` if `_is_calibrated` is `False`, preventing an unverified disk-to-disk round-trip. The JSON file now stores `"is_calibrated"` and `"timestamp"` fields for auditing.
+`HomingManager._is_calibrated` is `True` only after `home_auto()` or `finish_homing()`. `save()` raises `RuntimeError` if `_is_calibrated` is `False`.
 
 ### Phase 2 — Architectural Cleanups
 
 **Feature dispatch callbacks — FIXED**
-
-`FeatureDescriptor` gained a `start_streams(client, gen)` field. The module-level `_start_motion_streams` function is registered against `MotionPlatform`. `_discover_and_stream` calls `fd.start_streams(self, gen)` for each found feature — no `if "Motion Platform"` branch. `MainWindow` replaced the same-named `if` blocks with `_tab_inject_handlers` / `_tab_remove_handlers` dicts.
+`FeatureDescriptor` carries `start_streams(client, gen)`. No `if "Motion Platform"` branches anywhere.
 
 ### Phase 3 — Discovery + Config Hardening
 
 **GetLimits command — ADDED**
-
-Backend: `MotionControllerProtocol.get_limits() -> str` returns `"x_min|x_max|y_min|y_max|z_min|z_max"`. `MotionPlatformController.get_limits()` reads directly from `HomingManager`. The SiLA feature exposes `@sila.UnobservableCommand() async def get_limits() -> str` with `await asyncio.to_thread(...)`.
-
-Proto: `gen_proto.py` updated with `GetLimits_Responses { SString Limits = 1; }` message and `rpc GetLimits`. Both `.proto` and `_pb2.py` regenerated.
-
-Frontend: `SilaClient` removed `X_MAX, Y_MAX, Z_MAX = 350.0, 350.0, 340.0`. `_discover_and_stream` calls `fetch_limits()` after discovery and emits `limits_updated(x_min, x_max, y_min, y_max, z_min, z_max)`. `MainWindow._on_limits_updated` calls `self._grid.set_limits(x_max, y_max)` and `self._zbar.set_limits(z_max)`.
+Backend: `GantryControllerProtocol.get_limits() -> str` returns `"x_min|x_max|y_min|y_max|z_min|z_max"`. SiLA feature exposes `@sila.UnobservableCommand`. Frontend: `limits_updated(x_min, x_max, y_min, y_max, z_min, z_max)` signal; `PositionGrid` and `ZBar` updated accordingly.
 
 ### Phase 4 — Test + Safety Layer
 
-56 smoke tests in `software/backend/tests/`:
+56 smoke tests in `software/backend/gantry/tests/`:
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -973,6 +837,93 @@ Frontend: `SilaClient` removed `X_MAX, Y_MAX, Z_MAX = 350.0, 350.0, 340.0`. `_di
 | `test_workspace_manager.py` | 13 | `load_from_yaml`, `resolve_well`, standard/rotated_90 orientation, short label, unknown plate, clear |
 | `test_feature_discovery.py` | 8 | Exact match, case-insensitive, mixed-case, unknown ignored, empty list, multi-feature, registry uniqueness |
 
-Run with: `make test` (or `PYTHONPATH="" uv run pytest tests/ -v` directly).
+Run with: `make test-gantry` (or `PYTHONPATH="" uv run --package chem-bench-gantry pytest gantry/tests/ -v` directly).
 
-`PYTHONPATH=""` is required because the ROS2 Jazzy system Python registers pytest plugins via `entry_points` that conflict with the uv-managed venv. Stripping `PYTHONPATH` removes the `/opt/ros/jazzy/lib/python3.12/site-packages` path before plugin discovery. The `pyproject.toml` `[tool.pytest.ini_options]` addopts also contains `-p no:launch_testing` and related flags as a belt-and-suspenders guard.
+`PYTHONPATH=""` is required to strip the ROS2 Jazzy system Python path before pytest plugin discovery.
+
+---
+
+## Decision Record: BaseSensor Simplification
+
+**Date:** June 2026
+
+### Decision
+
+Simplify `BaseSensor`. Remove `@command`/`@observable` decorators and `manifest()`. Keep `SensorReading`, `sensor_id`, `display_name`, `description`, and `read()` as abstract.
+
+### Reasoning
+
+`BaseSensor.manifest()` was designed as a runtime capability metadata layer. The CDK already owns this responsibility at a more useful layer. The CDK's `@sila.ObservableProperty`, `@sila.UnobservableCommand`, and FDL generation produce machine-readable feature descriptions at the SiLA/gRPC protocol layer — the layer that clients actually consume. The `@command`/`@observable` decorators were a parallel annotation system to the CDK, operating at the wrong layer and never consumed by anything.
+
+### Migration Notes
+
+- `chem_bench_ph/base_sensor.py`: removed `import inspect`, `command()`, `observable()`, `manifest()`, `calibrate()` abstract, `status()` abstract.
+- `chem_bench_ph/atlas_ph_sensor.py`: removed decorator usages. Method implementations unchanged.
+- `chem_bench_ph/interfaces.py`: unchanged — still imports `SensorReading` from `base_sensor`.
+- `chem_bench_ph/feature.py`: unchanged — depends on `PHSensorProtocol`, not `BaseSensor`.
+
+---
+
+## MotionPlatformController Subsystem Refactor
+
+*June 2026 — single-class motion controller split into three focused subsystems.*
+
+### New Dependency Graph
+
+```
+GantryController  (orchestrator — owns cross-subsystem calculations only)
+  │
+  ├── ToolheadManager ─────────────────────────────────→ ToolheadConfig / ToolheadGeometry
+  │     (hardware agnostic, no client import)                  └─ toolheads/*/yaml
+  │
+  ├── HomingManager ───────────────────────────────────→ MotionClientProtocol
+  │     (independent of toolhead logic)                        └─ homing_state.py
+  │                                                                 └─ ~/.chem_bench/homing_state.json
+  └── MotionEngine ────────────────────────────────────→ MotionClientProtocol (only import)
+        (safe clearance travel sequence only)
+```
+
+**Coupling rule enforced in each subsystem:**
+
+| Subsystem | Imports from motion layer | Imports toolhead? | Imports homing? |
+|-----------|--------------------------|-------------------|-----------------|
+| `ToolheadManager` | None | — | No |
+| `HomingManager` | `MotionClientProtocol` | No | — |
+| `MotionEngine` | `MotionClientProtocol` only | No | No |
+| `GantryController` | All three subsystems | Yes (reads geometry) | Yes (reads limits) |
+
+**What the controller is now:** a coordinator that reads two subsystems (HomingManager for limits, ToolheadManager for geometry), performs the two derived calculations that span both (`_safe_clearance_z`, `_check_bounds`, and offset compensation in `move_to`), and delegates everything else. It contains no state of its own.
+
+---
+
+## Future Scaling Assessment
+
+*Assessed after proto codegen migration and package restructure, June 2026.*
+
+### What scales well
+
+**Adding a new device**
+Follow the `chem_bench_ph` package template. Create a new directory under `software/backend/`, add it to the uv workspace, define a SiLA feature, write a `server.py` and `_cli.py`. The gantry and existing pH packages are untouched. On the frontend, drop a new `devices/<name>/` package with `FEATURE_FRAGMENTS` and `create_widget()` — `device_registry.py` discovers it automatically.
+
+**Adding a new command to `Gantry`**
+1. Implement the method in `chem_bench_gantry/feature.py`
+2. Add the `rpc` entry to the static section of `gantry/scripts/gen_proto.py`'s `_FOOTER`
+3. Run `make gen-proto`
+4. Add the wrapper call to `chem_bench_client/client.py`
+
+**Dataclass field additions at the end**
+If `Position` or `ToolheadInfo` gain new fields appended at the end, the next `make gen-proto` + recompile produces correct stubs with no change to existing field numbers.
+
+### What doesn't scale
+
+**Field insertion in the middle of a dataclass**
+Inserting a field between existing fields in `Position` or `ToolheadInfo` shifts all subsequent field numbers — silent data corruption between server and old frontend stubs. `make check-proto` catches this before it ships.
+
+**The generator is feature-specific**
+`gantry/scripts/gen_proto.py` hardcodes `from chem_bench_gantry.feature import Position, ToolheadInfo`. A `PHSensor` or `WellPlate` proto would require either a new generator script or a refactored common generator.
+
+**Observable Command responses are unsubscribed**
+`MoveTo` and `Jog` errors mid-move are silently discarded by the frontend. As the experiment layer matures, workflows will need to know whether a move completed successfully — this requires subscribing to the response stream.
+
+**Proto version pinning**
+The compiled `_pb2.py` is pinned to `protobuf 6.x`. Major version bumps require `make gen-proto` and coordination between backend dev environment and frontend deployment.

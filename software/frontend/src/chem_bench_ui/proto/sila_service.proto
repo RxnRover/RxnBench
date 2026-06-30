@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+// SiLA2 standard SiLAService feature — GetImplementedFeatures only.
+//
+// This file is STATIC — it mirrors the SiLA2 standard definition and will not
+// drift. No generator is needed. The SiLAService is always registered by the
+// CDK Connector; its structure is defined by the standard, not our dataclasses.
+//
+// Package derived from SiLAService metadata (sila/server/sila_service.py):
+//   originator="org.silastandard", category="core", identifier="SiLAService", version=1
+//   rpc_package = "sila2." + originator + "." + category + "." + identifier.lower() + ".v1"
+
+package sila2.org.silastandard.core.silaservice.v1;
+
+message SString { string value = 1; }
+
+message Get_ImplementedFeatures_Parameters {}
+message Get_ImplementedFeatures_Responses {
+    repeated SString ImplementedFeatures = 1;
+}
+
+service SiLAService {
+    rpc Get_ImplementedFeatures (Get_ImplementedFeatures_Parameters)
+        returns (Get_ImplementedFeatures_Responses);
+}
