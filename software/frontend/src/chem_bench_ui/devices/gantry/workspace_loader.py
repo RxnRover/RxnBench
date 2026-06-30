@@ -113,9 +113,11 @@ class WorkspaceCanvas(QWidget):
 
     def __init__(self, t: dict, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._t      = t
+        self._t           = t
         self._plates: list[dict] = []
-        self._cal_ref = ""
+        self._cal_ref     = ""
+        self._active_well = ("", "")   # (plate_id, well_label) to highlight
+        self._current_pos: tuple[float, float] | None = None  # gantry XY mm
         self.setMinimumSize(300, 200)
 
     def load(self, workspace: dict) -> None:
@@ -126,6 +128,16 @@ class WorkspaceCanvas(QWidget):
     def clear(self) -> None:
         self._plates  = []
         self._cal_ref = ""
+        self._active_well = ("", "")
+        self._current_pos = None
+        self.update()
+
+    def set_active_well(self, plate_id: str, well_label: str) -> None:
+        self._active_well = (plate_id, well_label)
+        self.update()
+
+    def set_current_position(self, x: float, y: float) -> None:
+        self._current_pos = (x, y)
         self.update()
 
     def set_theme(self, t: dict) -> None:
@@ -240,8 +252,17 @@ class WorkspaceCanvas(QWidget):
                     wx, wy = to_px(gx, gy)
                     is_cal = (pid == cal_plate_id and wlabel == cal_well)
 
+                    is_active = (
+                        pid == self._active_well[0]
+                        and wlabel == self._active_well[1]
+                    )
                     if is_cal:
                         ac = QColor(t["accent"])
+                        p.setBrush(QBrush(ac))
+                        p.setPen(QPen(ac.darker(130), 1.5))
+                        wr = r_px * 1.6
+                    elif is_active:
+                        ac = QColor(t.get("dot_ok", "#22c55e"))
                         p.setBrush(QBrush(ac))
                         p.setPen(QPen(ac.darker(130), 1.5))
                         wr = r_px * 1.6
@@ -266,6 +287,18 @@ class WorkspaceCanvas(QWidget):
             p.setPen(QColor(t["text"]))
             p.setFont(QFont("sans-serif", max(7, int(scale * 4.5)), QFont.Bold))
             p.drawText(QRectF(sx1 + 5, sy1 + 4, rect.width() - 10, 18), Qt.AlignLeft, pid)
+
+        # Current gantry position crosshair
+        if self._current_pos is not None:
+            cx, cy = to_px(self._current_pos[0], self._current_pos[1])
+            arm = 10
+            cross_col = QColor(t.get("dot_warn", "#f59e0b"))
+            p.setPen(QPen(cross_col, 2.0))
+            p.drawLine(int(cx - arm), int(cy), int(cx + arm), int(cy))
+            p.drawLine(int(cx), int(cy - arm), int(cx), int(cy + arm))
+            p.setBrush(QBrush(cross_col))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(QRectF(cx - 3, cy - 3, 6, 6))
 
         # Calibration reference label (bottom strip)
         if self._cal_ref:
@@ -330,11 +363,9 @@ class WorkspaceCanvas(QWidget):
 
 
 class WorkspaceLoaderWidget(QWidget):
-    """
-    Loads workspace_loader.ui.
-    Accepts an optional DiscoveredServer to send workspace commands to the
-    gantry over gRPC (Apply and Load by Name).
-    """
+    """Workspace loader panel — edit/import YAML, send to server, preview canvas."""
+
+    workspace_changed = Signal(dict)   # emits parsed workspace dict on each valid render
 
     def __init__(
         self,
@@ -422,6 +453,7 @@ class WorkspaceLoaderWidget(QWidget):
             ws = yaml.safe_load(text)
             if isinstance(ws, dict) and "plates" in ws:
                 self._canvas.load(ws)
+                self.workspace_changed.emit(ws)
         except Exception:
             pass  # Keep showing last valid render
 

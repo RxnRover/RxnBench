@@ -5,15 +5,16 @@ import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QFile, QThread, Signal
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QComboBox, QGroupBox, QLabel, QPushButton,
-    QVBoxLayout, QWidget,
+    QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 from PySide6.QtUiTools import QUiLoader
 
 from ...discovery import DiscoveredServer
 from ...sila_client import SilaClient
-from .workspace_loader import WorkspaceLoaderWidget
+from .workspace_loader import WorkspaceCanvas, WorkspaceLoaderWidget
 
 _UI_DIR = Path(__file__).parent / "ui"
 
@@ -27,6 +28,89 @@ class _ToolheadListWorker(QThread):
 
     def run(self) -> None:
         self.done.emit(self._client.fetch_toolhead_list())
+
+
+_STATE_LABEL: dict[str, str] = {
+    "ready":          "Standby",
+    "standby":        "Standby",
+    "idle":           "Standby",
+    "printing":       "Moving",
+    "error":          "Error",
+    "error_detected": "Error",
+    "shutdown":       "Offline",
+    "startup":        "Starting up",
+    "paused":         "Paused",
+}
+
+
+class _LivePanel(QWidget):
+    """Live status panel: current action, last well, and a workspace canvas with position overlay."""
+
+    def __init__(self, t: dict, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._t = t
+
+        self._action_lbl = QLabel("Standby")
+        self._well_lbl   = QLabel("—")
+        self._canvas     = WorkspaceCanvas(t)
+
+        # Status strip
+        strip = QWidget()
+        strip_lay = QHBoxLayout(strip)
+        strip_lay.setContentsMargins(6, 4, 6, 4)
+        strip_lay.setSpacing(12)
+
+        action_head = QLabel("Action")
+        well_head   = QLabel("Well")
+        for lbl in (action_head, well_head):
+            f = lbl.font()
+            f.setBold(True)
+            lbl.setFont(f)
+
+        strip_lay.addWidget(action_head)
+        strip_lay.addWidget(self._action_lbl, 2)
+        strip_lay.addWidget(well_head)
+        strip_lay.addWidget(self._well_lbl, 1)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(strip)
+        lay.addWidget(self._canvas, 1)
+
+        self._apply_style()
+
+    def _apply_style(self) -> None:
+        t = self._t
+        self.setStyleSheet(
+            f"QWidget {{ background: {t['widget_bg']}; color: {t['text']}; }}"
+            f"QLabel   {{ background: transparent; }}"
+        )
+
+    def set_action(self, text: str) -> None:
+        self._action_lbl.setText(text)
+
+    def set_well(self, label: str) -> None:
+        self._well_lbl.setText(label or "—")
+        # Highlight the well on canvas
+        if "/" in label:
+            plate_id, well = label.split("/", 1)
+        elif label and label != "—":
+            plate_id, well = "", label
+        else:
+            plate_id, well = "", ""
+        self._canvas.set_active_well(plate_id, well)
+
+    def set_position(self, x: float, y: float) -> None:
+        self._canvas.set_current_position(x, y)
+
+    def load_workspace(self, ws: dict) -> None:
+        self._canvas.load(ws)
+
+    def set_theme(self, t: dict) -> None:
+        self._t = t
+        self._canvas.set_theme(t)
+        self._apply_style()
 
 
 class GantryWidget(QWidget):
@@ -46,7 +130,9 @@ class GantryWidget(QWidget):
         self._t      = t
         self._homed  = False
 
-        self._client = SilaClient()
+        self._client          = SilaClient()
+        self._live_panel: _LivePanel | None = None
+        self._pending_action  = ""   # set when a command fires; cleared on idle
 
         loader = QUiLoader()
         f = QFile(str(_UI_DIR / "gantry_widget.ui"))
@@ -108,11 +194,18 @@ class GantryWidget(QWidget):
         self._cal2_btn       = c.findChild(QPushButton, "calibrate_slot2_btn")
 
     def _inject_right_panel(self) -> None:
-        """Fill the right_panel placeholder with the workspace loader."""
         self._workspace_widget = WorkspaceLoaderWidget(self._t, server=self._server)
+        self._workspace_widget.workspace_changed.connect(self._on_workspace_changed)
+
+        self._live_panel = _LivePanel(self._t)
+
+        tabs = QTabWidget()
+        tabs.addTab(self._live_panel,        "Live")
+        tabs.addTab(self._workspace_widget,  "Configuration")
+
         lay = QVBoxLayout(self._right_panel)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self._workspace_widget)
+        lay.addWidget(tabs)
 
     def _apply_theme(self) -> None:
         t = self._t
@@ -148,6 +241,7 @@ class GantryWidget(QWidget):
         c.toolhead_updated.connect(self._on_toolhead)
         c.saved_state_updated.connect(self._on_saved_state)
         c.error_occurred.connect(self._on_error)
+        c.position_updated.connect(self._on_position_live)
 
     def _wire_controls(self) -> None:
         if self._home_btn:
@@ -202,19 +296,25 @@ class GantryWidget(QWidget):
         if self._th1_combo:
             name = self._th1_combo.currentData()
             if name:
+                display = self._th1_combo.currentText()
+                self._set_action(f"Activating Tool 1 — {display}")
                 self._client.set_toolhead(name)
 
     def _activate_slot2(self) -> None:
         if self._th2_combo:
             name = self._th2_combo.currentData()
             if name:
+                display = self._th2_combo.currentText()
+                self._set_action(f"Activating Tool 2 — {display}")
                 self._client.set_toolhead(name)
 
 
     def _open_homing(self) -> None:
+        self._set_action("Manual Homing")
         from .homing_dialog import HomingDialog
         dlg = HomingDialog(self._client, self._t, self)
         dlg.exec()
+        self._set_action("Standby")
 
     def _open_calibration(self) -> None:
         from .toolhead_calibration_dialog import ToolheadCalibrationDialog
@@ -240,9 +340,36 @@ class GantryWidget(QWidget):
         if self._y_lbl: self._y_lbl.setText(f"Y:   {y:8.2f}")
         if self._z_lbl: self._z_lbl.setText(f"Z:   {z:8.2f}")
 
+    def _on_position_live(self, x: float, y: float, _z: float) -> None:
+        if self._live_panel:
+            self._live_panel.set_position(x, y)
+
+    def _on_workspace_changed(self, ws: dict) -> None:
+        if self._live_panel:
+            self._live_panel.load_workspace(ws)
+
+    def _set_action(self, text: str) -> None:
+        self._pending_action = text
+        if self._live_panel:
+            self._live_panel.set_action(text)
+
     def _on_state(self, state: str) -> None:
         if self._machine_lbl:
             self._machine_lbl.setText(state.capitalize())
+        mapped = _STATE_LABEL.get(state.lower())
+        if mapped == "Standby":
+            self._pending_action = ""
+            if self._live_panel:
+                self._live_panel.set_action("Standby")
+        elif mapped:
+            if not self._pending_action and self._live_panel:
+                self._live_panel.set_action(mapped)
+        elif self._pending_action:
+            if self._live_panel:
+                self._live_panel.set_action(self._pending_action)
+        else:
+            if self._live_panel:
+                self._live_panel.set_action(state.capitalize())
 
     def _on_toolhead(self, info) -> None:
         if self._th1_lbl:
@@ -276,6 +403,10 @@ class GantryWidget(QWidget):
     def set_theme(self, t: dict) -> None:
         self._t = t
         self._apply_theme()
+        if self._live_panel:
+            self._live_panel.set_theme(t)
+        if hasattr(self, "_workspace_widget") and hasattr(self._workspace_widget, "set_theme"):
+            self._workspace_widget.set_theme(t)
 
 
     def closeEvent(self, event) -> None:  # noqa: N802
