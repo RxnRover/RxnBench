@@ -2,7 +2,6 @@
 
 FRONTEND_PROTO_DIR := ../frontend/src/chem_bench_ui/proto
 FRONTEND_PROTO     := $(FRONTEND_PROTO_DIR)/motion_platform.proto
-CLIENT_PROTO_DIR   := client/src/chem_bench_client/proto
 
 install:
 	uv sync
@@ -35,7 +34,6 @@ gen-proto:
 		-I $(FRONTEND_PROTO_DIR) \
 		--python_out=$(FRONTEND_PROTO_DIR) \
 		$(FRONTEND_PROTO)
-	cp $(FRONTEND_PROTO_DIR)/motion_platform_pb2.py $(CLIENT_PROTO_DIR)/
 
 check-proto:
 	@uv run python gantry/scripts/gen_proto.py | diff - $(FRONTEND_PROTO) \

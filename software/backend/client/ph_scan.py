@@ -20,8 +20,6 @@ import argparse
 import sys
 import time
 
-import grpc
-
 from chem_bench_client import ChemBenchClient
 
 # ---------------------------------------------------------------------------
@@ -97,8 +95,8 @@ def run_scan(
         try:
             print("Parking gantry …")
             bench.save_and_park()
-        except grpc.RpcError as exc:
-            print(f"    (park skipped — {exc.details()})")
+        except Exception as exc:
+            print(f"    (park skipped — {exc})")
         print("Done.\n")
 
     return results
