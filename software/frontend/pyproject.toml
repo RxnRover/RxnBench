@@ -9,7 +9,11 @@ dependencies = [
     "protobuf>=6.33.5",
     "zeroconf>=0.131.0",
     "pyyaml>=6.0",
+    "chem-bench-client",
 ]
+
+[tool.uv.sources]
+chem-bench-client = { path = "../backend/client", editable = true }
 
 [project.scripts]
 chem-bench-ui = "chem_bench_ui.app:main"
