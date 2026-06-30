@@ -79,7 +79,7 @@ class ChemBenchClient:
 
     def list_workspaces(self) -> list[str]:
         result = self.sila["gantry"].Gantry.ListWorkspaces()
-        return [w for w in result.Workspaces.splitlines() if w]
+        return [w for w in result.Response0.splitlines() if w]
 
     def set_toolhead(self, name: str) -> None:
         self.sila["gantry"].Gantry.SetToolhead(Name=name)
@@ -94,7 +94,7 @@ class ChemBenchClient:
         result = self.sila["gantry"].Gantry.ListToolheads()
         return [
             (p[0].strip(), p[1].strip())
-            for line in result.Toolheads.splitlines()
+            for line in result.Response0.splitlines()
             if len(p := line.split("|", 1)) == 2
         ]
 
