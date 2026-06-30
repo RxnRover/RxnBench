@@ -136,6 +136,18 @@ def get(name: str) -> dict:
     return _THEMES.get(name, DARK)
 
 
+def _x_icon(color: str) -> str:
+    """Return a CSS url() value containing an inline SVG × for QTabBar close buttons."""
+    c = color.replace('#', '%23')
+    return (
+        "url(\"data:image/svg+xml,"
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>"
+        "<path d='M2.5 2.5 L7.5 7.5 M7.5 2.5 L2.5 7.5' "
+        "stroke='" + c + "' stroke-width='1.6' stroke-linecap='round'/>"
+        "</svg>\")"
+    )
+
+
 def build_qss(t: dict) -> str:
     """Build a QSS stylesheet string from a theme dict."""
     return f"""

@@ -77,6 +77,10 @@ class _LivePanel(QWidget):
 
     def set_action(self, text: str) -> None:
         self._action_lbl.setText(text)
+        if text.startswith("Error:"):
+            self._action_lbl.setStyleSheet("color: #e05252; font-weight: bold;")
+        else:
+            self._action_lbl.setStyleSheet("")
 
     def set_well(self, label: str) -> None:
         self._well_lbl.setText(label or "—")
@@ -231,6 +235,7 @@ class GantryWidget(QWidget):
         c.position_updated.connect(self._on_position_live)
         c.well_changed.connect(self._on_well_changed)
         c.action_changed.connect(self._on_action_changed)
+        c.workspace_yaml_changed.connect(self._on_workspace_yaml_changed)
 
     def _wire_controls(self) -> None:
         if self._home_btn:
@@ -353,6 +358,17 @@ class GantryWidget(QWidget):
         if self._live_panel:
             self._live_panel.set_well(label)
 
+    def _on_workspace_yaml_changed(self, yaml_text: str) -> None:
+        if not yaml_text or not self._live_panel:
+            return
+        import yaml as _yaml
+        try:
+            ws = _yaml.safe_load(yaml_text)
+            if isinstance(ws, dict) and "plates" in ws:
+                self._live_panel.load_workspace(ws)
+        except Exception:
+            pass
+
     def _on_toolhead(self, info) -> None:
         if self._th1_lbl:
             self._th1_lbl.setText(info.display_name or info.name or "None selected")
@@ -378,8 +394,7 @@ class GantryWidget(QWidget):
                 self._last_homed_lbl.setText("Last homed: —")
 
     def _on_error(self, msg: str) -> None:
-        if self._conn_status:
-            self._conn_status.setText(f"Error: {msg[:80]}")
+        pass  # errors are shown in the Live tab action label; leave conn_status alone
 
 
     def set_theme(self, t: dict) -> None:

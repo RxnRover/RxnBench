@@ -307,10 +307,11 @@ class ServerBrowserDialog(QWidget):
     def __init__(self, theme_name: str = "dark", parent=None) -> None:
         super().__init__(parent)
         self._t = themes.get(theme_name)
-        self._known_cards:   list[ServerCard] = []
-        self._unknown_cards: list[ServerCard] = []
-        self._scan_worker:   _ScanWorker | None = None
-        self._manual_worker: _ManualProbeWorker | None = None
+        self._known_cards:     list[ServerCard] = []
+        self._unknown_cards:   list[ServerCard] = []
+        self._scan_worker:     _ScanWorker | None = None
+        self._manual_worker:   _ManualProbeWorker | None = None
+        self._connected_uuids: set[str] = set()
 
         loader = QUiLoader()
         f = QFile(str(_UI_DIR / "server_browser.ui"))
@@ -354,10 +355,22 @@ class ServerBrowserDialog(QWidget):
     def _on_scan_done(self, rxnbench: list, unknown: list) -> None:
         self._populate(rxnbench, self._known_layout,   self._known_cards,   self._known_placeholder)
         self._populate(unknown,   self._unknown_layout, self._unknown_cards, self._unknown_placeholder)
+        # Restore connected state for any devices that were connected before the refresh
+        for uuid in self._connected_uuids:
+            self._restore_connected(uuid)
         self._status_lbl.setText(
             f"Found {len(rxnbench)} known device(s), {len(unknown)} unknown server(s)."
         )
         self._refresh_btn.setEnabled(True)
+
+    def _restore_connected(self, uuid: str) -> None:
+        for card in self._known_cards + self._unknown_cards:
+            if card._server.uuid == uuid:
+                try:
+                    card.set_connected(True)
+                except RuntimeError:
+                    pass
+                return
 
     def _manual_entry(self) -> None:
         dlg = _ManualEntryDialog(self)
@@ -394,6 +407,10 @@ class ServerBrowserDialog(QWidget):
         cards.append(card)
 
     def set_device_connected(self, uuid: str, connected: bool) -> None:
+        if connected:
+            self._connected_uuids.add(uuid)
+        else:
+            self._connected_uuids.discard(uuid)
         for card in self._known_cards + self._unknown_cards:
             if card._server.uuid == uuid:
                 try:

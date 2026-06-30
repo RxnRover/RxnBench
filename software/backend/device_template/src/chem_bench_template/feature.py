@@ -18,6 +18,7 @@ import asyncio
 from unitelabs.cdk import sila
 
 from chem_bench_template.interfaces import MyDeviceProtocol
+from chem_bench_template.session_log import SessionLog
 
 
 class MyDevice(sila.Feature):
@@ -36,6 +37,8 @@ class MyDevice(sila.Feature):
             maturity_level="Draft",
         )
         self._device = device
+        # TODO: replace "mydevice" with your device name (e.g. "conductivity", "balance")
+        self._log = SessionLog(prefix="mydevice")
 
     @sila.ObservableProperty()
     async def measurement(self) -> sila.Stream[float]:
@@ -60,4 +63,9 @@ class MyDevice(sila.Feature):
         Args:
             Parameter: TODO - describe what this value controls and its units.
         """
-        await asyncio.to_thread(self._device.do_action, parameter)
+        try:
+            await asyncio.to_thread(self._device.do_action, parameter)
+            self._log.log("perform_action", parameter=parameter, ok=True)
+        except Exception as exc:
+            self._log.log("perform_action", parameter=parameter, ok=False, error=str(exc))
+            raise

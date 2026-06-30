@@ -74,7 +74,7 @@ class _ScriptRunner(QThread):
 class ExperimentPanel(QWidget):
     """Loads experiment_panel.ui and manages the script lifecycle."""
 
-    preferred_mdi_size = (700, 480)
+    preferred_mdi_size = (580, 460)
 
     def __init__(self, t: dict, parent: QWidget | None = None) -> None:
         super().__init__(parent)

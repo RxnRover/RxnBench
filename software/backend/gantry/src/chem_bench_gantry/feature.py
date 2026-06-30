@@ -5,6 +5,7 @@ import dataclasses
 from unitelabs.cdk import sila
 
 from chem_bench_gantry.interfaces import GantryControllerProtocol
+from chem_bench_gantry.session_log import SessionLog
 
 
 @dataclasses.dataclass
@@ -43,12 +44,27 @@ class Gantry(sila.Feature):
         )
         self._controller = controller
         self._hw_lock = asyncio.Lock()
-        self._current_well:   str = ""
-        self._current_action: str = "Standby"
+        self._current_well:           str = ""
+        self._current_action:         str = "Standby"
+        self._current_workspace_yaml: str = ""
+        self._log = SessionLog(prefix="gantry")
 
-    async def _run(self, fn, *args, **kwargs):
+    async def _run(self, fn, *args, log: str = "", **log_kw):
+        """Acquire the hardware lock, run fn(*args) in a thread, and log the result."""
         async with self._hw_lock:
-            return await asyncio.to_thread(fn, *args, **kwargs)
+            try:
+                result = await asyncio.to_thread(fn, *args)
+                if log:
+                    self._log.log(log, ok=True, **log_kw)
+                return result
+            except Exception as exc:
+                if log:
+                    self._log.log(log, ok=False, error=str(exc), **log_kw)
+                raise
+
+    # ------------------------------------------------------------------
+    # Observable properties
+    # ------------------------------------------------------------------
 
     @sila.ObservableProperty()
     async def position(self) -> sila.Stream[Position]:
@@ -66,122 +82,25 @@ class Gantry(sila.Feature):
             await asyncio.sleep(0.5)
 
     @sila.ObservableProperty()
+    async def current_workspace_yaml(self) -> sila.Stream[str]:
+        """Raw YAML of the currently loaded workspace, empty string if none."""
+        while True:
+            yield self._current_workspace_yaml
+            await asyncio.sleep(1.0)
+
+    @sila.ObservableProperty()
     async def current_well(self) -> sila.Stream[str]:
         """Label of the well the gantry most recently moved to, e.g. 'plate1/A3'."""
-        last = object()
         while True:
-            if self._current_well is not last:
-                last = self._current_well
-                yield self._current_well
+            yield self._current_well
             await asyncio.sleep(0.1)
 
     @sila.ObservableProperty()
     async def current_action(self) -> sila.Stream[str]:
         """Human-readable description of what the gantry is currently doing."""
-        last = object()
         while True:
-            if self._current_action is not last:
-                last = self._current_action
-                yield self._current_action
+            yield self._current_action
             await asyncio.sleep(0.1)
-
-    @sila.ObservableCommand()
-    async def move_to(self, x: float, y: float, z: float) -> None:
-        """Move to an absolute position with safe clearance travel (raise -> XY -> lower).
-
-        Args:
-            X: Target x coordinate in mm. e.g. 150.0
-            Y: Target y coordinate in mm. e.g. 200.0
-            Z: Target z coordinate in mm. e.g. 50.0
-        """
-        self._current_action = f"Moving to ({x:.1f}, {y:.1f}, {z:.1f})"
-        try:
-            await self._run(self._controller.move_to, x, y, z)
-        finally:
-            self._current_action = "Standby"
-
-    @sila.ObservableCommand()
-    async def jog(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> None:
-        """Move relative to the current position. No clearance sequence.
-
-        Args:
-            Dx: Relative X distance in mm. Positive = right. e.g. 10.0
-            Dy: Relative Y distance in mm. Positive = forward. e.g. 10.0
-            Dz: Relative Z distance in mm. Positive = up, negative = down. e.g. -5.0
-        """
-        await self._run(self._controller.jog, dx, dy, dz)
-
-    @sila.ObservableCommand()
-    async def engage_tool(self, depth: float) -> None:
-        """Lower the tool by a specified depth (mm) from the current position.
-
-        Args:
-            Depth: Distance in mm to lower the tool. e.g. 5.0
-        """
-        self._current_action = "Engaging tool"
-        try:
-            await self._run(self._controller.engage_tool, depth)
-        finally:
-            self._current_action = "Standby"
-
-    @sila.ObservableCommand()
-    async def disengage_tool(self, depth: float) -> None:
-        """Raise the tool by a specified depth (mm) from the current position.
-
-        Args:
-            Depth: Distance in mm to raise the tool. e.g. 5.0
-        """
-        self._current_action = "Disengaging tool"
-        try:
-            await self._run(self._controller.disengage_tool, depth)
-        finally:
-            self._current_action = "Standby"
-
-    @sila.UnobservableCommand()
-    async def start_manual_homing(self) -> None:
-        """Begin manual homing with a toolhead mounted."""
-        self._current_action = "Manual Homing"
-        await self._run(self._controller.start_manual_homing)
-
-    @sila.UnobservableCommand()
-    async def confirm_x_min(self) -> None:
-        """Declare current X position as X=0 (left physical limit)."""
-        await self._run(self._controller.confirm_x_min)
-
-    @sila.UnobservableCommand()
-    async def confirm_x_max(self) -> None:
-        """Record current X position as the right physical limit."""
-        await self._run(self._controller.confirm_x_max)
-
-    @sila.UnobservableCommand()
-    async def confirm_y_min(self) -> None:
-        """Declare current Y position as Y=0 (front physical limit)."""
-        await self._run(self._controller.confirm_y_min)
-
-    @sila.UnobservableCommand()
-    async def confirm_y_max(self) -> None:
-        """Record current Y position as the back physical limit."""
-        await self._run(self._controller.confirm_y_max)
-
-    @sila.UnobservableCommand()
-    async def confirm_z_reference(self) -> None:
-        """Declare current Z position as Z=0 (working reference surface)."""
-        await self._run(self._controller.confirm_z_reference)
-
-    @sila.UnobservableCommand()
-    async def finish_homing(self) -> None:
-        """End manual homing mode and restore bounds checking."""
-        await self._run(self._controller.finish_homing)
-        self._current_action = "Standby"
-
-    @sila.UnobservableCommand()
-    async def set_z(self, z: float) -> None:
-        """Manually declare the current Z height without moving.
-
-        Args:
-            Z: Current Z height in mm. e.g. 50.0
-        """
-        await self._run(self._controller.set_z, z)
 
     @sila.ObservableProperty()
     async def toolhead_info(self) -> sila.Stream[ToolheadInfo]:
@@ -214,6 +133,165 @@ class Gantry(sila.Feature):
                 )
             await asyncio.sleep(1.0)
 
+    @sila.ObservableProperty()
+    async def has_saved_state(self) -> sila.Stream[bool]:
+        """True if calibrated limits from a previous clean shutdown are loaded."""
+        while True:
+            yield self._controller.has_saved_state
+            await asyncio.sleep(2.0)
+
+    # ------------------------------------------------------------------
+    # Motion commands
+    # ------------------------------------------------------------------
+
+    @sila.UnobservableCommand()
+    async def move_to(self, x: float, y: float, z: float) -> None:
+        """Move to an absolute position with safe clearance travel (raise -> XY -> lower).
+
+        Args:
+            X: Target x coordinate in mm. e.g. 150.0
+            Y: Target y coordinate in mm. e.g. 200.0
+            Z: Target z coordinate in mm. e.g. 50.0
+        """
+        self._current_action = f"Moving to ({x:.1f}, {y:.1f}, {z:.1f})"
+        try:
+            await self._run(self._controller.move_to, x, y, z, log="move_to", x=x, y=y, z=z)
+            self._current_action = "Standby"
+        except Exception as exc:
+            self._current_action = f"Error: {exc}"
+            raise
+
+    @sila.UnobservableCommand()
+    async def move_to_well(self, label: str) -> None:
+        """Move to a well by label using the active workspace.
+
+        Args:
+            Label: Well label, e.g. 'A3', 'H12', or 'plate1/A3'.
+        """
+        self._current_action = f"Moving to {label}"
+        try:
+            await self._run(self._controller.move_to_well, label, log="move_to_well", well=label)
+            self._current_well = label
+            self._current_action = "Standby"
+        except Exception as exc:
+            self._current_action = f"Error: {exc}"
+            raise
+
+    @sila.UnobservableCommand()
+    async def jog(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> None:
+        """Move relative to the current position. No clearance sequence.
+
+        Args:
+            Dx: Relative X distance in mm. Positive = right. e.g. 10.0
+            Dy: Relative Y distance in mm. Positive = forward. e.g. 10.0
+            Dz: Relative Z distance in mm. Positive = up, negative = down. e.g. -5.0
+        """
+        try:
+            await self._run(self._controller.jog, dx, dy, dz)
+        except Exception as exc:
+            self._current_action = f"Error: {exc}"
+            raise
+
+    @sila.UnobservableCommand()
+    async def engage_tool(self, depth: float) -> None:
+        """Lower the tool by a specified depth (mm) from the current position.
+
+        Args:
+            Depth: Distance in mm to lower the tool. e.g. 5.0
+        """
+        self._current_action = "Engaging tool"
+        try:
+            await self._run(self._controller.engage_tool, depth, log="engage_tool", depth=depth)
+            self._current_action = "Standby"
+        except Exception as exc:
+            self._current_action = f"Error: {exc}"
+            raise
+
+    @sila.UnobservableCommand()
+    async def disengage_tool(self, depth: float) -> None:
+        """Raise the tool by a specified depth (mm) from the current position.
+
+        Args:
+            Depth: Distance in mm to raise the tool. e.g. 5.0
+        """
+        self._current_action = "Disengaging tool"
+        try:
+            await self._run(self._controller.disengage_tool, depth, log="disengage_tool", depth=depth)
+            self._current_action = "Standby"
+        except Exception as exc:
+            self._current_action = f"Error: {exc}"
+            raise
+
+    @sila.UnobservableCommand()
+    async def save_and_park(self) -> None:
+        """Move to the park position and save homing state for the next session."""
+        self._current_action = "Parking"
+        try:
+            await self._run(self._controller.save_and_park, log="save_and_park")
+            self._current_action = "Standby"
+        except Exception as exc:
+            self._current_action = f"Error: {exc}"
+            raise
+
+    # ------------------------------------------------------------------
+    # Homing
+    # ------------------------------------------------------------------
+
+    @sila.UnobservableCommand()
+    async def start_manual_homing(self) -> None:
+        """Begin manual homing with a toolhead mounted."""
+        self._current_action = "Manual Homing"
+        await self._run(self._controller.start_manual_homing, log="homing", step="start")
+
+    @sila.UnobservableCommand()
+    async def confirm_x_min(self) -> None:
+        """Declare current X position as X=0 (left physical limit)."""
+        await self._run(self._controller.confirm_x_min, log="homing", step="x_min")
+
+    @sila.UnobservableCommand()
+    async def confirm_x_max(self) -> None:
+        """Record current X position as the right physical limit."""
+        await self._run(self._controller.confirm_x_max, log="homing", step="x_max")
+
+    @sila.UnobservableCommand()
+    async def confirm_y_min(self) -> None:
+        """Declare current Y position as Y=0 (front physical limit)."""
+        await self._run(self._controller.confirm_y_min, log="homing", step="y_min")
+
+    @sila.UnobservableCommand()
+    async def confirm_y_max(self) -> None:
+        """Record current Y position as the back physical limit."""
+        await self._run(self._controller.confirm_y_max, log="homing", step="y_max")
+
+    @sila.UnobservableCommand()
+    async def confirm_z_reference(self) -> None:
+        """Declare current Z position as Z=0 (working reference surface)."""
+        await self._run(self._controller.confirm_z_reference, log="homing", step="z_reference")
+
+    @sila.UnobservableCommand()
+    async def finish_homing(self) -> None:
+        """End manual homing mode and restore bounds checking."""
+        await self._run(self._controller.finish_homing, log="homing", step="finish")
+        self._current_action = "Standby"
+
+    @sila.UnobservableCommand()
+    async def set_z(self, z: float) -> None:
+        """Manually declare the current Z height without moving.
+
+        Args:
+            Z: Current Z height in mm. e.g. 50.0
+        """
+        await self._run(self._controller.set_z, z)
+
+    @sila.UnobservableCommand()
+    async def get_limits(self) -> str:
+        """Return calibrated axis limits as a pipe-delimited string: 'x_min|x_max|y_min|y_max|z_min|z_max'."""
+        return await asyncio.to_thread(self._controller.get_limits)
+
+    # ------------------------------------------------------------------
+    # Toolhead management
+    # ------------------------------------------------------------------
+
     @sila.UnobservableCommand()
     async def set_toolhead(self, name: str) -> None:
         """Load a toolhead config by name and apply its geometry.
@@ -221,28 +299,32 @@ class Gantry(sila.Feature):
         Args:
             Name: Toolhead name matching a config folder under toolheads/. e.g. ph_probe
         """
-        await self._run(self._controller.set_toolhead, name)
+        await self._run(self._controller.set_toolhead, name, log="set_toolhead", toolhead=name)
 
     @sila.UnobservableCommand()
     async def clear_toolhead(self) -> None:
         """Remove the active toolhead and revert to bare carriage geometry."""
-        await self._run(self._controller.clear_toolhead)
+        await self._run(self._controller.clear_toolhead, log="clear_toolhead")
 
     @sila.UnobservableCommand()
     async def confirm_toolhead_mounted(self) -> None:
         """Confirm that a toolhead is physically installed on the carriage."""
-        await self._run(self._controller.set_toolhead_mounted, True)
+        await self._run(self._controller.set_toolhead_mounted, True, log="toolhead_mounted", mounted=True)
 
     @sila.UnobservableCommand()
     async def clear_toolhead_mounted(self) -> None:
         """Declare that no toolhead is physically installed."""
-        await self._run(self._controller.set_toolhead_mounted, False)
+        await self._run(self._controller.set_toolhead_mounted, False, log="toolhead_mounted", mounted=False)
 
     @sila.UnobservableCommand()
     async def list_toolheads(self) -> str:
         """Return installed toolhead configs as newline-delimited 'name|display_name' entries."""
         entries = await asyncio.to_thread(self._controller.list_toolheads)
         return "\n".join(f"{n}|{d}" for n, d in entries)
+
+    # ------------------------------------------------------------------
+    # Workspace management
+    # ------------------------------------------------------------------
 
     @sila.UnobservableCommand()
     async def set_workspace(self, name: str) -> None:
@@ -252,6 +334,7 @@ class Gantry(sila.Feature):
             Name: Workspace name matching a file in workspace/definitions/. e.g. plate_96well
         """
         await asyncio.to_thread(self._controller.set_workspace, name)
+        self._log.log("load_workspace", source=name)
 
     @sila.UnobservableCommand()
     async def load_workspace_yaml(self, content: str) -> None:
@@ -261,44 +344,16 @@ class Gantry(sila.Feature):
             Content: Full YAML content of a workspace definition.
         """
         await asyncio.to_thread(self._controller.load_workspace_from_yaml, content)
+        self._current_workspace_yaml = content
+        self._log.log("load_workspace", source="yaml")
 
-    @sila.ObservableCommand()
-    async def move_to_well(self, label: str) -> None:
-        """Move to a well by label using the active workspace.
-
-        Args:
-            Label: Well label, e.g. 'A3', 'H12', or 'plate1/A3'.
-        """
-        self._current_action = f"Moving to {label}"
-        try:
-            await self._run(self._controller.move_to_well, label)
-            self._current_well = label
-        finally:
-            self._current_action = "Standby"
+    @sila.UnobservableCommand()
+    async def get_workspace_yaml(self) -> str:
+        """Return the raw YAML of the currently loaded workspace, or empty string if none."""
+        return self._current_workspace_yaml
 
     @sila.UnobservableCommand()
     async def list_workspaces(self) -> str:
         """Return available workspace config names as a newline-delimited list."""
         entries = await asyncio.to_thread(self._controller.list_workspaces)
         return "\n".join(entries)
-
-    @sila.ObservableProperty()
-    async def has_saved_state(self) -> sila.Stream[bool]:
-        """True if calibrated limits from a previous clean shutdown are loaded."""
-        while True:
-            yield self._controller.has_saved_state
-            await asyncio.sleep(2.0)
-
-    @sila.UnobservableCommand()
-    async def save_and_park(self) -> None:
-        """Move to the park position and save homing state for the next session."""
-        self._current_action = "Parking"
-        try:
-            await self._run(self._controller.save_and_park)
-        finally:
-            self._current_action = "Standby"
-
-    @sila.UnobservableCommand()
-    async def get_limits(self) -> str:
-        """Return calibrated axis limits as a pipe-delimited string: 'x_min|x_max|y_min|y_max|z_min|z_max'."""
-        return await asyncio.to_thread(self._controller.get_limits)

@@ -5,6 +5,7 @@ from unitelabs.cdk import sila
 
 from chem_bench_ph.interfaces import PHSensorProtocol
 from chem_bench_ph.enums import CalibrationPoint
+from chem_bench_ph.session_log import SessionLog
 
 
 class PHSensor(sila.Feature):
@@ -17,6 +18,7 @@ class PHSensor(sila.Feature):
             maturity_level="Draft",
         )
         self._sensor = sensor
+        self._log = SessionLog(prefix="ph_sensor")
 
     @sila.ObservableProperty()
     async def ph(self) -> sila.Stream[float]:
@@ -38,4 +40,9 @@ class PHSensor(sila.Feature):
             Point: Calibration point - mid, low, high, or clear.
             Value: Known pH of the calibration buffer. Ignored if Point is clear.
         """
-        self._sensor.calibrate(point, value)
+        try:
+            self._sensor.calibrate(point, value)
+            self._log.log("calibrate", point=point.value, buffer_ph=value, ok=True)
+        except Exception as exc:
+            self._log.log("calibrate", point=point.value, buffer_ph=value, ok=False, error=str(exc))
+            raise

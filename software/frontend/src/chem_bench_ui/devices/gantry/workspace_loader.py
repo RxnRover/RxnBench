@@ -279,14 +279,26 @@ class WorkspaceCanvas(QWidget):
             # A1 label
             a1gx, a1gy = _well_gxy(spec.a1x, spec.a1y)
             a1x_px, a1y_px = to_px(a1gx, a1gy)
+            a1_fsz = max(6, min(12, int(scale * 3.5)))
             p.setPen(QColor(t["text"]))
-            p.setFont(QFont("sans-serif", max(6, int(scale * 3.5))))
-            p.drawText(QRectF(a1x_px + r_px + 1, a1y_px - 8, 20, 12), Qt.AlignLeft, "A1")
+            p.setFont(QFont("sans-serif", a1_fsz))
+            p.drawText(
+                QRectF(a1x_px + r_px + 2, a1y_px - a1_fsz, 60, a1_fsz * 2 + 4),
+                Qt.AlignLeft | Qt.AlignVCenter,
+                "A1",
+            )
 
-            # Plate ID label in top-left of rect
-            p.setPen(QColor(t["text"]))
-            p.setFont(QFont("sans-serif", max(7, int(scale * 4.5)), QFont.Bold))
-            p.drawText(QRectF(sx1 + 5, sy1 + 4, rect.width() - 10, 18), Qt.AlignLeft, pid)
+            # Plate ID label — skip when the plate rectangle is too small to fit text
+            pid_fsz = max(7, min(14, int(scale * 4.5)))
+            label_w = rect.width() - 10
+            if label_w > 5:
+                p.setPen(QColor(t["text"]))
+                p.setFont(QFont("sans-serif", pid_fsz, QFont.Bold))
+                p.drawText(
+                    QRectF(sx1 + 5, sy1 + 4, label_w, max(pid_fsz + 4, 18)),
+                    Qt.AlignLeft,
+                    pid,
+                )
 
         # Current gantry position crosshair
         if self._current_pos is not None:
