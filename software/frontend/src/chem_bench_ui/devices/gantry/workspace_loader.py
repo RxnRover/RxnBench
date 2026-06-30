@@ -160,10 +160,18 @@ class WorkspaceCanvas(QWidget):
             (p_["origin"].get("x", 0.0), p_["origin"].get("y", 0.0))
             for p_, _ in entries
         ]
-        min_x = min(o[0] for o in origins) - 15
-        min_y = min(o[1] for o in origins) - 15
-        max_x = max(o[0] + s.width  for (_, s), o in zip(entries, origins)) + 15
-        max_y = max(o[1] + s.height for (_, s), o in zip(entries, origins)) + 15
+        def plate_extents(plate: dict, spec: _PlateSpec) -> tuple[float, float, float, float]:
+            ox_ = plate["origin"].get("x", 0.0)
+            oy_ = plate["origin"].get("y", 0.0)
+            if plate.get("orientation") == "rotated_90":
+                return ox_ - spec.height, ox_, oy_, oy_ + spec.width
+            return ox_, ox_ + spec.width, oy_, oy_ + spec.height
+
+        extents = [plate_extents(pl, sp) for pl, sp in entries]
+        min_x = min(e[0] for e in extents) - 15
+        min_y = min(e[2] for e in extents) - 15
+        max_x = max(e[1] for e in extents) + 15
+        max_y = max(e[3] for e in extents) + 15
 
         span_x = max_x - min_x or 1
         span_y = max_y - min_y or 1
@@ -190,14 +198,25 @@ class WorkspaceCanvas(QWidget):
             cal_plate_id, cal_well = self._cal_ref.split("/", 1)
 
         for i, (plate, spec) in enumerate(entries):
-            pid   = plate.get("id", f"plate{i + 1}")
-            ox    = plate["origin"].get("x", 0.0)
-            oy    = plate["origin"].get("y", 0.0)
-            color = QColor(_PALETTE[i % len(_PALETTE)])
+            pid         = plate.get("id", f"plate{i + 1}")
+            ox          = plate["origin"].get("x", 0.0)
+            oy          = plate["origin"].get("y", 0.0)
+            rotated     = plate.get("orientation") == "rotated_90"
+            color       = QColor(_PALETTE[i % len(_PALETTE)])
 
-            # Plate rectangle
-            sx1, sy1 = to_px(ox,             oy + spec.height)
-            sx2, sy2 = to_px(ox + spec.width, oy)
+            def _well_gxy(pdx: float, pdy: float) -> tuple[float, float]:
+                # Transform plate-local (pdx, pdy) to gantry XY, matching backend _apply_orientation.
+                if rotated:
+                    return ox - pdy, oy + pdx
+                return ox + pdx, oy + pdy
+
+            # Plate rectangle corners
+            if rotated:
+                sx1, sy1 = to_px(ox - spec.height, oy + spec.width)
+                sx2, sy2 = to_px(ox,               oy)
+            else:
+                sx1, sy1 = to_px(ox,               oy + spec.height)
+                sx2, sy2 = to_px(ox + spec.width,  oy)
             rect = QRectF(sx1, sy1, sx2 - sx1, sy2 - sy1)
 
             fill = QColor(color); fill.setAlphaF(0.12)
@@ -214,10 +233,11 @@ class WorkspaceCanvas(QWidget):
                 rl = chr(ord("A") + row)
                 for col in range(spec.cols):
                     wlabel = f"{rl}{col + 1}"
-                    wx, wy = to_px(
-                        ox + spec.a1x + col * spec.spacing,
-                        oy + spec.a1y + row * spec.spacing,
+                    gx, gy = _well_gxy(
+                        spec.a1x + col * spec.spacing,
+                        spec.a1y + row * spec.spacing,
                     )
+                    wx, wy = to_px(gx, gy)
                     is_cal = (pid == cal_plate_id and wlabel == cal_well)
 
                     if is_cal:
@@ -235,8 +255,9 @@ class WorkspaceCanvas(QWidget):
 
                     p.drawEllipse(QRectF(wx - wr, wy - wr, wr * 2, wr * 2))
 
-            # A1 orientation dot label
-            a1x_px, a1y_px = to_px(ox + spec.a1x, oy + spec.a1y)
+            # A1 label
+            a1gx, a1gy = _well_gxy(spec.a1x, spec.a1y)
+            a1x_px, a1y_px = to_px(a1gx, a1gy)
             p.setPen(QColor(t["text"]))
             p.setFont(QFont("sans-serif", max(6, int(scale * 3.5))))
             p.drawText(QRectF(a1x_px + r_px + 1, a1y_px - 8, 20, 12), Qt.AlignLeft, "A1")

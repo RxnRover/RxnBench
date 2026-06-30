@@ -8,6 +8,6 @@ geometry:
   offset_x: 0           # mm
   offset_y: -35         # mm
   tip_x: 0              # mm
-tip_y: -25              # mm
-tip_offset_z: 110     # mm, below carriage mount
+  tip_y: -25            # mm
+  tip_offset_z: 110     # mm, below carriage mount
   z_engage: 25          # mm, depth into well
