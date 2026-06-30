@@ -43,6 +43,8 @@ class Gantry(sila.Feature):
         )
         self._controller = controller
         self._hw_lock = asyncio.Lock()
+        self._current_well:   str = ""
+        self._current_action: str = "Standby"
 
     async def _run(self, fn, *args, **kwargs):
         async with self._hw_lock:
@@ -63,6 +65,26 @@ class Gantry(sila.Feature):
             yield await asyncio.to_thread(self._controller.get_state)
             await asyncio.sleep(0.5)
 
+    @sila.ObservableProperty()
+    async def current_well(self) -> sila.Stream[str]:
+        """Label of the well the gantry most recently moved to, e.g. 'plate1/A3'."""
+        last = object()
+        while True:
+            if self._current_well is not last:
+                last = self._current_well
+                yield self._current_well
+            await asyncio.sleep(0.1)
+
+    @sila.ObservableProperty()
+    async def current_action(self) -> sila.Stream[str]:
+        """Human-readable description of what the gantry is currently doing."""
+        last = object()
+        while True:
+            if self._current_action is not last:
+                last = self._current_action
+                yield self._current_action
+            await asyncio.sleep(0.1)
+
     @sila.ObservableCommand()
     async def move_to(self, x: float, y: float, z: float) -> None:
         """Move to an absolute position with safe clearance travel (raise -> XY -> lower).
@@ -72,7 +94,11 @@ class Gantry(sila.Feature):
             Y: Target y coordinate in mm. e.g. 200.0
             Z: Target z coordinate in mm. e.g. 50.0
         """
-        await self._run(self._controller.move_to, x, y, z)
+        self._current_action = f"Moving to ({x:.1f}, {y:.1f}, {z:.1f})"
+        try:
+            await self._run(self._controller.move_to, x, y, z)
+        finally:
+            self._current_action = "Standby"
 
     @sila.ObservableCommand()
     async def jog(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> None:
@@ -92,7 +118,11 @@ class Gantry(sila.Feature):
         Args:
             Depth: Distance in mm to lower the tool. e.g. 5.0
         """
-        await self._run(self._controller.engage_tool, depth)
+        self._current_action = "Engaging tool"
+        try:
+            await self._run(self._controller.engage_tool, depth)
+        finally:
+            self._current_action = "Standby"
 
     @sila.ObservableCommand()
     async def disengage_tool(self, depth: float) -> None:
@@ -101,11 +131,16 @@ class Gantry(sila.Feature):
         Args:
             Depth: Distance in mm to raise the tool. e.g. 5.0
         """
-        await self._run(self._controller.disengage_tool, depth)
+        self._current_action = "Disengaging tool"
+        try:
+            await self._run(self._controller.disengage_tool, depth)
+        finally:
+            self._current_action = "Standby"
 
     @sila.UnobservableCommand()
     async def start_manual_homing(self) -> None:
         """Begin manual homing with a toolhead mounted."""
+        self._current_action = "Manual Homing"
         await self._run(self._controller.start_manual_homing)
 
     @sila.UnobservableCommand()
@@ -137,6 +172,7 @@ class Gantry(sila.Feature):
     async def finish_homing(self) -> None:
         """End manual homing mode and restore bounds checking."""
         await self._run(self._controller.finish_homing)
+        self._current_action = "Standby"
 
     @sila.UnobservableCommand()
     async def set_z(self, z: float) -> None:
@@ -233,7 +269,12 @@ class Gantry(sila.Feature):
         Args:
             Label: Well label, e.g. 'A3', 'H12', or 'plate1/A3'.
         """
-        await self._run(self._controller.move_to_well, label)
+        self._current_action = f"Moving to {label}"
+        try:
+            await self._run(self._controller.move_to_well, label)
+            self._current_well = label
+        finally:
+            self._current_action = "Standby"
 
     @sila.UnobservableCommand()
     async def list_workspaces(self) -> str:
@@ -251,7 +292,11 @@ class Gantry(sila.Feature):
     @sila.UnobservableCommand()
     async def save_and_park(self) -> None:
         """Move to the park position and save homing state for the next session."""
-        await self._run(self._controller.save_and_park)
+        self._current_action = "Parking"
+        try:
+            await self._run(self._controller.save_and_park)
+        finally:
+            self._current_action = "Standby"
 
     @sila.UnobservableCommand()
     async def get_limits(self) -> str:

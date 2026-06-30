@@ -30,18 +30,6 @@ class _ToolheadListWorker(QThread):
         self.done.emit(self._client.fetch_toolhead_list())
 
 
-_STATE_LABEL: dict[str, str] = {
-    "ready":          "Standby",
-    "standby":        "Standby",
-    "idle":           "Standby",
-    "printing":       "Moving",
-    "error":          "Error",
-    "error_detected": "Error",
-    "shutdown":       "Offline",
-    "startup":        "Starting up",
-    "paused":         "Paused",
-}
-
 
 class _LivePanel(QWidget):
     """Live status panel: current action, last well, and a workspace canvas with position overlay."""
@@ -130,9 +118,8 @@ class GantryWidget(QWidget):
         self._t      = t
         self._homed  = False
 
-        self._client          = SilaClient()
+        self._client     = SilaClient()
         self._live_panel: _LivePanel | None = None
-        self._pending_action  = ""   # set when a command fires; cleared on idle
 
         loader = QUiLoader()
         f = QFile(str(_UI_DIR / "gantry_widget.ui"))
@@ -242,6 +229,8 @@ class GantryWidget(QWidget):
         c.saved_state_updated.connect(self._on_saved_state)
         c.error_occurred.connect(self._on_error)
         c.position_updated.connect(self._on_position_live)
+        c.well_changed.connect(self._on_well_changed)
+        c.action_changed.connect(self._on_action_changed)
 
     def _wire_controls(self) -> None:
         if self._home_btn:
@@ -349,27 +338,20 @@ class GantryWidget(QWidget):
             self._live_panel.load_workspace(ws)
 
     def _set_action(self, text: str) -> None:
-        self._pending_action = text
         if self._live_panel:
             self._live_panel.set_action(text)
 
     def _on_state(self, state: str) -> None:
         if self._machine_lbl:
             self._machine_lbl.setText(state.capitalize())
-        mapped = _STATE_LABEL.get(state.lower())
-        if mapped == "Standby":
-            self._pending_action = ""
-            if self._live_panel:
-                self._live_panel.set_action("Standby")
-        elif mapped:
-            if not self._pending_action and self._live_panel:
-                self._live_panel.set_action(mapped)
-        elif self._pending_action:
-            if self._live_panel:
-                self._live_panel.set_action(self._pending_action)
-        else:
-            if self._live_panel:
-                self._live_panel.set_action(state.capitalize())
+
+    def _on_action_changed(self, action: str) -> None:
+        if self._live_panel:
+            self._live_panel.set_action(action)
+
+    def _on_well_changed(self, label: str) -> None:
+        if self._live_panel:
+            self._live_panel.set_well(label)
 
     def _on_toolhead(self, info) -> None:
         if self._th1_lbl:

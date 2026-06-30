@@ -66,6 +66,12 @@ message Subscribe_ToolheadInfo_Responses  { ToolheadInfo ToolheadInfo = 1; }
 message Subscribe_HasSavedState_Parameters {}
 message Subscribe_HasSavedState_Responses  { Boolean HasSavedState = 1; }
 
+message Subscribe_CurrentWell_Parameters {}
+message Subscribe_CurrentWell_Responses   { SString CurrentWell    = 1; }
+
+message Subscribe_CurrentAction_Parameters {}
+message Subscribe_CurrentAction_Responses  { SString CurrentAction  = 1; }
+
 // Command messages
 
 message Empty {}
@@ -90,7 +96,9 @@ service Gantry {
   rpc Subscribe_Position      (Subscribe_Position_Parameters)      returns (stream Subscribe_Position_Responses);
   rpc Subscribe_State         (Subscribe_State_Parameters)         returns (stream Subscribe_State_Responses);
   rpc Subscribe_ToolheadInfo  (Subscribe_ToolheadInfo_Parameters)  returns (stream Subscribe_ToolheadInfo_Responses);
-  rpc Subscribe_HasSavedState (Subscribe_HasSavedState_Parameters) returns (stream Subscribe_HasSavedState_Responses);
+  rpc Subscribe_HasSavedState  (Subscribe_HasSavedState_Parameters)  returns (stream Subscribe_HasSavedState_Responses);
+  rpc Subscribe_CurrentWell    (Subscribe_CurrentWell_Parameters)    returns (stream Subscribe_CurrentWell_Responses);
+  rpc Subscribe_CurrentAction  (Subscribe_CurrentAction_Parameters)  returns (stream Subscribe_CurrentAction_Responses);
 
   rpc MoveTo        (MoveTo_Parameters)        returns (Empty);
   rpc Jog           (Jog_Parameters)           returns (Empty);

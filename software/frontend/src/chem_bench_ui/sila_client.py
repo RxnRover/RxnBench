@@ -54,11 +54,13 @@ class FeatureDescriptor:
 
 
 def _start_motion_streams(client: "SilaClient", gen: int) -> None:
-    """Start the four Motion Platform subscription threads for this connection generation."""
-    threading.Thread(target=client._stream_position,    args=(gen,), daemon=True).start()
-    threading.Thread(target=client._stream_state,       args=(gen,), daemon=True).start()
-    threading.Thread(target=client._stream_toolhead,    args=(gen,), daemon=True).start()
-    threading.Thread(target=client._stream_saved_state, args=(gen,), daemon=True).start()
+    """Start subscription threads for this connection generation."""
+    threading.Thread(target=client._stream_position,       args=(gen,), daemon=True).start()
+    threading.Thread(target=client._stream_state,          args=(gen,), daemon=True).start()
+    threading.Thread(target=client._stream_toolhead,       args=(gen,), daemon=True).start()
+    threading.Thread(target=client._stream_saved_state,    args=(gen,), daemon=True).start()
+    threading.Thread(target=client._stream_current_well,   args=(gen,), daemon=True).start()
+    threading.Thread(target=client._stream_current_action, args=(gen,), daemon=True).start()
 
 
 _FEATURE_REGISTRY: list[FeatureDescriptor] = [
@@ -101,7 +103,9 @@ class SilaClient(QObject):
     toolhead_updated    = Signal(object)  # emits ToolheadInfo
     features_discovered = Signal(list)    # emits list[str] of found feature names
     feature_state_changed = Signal(str, bool)  # (feature name, streams ok)
-    saved_state_updated = Signal(bool)    # True = saved homing state loaded on server
+    saved_state_updated  = Signal(bool)   # True = saved homing state loaded on server
+    well_changed         = Signal(str)    # label of well most recently moved to
+    action_changed       = Signal(str)    # human-readable current action
     limits_updated      = Signal(float, float, float, float, float, float)  # x_min,x_max,y_min,y_max,z_min,z_max
 
     def __init__(self):
@@ -253,6 +257,32 @@ class SilaClient(QObject):
                     self.saved_state_updated.emit(resp.HasSavedState.value)
             except Exception:
                 if self._gen != gen or self._stop.wait(5.0):
+                    return
+
+    def _stream_current_well(self, gen: int):
+        while self._gen == gen and not self._stop.is_set():
+            try:
+                call = self._channel.unary_stream(self._method("Subscribe_CurrentWell"))
+                for msg in call(b""):
+                    if self._gen != gen or self._stop.is_set():
+                        return
+                    resp = _mp.Subscribe_CurrentWell_Responses.FromString(bytes(msg))
+                    self.well_changed.emit(resp.CurrentWell.value)
+            except Exception:
+                if self._gen != gen or self._stop.wait(3.0):
+                    return
+
+    def _stream_current_action(self, gen: int):
+        while self._gen == gen and not self._stop.is_set():
+            try:
+                call = self._channel.unary_stream(self._method("Subscribe_CurrentAction"))
+                for msg in call(b""):
+                    if self._gen != gen or self._stop.is_set():
+                        return
+                    resp = _mp.Subscribe_CurrentAction_Responses.FromString(bytes(msg))
+                    self.action_changed.emit(resp.CurrentAction.value)
+            except Exception:
+                if self._gen != gen or self._stop.wait(3.0):
                     return
 
     @staticmethod
