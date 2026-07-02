@@ -1,0 +1,33 @@
+# Manifest for the rxn-bench-ph SiLA feature.
+# Run from software/frontend/:
+#   python scripts/gen_connections.py \
+#     ../../devices/ph_sensor/frontend/connection_spec.yaml \
+#     --out ../../devices/ph_sensor/frontend/generated_connection.py
+#
+# NOTE: There are no compiled protobuf stubs for the pH feature.
+# proto_module is omitted, so decode_type must be omitted on all streams
+# (raw bytes are passed directly to the handler). Commands also require
+# raw byte construction and are implemented by hand in the human subclass.
+# Generate stubs (gen_proto.py on the backend) to remove the hand-rolled
+# varint helpers and switch to the normal decode_type: pattern.
+
+meta:
+  package: sila2.edu.iastate.ames.rxnbench.phsensor.v1
+  service: PHSensor
+  class_name: PHConnectionBase
+  # proto_module: omitted — no compiled stubs
+
+streams:
+  - rpc: Subscribe_Ph
+    # decode_type: omitted — raw bytes passed to handler (default decode=bytes)
+    signal: ph_updated
+    signal_args: [float]
+    handler: _handle_ph_raw     # custom: hand-rolls protobuf field parsing
+    feature_name: PHSensor
+
+# Commands — all require raw byte construction or blocking RPC calls;
+# none can be expressed as simple typed parameter messages without stubs.
+# Implemented by hand in devices/ph_sensor/connection.py:
+#
+#   fetch_slope()           → unary_unary Get_ProbeSlope, emits slope_ready(str)
+#   calibrate(point, value) → unary_unary Calibrate with _make_field-built params

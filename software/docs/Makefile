@@ -23,13 +23,13 @@ apidoc:
 		--force \
 		--module-first \
 		--separate \
-		../backend/src/chem_bench
+		../backend/src/rxn_bench
 	@$(SPHINXAPIDOC) \
 		--output-dir api/frontend/generated \
 		--force \
 		--module-first \
 		--separate \
-		../frontend/src/chem_bench_ui
+		../frontend/src/rxn_bench_ui
 
 clean:
 	rm -rf "$(BUILDDIR)"

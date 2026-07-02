@@ -10,3 +10,21 @@ uv.lock
 .venv/
 
 TODO.md
+
+logs/
+
+.pytest_cache/
+
+.ruff_cache/
+
+.vscode/
+
+_build/
+
+_uml/
+
+results/
+
+.claude/worktrees/
+
+.mypy_cache/

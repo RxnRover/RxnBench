@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.abspath("../backend/src"))
 sys.path.insert(0, os.path.abspath("../frontend/src"))
 
-project = "Automated Chem Bench"
+project = "Automated Rxn Bench"
 copyright = "2026, John Brittain"
 author = "John Brittain"
 release = "0.1"
@@ -53,7 +53,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 html_theme = "furo"
 html_static_path = ["_static"]
-html_title = "Automated Chem Bench"
+html_title = "Automated Rxn Bench"
 
 html_theme_options = {
     "sidebar_hide_name": False,

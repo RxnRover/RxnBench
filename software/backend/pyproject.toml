@@ -1,5 +1,10 @@
 [tool.uv.workspace]
-members = ["gantry", "ph_sensor", "client", "device_template"]
+members = [
+    "../../devices/gantry/backend",
+    "../../devices/ph_sensor/backend",
+    "../../devices/device_template/backend",
+    "client",
+]
 
 [[tool.uv.index]]
 name = "unitelabs"

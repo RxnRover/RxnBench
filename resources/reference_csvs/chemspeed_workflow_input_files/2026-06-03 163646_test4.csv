@@ -1,0 +1,6 @@
+Action,Time,Temp
+Setup,5,
+Set Temp,,30
+Adjust pH,,
+Sample,5,
+End,,

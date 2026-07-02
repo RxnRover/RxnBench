@@ -31,7 +31,7 @@ def _probe_features(host: str, port: int) -> list[str]:
     try:
         # Import here so the script works without the full frontend package installed
         sys.path.insert(0, "src")
-        from chem_bench_ui.proto import sila_service_pb2 as _ss
+        from rxn_bench_ui.proto import sila_service_pb2 as _ss
         raw = channel.unary_unary(_SS_PATH)(b"", timeout=3.0)
         resp = _ss.Get_ImplementedFeatures_Responses.FromString(bytes(raw))
         return [item.value for item in resp.ImplementedFeatures]
@@ -114,13 +114,13 @@ def scan(timeout: float, probe: bool) -> None:
     if not found:
         print(
             "\nNothing found. Make sure:\n"
-            "  • The SiLA server is running (chem-bench-gantry / chem-bench-ph)\n"
+            "  • The SiLA server is running (rxn-bench-gantry / rxn-bench-ph)\n"
             "  • Both machines are on the same subnet\n"
             "  • mDNS / Bonjour is not blocked by a firewall\n"
             "\nIf mDNS is blocked (different VLAN, VPN, wired/WiFi split) use:\n"
             "  uv run python scripts/scan_sila.py --manual 192.168.1.42:50051\n"
             "\nTo test locally run a server in mock mode first:\n"
-            "  CHEM_BENCH_MOCK=1 chem-bench-gantry"
+            "  RXN_BENCH_MOCK=1 rxn-bench-gantry"
         )
 
 

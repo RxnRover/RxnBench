@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== Chem Bench UI - Installer ==="
+echo "=== Rxn Bench UI - Installer ==="
 echo ""
 
 if ! command -v uv &>/dev/null; then
@@ -19,7 +19,7 @@ echo "Installing dependencies..."
 uv sync
 
 echo ""
-echo "Installing chem-bench-ui package..."
+echo "Installing rxn-bench-ui package..."
 uv pip install -e .
 
 echo ""
@@ -27,4 +27,4 @@ echo "=== Install complete ==="
 echo ""
 echo "To launch the UI:"
 echo "  cd $(pwd)"
-echo "  uv run chem-bench-ui"
+echo "  uv run rxn-bench-ui"

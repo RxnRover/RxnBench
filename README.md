@@ -1,16 +1,24 @@
-# Automated Liquid Handler Project
+# Rxn Bench - DIY Automated Chemistry Bench
+
+<img src="docs/images/rxn-bench_logo.png" alt="Rxn Bench logo" width="200"/>
 
 ## Overview
 
-This project develops an automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform. 
+Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform, with a pipette toolhead for liquid handling and an Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor; a separate operator machine runs a PySide6 frontend that talks to those servers over gRPC/SiLA, and experiment scripts drive the bench through a Python client package.
 
-## Requirements and Recomenddations
+## Requirements
+
+- A Sovol SV08 3D printer (or similar Klipper-based motion platform) and a Raspberry Pi 5 to control it
+- Python 3.10+ and [`uv`](https://docs.astral.sh/uv/) on both the Pi (backend) and the operator machine (frontend)
+- Atlas Scientific EZO pH kit and 3D-printed mounts (see Component List below) for pH sensing hardware
 
 ## Usage
 
+See [docs/usage.md](docs/usage.md) for commands to install dependencies and start the backend servers (real or mocked) and the frontend UI.
+
 ## Implementation and design
 
-### Software
+See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the current architecture, package layout, and active gaps.
 
 ### Component List
 
@@ -51,6 +59,10 @@ This project develops an automated chemistry bench built on a repurposed Sovol S
 | ---- | ---- | ------- |
 | Bambu Lab A1 | [BambuLabs](https://bambulab.com/en-us/a1) | Unmodified used to 3D print platforms, plates, etc. |
 
+## Gallery
+
+<!-- TODO: add photos of the finished, assembled bench once it's built (see docs/images/the-making-of/ for in-progress build photos). -->
+
 ## References and helpful material
 
 **Core**
@@ -65,7 +77,7 @@ This project develops an automated chemistry bench built on a repurposed Sovol S
 - [Pipette Clip Tip](https://www.thermofisher.com/us/en/home/life-science/lab-plasticware-supplies/pipettes-pipette-tips/pipette-tips/products/cliptip-pipette-system.html)
 
 **Related open-source lab automation projects**
-- [Science Jubilee](https://science-jubilee.readthedocs.io/) - open-source tool-changing lab robot with pipette, camera, and sensor tools; strong reference for multi-tool docking design
+- [Science Jubilee](https://science-jubilee.readthedocs.io/) - open-source tool-changing lab robot with pipette, camera, and sensor tools
 - [Jubilee: An Extensible Machine for Multi-tool Fabrication (paper)](https://www.researchgate.net/publication/341697828_Jubilee_An_Extensible_Machine_for_Multi-tool_Fabrication)
 - [Automated Liquid Handler from a 3D Printer - Journal of Chemical Education](https://pubs.acs.org/doi/10.1021/acs.jchemed.3c00855)
 - [E3D Tool Changer R&D](https://e3d-online.com/blogs/news/research-and-development-motion-system-and-tool-changer) - commercial tool-changer that inspired Jubilee's docking mechanism
@@ -75,3 +87,15 @@ This project develops an automated chemistry bench built on a repurposed Sovol S
 
 
 ## Authors and Contributors
+
+John Brittain
+
+Felisha Kuo
+
+Zachery Crandall
+
+Lun An
+
+David Lee
+
+Long Qi

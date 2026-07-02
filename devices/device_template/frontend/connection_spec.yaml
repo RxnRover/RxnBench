@@ -1,0 +1,30 @@
+# Manifest for the rxn-bench-mydevice SiLA feature (see ../backend).
+# Run from software/frontend/:
+#   python scripts/gen_connections.py \
+#     ../../devices/mydevice/frontend/connection_spec.yaml \
+#     --out ../../devices/mydevice/frontend/generated_connection.py
+#
+# TODO: rename mydevice/MyDevice throughout this file and the generated
+# output. No compiled protobuf stubs exist for this template (see the
+# backend device_template's own TODOs), so decode_type is omitted below and
+# the `measurement` stream is decoded by hand in connection.py - see
+# devices/ph_sensor/frontend/connection.py for the pattern (varint/LEN
+# helpers + a small SiLA Real decoder). Generate proto stubs on the backend
+# to switch to the simpler decode_type: pattern used by devices/gantry.
+
+meta:
+  package: sila2.edu.iastate.ames.rxnbench.mydevice.v1
+  service: MyDevice
+  class_name: MyDeviceConnectionBase
+  # proto_module: omitted — no compiled stubs; see TODO above
+
+streams:
+  - rpc: Subscribe_Measurement
+    # decode_type: omitted — raw bytes passed to handler
+    signal: measurement_updated
+    signal_args: [float]
+    handler: _handle_measurement_raw
+    feature_name: MyDevice
+
+# Commands - perform_action requires raw byte construction (no compiled
+# stubs), so it is implemented by hand in connection.py, not generated.

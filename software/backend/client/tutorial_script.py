@@ -1,0 +1,95 @@
+import time
+from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
+
+
+def main() -> None:
+    with RxnBenchClient() as bench:
+        """Keep your script inside this main() function to keep things simple."""
+
+        # Tell the bench which instruments you're using and where to find them.
+        # Server names are discovered automatically on the local network.
+        bench.connect("gantry", Gantry, server="Gantry")
+        bench.connect("ph", PHProbe, server="pH")
+
+        # Tell the bench where to save your results.
+        bench.set_log_output("results/ph_scan.csv")
+
+        # Load the workspace that's currently active in the UI.
+        bench.gantry.load_workspace_yaml()
+
+        # Mount the tool you want to use.
+        bench.gantry.mount_toolhead("ph_probe")
+
+        # Scan every well in a plate. at_well() moves to the well, engages
+        # the tool, waits for it to stabilise, then lifts back up automatically.
+        for well in bench.gantry.get_workspace_wells("plate1"):
+            with bench.at_well(well, stabilize=3):
+                bench.log(ph=bench.ph.read())  # well is saved to the log automatically
+
+        # Always save and park at the end of a script.
+        bench.gantry.save_and_park()
+
+    # For more exact control:
+    with RxnBenchClient() as bench:
+        bench.connect("gantry", Gantry, server="Gantry")
+        bench.connect("ph", PHProbe, server="pH")
+
+        bench.set_log_output("results/ph_scan_manual.csv")
+        bench.gantry.load_workspace_yaml()
+        bench.gantry.set_toolhead("ph_probe")
+        bench.gantry.confirm_toolhead_mounted()
+
+        # You can move to any specific well directly if you know its label.
+        bench.gantry.move_to_well("plate1/A1")
+        bench.gantry.engage_tool()
+        time.sleep(3)
+        ph = bench.ph.read()
+        bench.log(well="plate1/A1", ph=ph)
+        bench.gantry.disengage_tool()
+
+        # bench.ph.read_avg() takes several readings and averages them.
+        for well in bench.gantry.get_workspace_wells("plate1"):
+            with bench.at_well(well):
+                ph = bench.ph.read_avg(n=5, interval=1.0)
+                bench.log(ph=ph)
+
+        # bench.ph.read_stable() keeps reading until the value settles.
+        for well in bench.gantry.get_workspace_wells("plate1"):
+            with bench.at_well(well):
+                ph = bench.ph.read_stable(tolerance=0.05, timeout=60)
+                bench.log(ph=ph)
+
+        bench.gantry.save_and_park()
+
+    # You can also use logical control to react to readings:
+    with RxnBenchClient() as bench:
+        bench.connect("gantry", Gantry, server="Gantry")
+        bench.connect("ph", PHProbe, server="pH")
+
+        bench.set_log_output("results/ph_scan_control.csv")
+        bench.gantry.load_workspace_yaml()
+        bench.gantry.mount_toolhead("ph_probe")
+
+        # Read a well and branch depending on the result.
+        with bench.at_well("plate1/A1", stabilize=3):
+            ph = bench.ph.read()
+
+        if ph < 7.0:
+            print(f"pH is acidic ({ph:.2f}), moving to A2 …")
+            bench.gantry.move_to_well("plate1/A2")
+        else:
+            print(f"pH is basic ({ph:.2f}), moving to A3 …")
+            bench.gantry.move_to_well("plate1/A3")
+
+        # bench.ph.wait_for() blocks until the solution crosses a threshold.
+        for well in bench.gantry.get_workspace_wells("plate1"):
+            with bench.at_well(well):
+                ph = bench.ph.wait_for(above=7.0, timeout=120, interval=5)
+                bench.log(ph=ph)
+
+        # Always save and park at the end of a script
+        bench.gantry.save_and_park()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,5 +1,5 @@
-Frontend  (``chem_bench_ui``)
-==============================
+Frontend  (``rxn_bench_ui``)
+=============================
 
 PySide6 desktop application that connects to the SiLA2 server, discovers
 available features, and renders a control panel per feature.
@@ -8,4 +8,4 @@ available features, and renders a control panel per feature.
    :toctree: generated
    :recursive:
 
-   chem_bench_ui
+   rxn_bench_ui

@@ -1,4 +1,4 @@
-Automated Chem Bench
+Automated Rxn Bench
 ====================
 
 Software documentation for the Ames National Lab automated chemistry bench —
