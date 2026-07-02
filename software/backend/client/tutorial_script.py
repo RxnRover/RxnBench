@@ -59,6 +59,7 @@ def main() -> None:
                 ph = bench.ph.read_stable(tolerance=0.05, timeout=60)
                 bench.log(ph=ph)
 
+        # Always save and park at the end of a script.
         bench.gantry.save_and_park()
 
     # You can also use logical control to react to readings:

@@ -255,6 +255,8 @@ Main responsibilities:
 | Split-service install/systemd scripts | Done |
 | Device-first repo layout (`devices/<name>/{backend,frontend}`) | Done |
 | `device_template` frontend half (was backend-only) | Done |
+| `motion_platform.proto` matches backend dataclasses/feature | Done |
+| pH backend real test suite (driver, sensor, feature layers) | Done |
 
 ---
 
@@ -272,8 +274,7 @@ These are the active issues worth tracking now.
 | Add TLS deployment guide | docs/config | Low until shared-network deployment | Bare gRPC is acceptable for isolated bench development but not for a shared lab network. |
 | Measure pH probe `tip_x` / `tip_y` | `toolheads/ph_probe/ph_probe_toolhead.yaml` | Low | Current values are placeholders. |
 | Camera support | new package/device | Low | Phase 2+ feature, not part of current bench core. |
-| `motion_platform.proto` is out of date | `devices/gantry/backend/scripts/gen_proto.py`, `software/frontend/src/rxn_bench_ui/proto/motion_platform.proto` | Medium | `make check-proto` currently fails — `feature.py` gained `ExperimentLock`/`Pause`/`Resume`/`Stop`/`Subscribe_ExperimentActive` RPCs that were never proto-regenerated. Found during the 2026-07-01 device-first reorg; unrelated to it. Run `make gen-proto` and recompile stubs once the experiment-lock feature is ready to expose to the frontend. |
-| pH backend has no real test suite | `devices/ph_sensor/backend/tests/` | Medium | Only an empty `__init__.py` exists; `make test-ph` currently fails with "no tests ran". Gantry's tests (`devices/gantry/backend/tests/`) are the model to follow. |
+| Experiment-lock RPCs not yet wired into the frontend | `devices/gantry/frontend/` | Medium | `AcquireExperimentLock`/`PauseExperiment`/`ResumeExperiment`/`StopExperiment`/`GetExperimentState`/`ExperimentActive` exist on the backend and now have generated proto stubs, but nothing in the gantry frontend widget/connection calls them yet — the UI can't currently show or control experiment-lock state. |
 
 ---
 

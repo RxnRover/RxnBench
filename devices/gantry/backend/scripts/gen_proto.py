@@ -71,6 +71,9 @@ message Subscribe_CurrentAction_Responses         { SString CurrentAction       
 message Subscribe_CurrentWorkspaceYaml_Parameters {}
 message Subscribe_CurrentWorkspaceYaml_Responses  { SString CurrentWorkspaceYaml = 1; }
 
+message Subscribe_ExperimentActive_Parameters {}
+message Subscribe_ExperimentActive_Responses   { Boolean ExperimentActive = 1; }
+
 // Command messages
 
 message Empty {}
@@ -85,9 +88,10 @@ message SetWorkspace_Parameters        { SString name    = 1; }
 message LoadWorkspaceYaml_Parameters   { SString content = 1; }
 message MoveToWell_Parameters          { SString label   = 1; }
 
-message ListToolheads_Responses  { SString Toolheads  = 1; }
-message GetLimits_Responses      { SString Limits      = 1; }
-message ListWorkspaces_Responses { SString Workspaces  = 1; }
+message ListToolheads_Responses       { SString Toolheads       = 1; }
+message GetLimits_Responses           { SString Limits           = 1; }
+message ListWorkspaces_Responses      { SString Workspaces       = 1; }
+message GetExperimentState_Responses  { SString ExperimentState  = 1; }
 
 // Service
 
@@ -99,6 +103,7 @@ service Gantry {
   rpc Subscribe_CurrentWell           (Subscribe_CurrentWell_Parameters)           returns (stream Subscribe_CurrentWell_Responses);
   rpc Subscribe_CurrentAction         (Subscribe_CurrentAction_Parameters)         returns (stream Subscribe_CurrentAction_Responses);
   rpc Subscribe_CurrentWorkspaceYaml  (Subscribe_CurrentWorkspaceYaml_Parameters)  returns (stream Subscribe_CurrentWorkspaceYaml_Responses);
+  rpc Subscribe_ExperimentActive      (Subscribe_ExperimentActive_Parameters)      returns (stream Subscribe_ExperimentActive_Responses);
 
   rpc MoveTo        (MoveTo_Parameters)        returns (Empty);
   rpc Jog           (Jog_Parameters)           returns (Empty);
@@ -125,6 +130,13 @@ service Gantry {
   rpc SetWorkspace            (SetWorkspace_Parameters)            returns (Empty);
   rpc LoadWorkspaceYaml       (LoadWorkspaceYaml_Parameters)       returns (Empty);
   rpc ListWorkspaces          (Empty)                              returns (ListWorkspaces_Responses);
+
+  rpc AcquireExperimentLock  (Empty)  returns (Empty);
+  rpc ReleaseExperimentLock  (Empty)  returns (Empty);
+  rpc PauseExperiment        (Empty)  returns (Empty);
+  rpc ResumeExperiment       (Empty)  returns (Empty);
+  rpc StopExperiment         (Empty)  returns (Empty);
+  rpc GetExperimentState     (Empty)  returns (GetExperimentState_Responses);
 }
 """
 
