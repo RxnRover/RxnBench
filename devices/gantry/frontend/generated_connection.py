@@ -114,9 +114,10 @@ class GantryConnectionBase(_FeatureConnection):
         _p.z.value = z
         self._fire(self._rpc("MoveTo"), _p.SerializeToString())
 
-    def move_to_well(self, label: str) -> None:
+    def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
         _p = _pb.MoveToWell_Parameters()
         _p.label.value = label
+        _p.override_unvalidated.value = override_unvalidated
         self._fire(self._rpc("MoveToWell"), _p.SerializeToString())
 
     def set_toolhead(self, name: str) -> None:

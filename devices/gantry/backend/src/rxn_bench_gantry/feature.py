@@ -171,15 +171,20 @@ class Gantry(sila.Feature):
             raise
 
     @sila.UnobservableCommand()
-    async def move_to_well(self, label: str) -> None:
+    async def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
         """Move to a well by label using the active workspace.
 
         Args:
             Label: Well label, e.g. 'A3', 'H12', or 'plate1/A3'.
+            OverrideUnvalidated: Proceed even if the active toolhead's geometry is
+                unvalidated (placeholder). Defaults to refusing such moves.
         """
         self._current_action = f"Moving to {label}"
         try:
-            await self._run(self._controller.move_to_well, label, log="move_to_well", well=label)
+            await self._run(
+                self._controller.move_to_well, label, override_unvalidated,
+                log="move_to_well", well=label,
+            )
             self._current_well = label
             self._current_action = "Standby"
         except Exception as exc:

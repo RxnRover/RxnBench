@@ -79,7 +79,7 @@ message SetZ_Parameters          { Real    z     = 1; }
 message SetToolhead_Parameters   { SString name  = 1; }
 message SetWorkspace_Parameters        { SString name    = 1; }
 message LoadWorkspaceYaml_Parameters   { SString content = 1; }
-message MoveToWell_Parameters          { SString label   = 1; }
+message MoveToWell_Parameters          { SString label   = 1; Boolean override_unvalidated = 2; }
 
 message ListToolheads_Responses       { SString Toolheads       = 1; }
 message GetLimits_Responses           { SString Limits           = 1; }

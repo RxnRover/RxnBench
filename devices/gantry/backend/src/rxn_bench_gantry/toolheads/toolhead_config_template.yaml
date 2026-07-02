@@ -16,3 +16,4 @@ geometry:
   tip_y: 0.0                 # mm
   tip_offset_z: 0.0          # mm, below carriage mount
   z_engage: 0.0              # mm
+  geometry_validated: true    # set false until tip_x/tip_y/etc. are physically measured

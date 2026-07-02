@@ -1,9 +1,11 @@
 """Active toolhead configuration and mount-state tracking."""
+import logging
 from pathlib import Path
 
 from rxn_bench_gantry.toolhead_config import ToolheadConfig, ToolheadGeometry
 
 _TOOLHEADS_DIR = Path(__file__).parent / "toolheads"
+_log = logging.getLogger(__name__)
 
 
 class ToolheadManager:
@@ -47,6 +49,12 @@ class ToolheadManager:
         self._name = cfg.name
         self._display_name = cfg.display_name
         self._sensor_type = cfg.sensor_type
+        if not cfg.geometry.geometry_validated:
+            _log.warning(
+                "Toolhead %r has unvalidated (placeholder) geometry - workspace/well "
+                "moves will be refused until it is measured, unless explicitly overridden.",
+                name,
+            )
 
     def clear_toolhead(self) -> None:
         """Remove the active toolhead and reset all toolhead state to defaults."""

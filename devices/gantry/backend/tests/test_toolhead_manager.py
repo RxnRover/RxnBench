@@ -66,3 +66,41 @@ def test_unknown_toolhead_raises():
     mgr = ToolheadManager()
     with pytest.raises(Exception):
         mgr.set_toolhead("does_not_exist_xyz")
+
+
+def test_ph_probe_geometry_is_unvalidated_placeholder():
+    mgr = ToolheadManager()
+    mgr.set_toolhead("ph_probe")
+    assert mgr.toolhead.geometry_validated is False
+
+
+def test_set_toolhead_warns_on_unvalidated_geometry(caplog):
+    mgr = ToolheadManager()
+    with caplog.at_level("WARNING"):
+        mgr.set_toolhead("ph_probe")
+    assert any("unvalidated" in rec.message for rec in caplog.records)
+
+
+def test_set_toolhead_does_not_warn_when_validated(tmp_path, monkeypatch, caplog):
+    import rxn_bench_gantry.toolhead_config as toolhead_config
+
+    toolhead_dir = tmp_path / "measured_probe"
+    toolhead_dir.mkdir()
+    (toolhead_dir / "measured_probe_toolhead.yaml").write_text("""
+name: measured_probe
+display_name: Measured Probe
+geometry:
+  footprint_x: 10.0
+  footprint_y: 10.0
+  offset_x: 0.0
+  offset_y: 0.0
+  tip_offset_z: 5.0
+  z_engage: 1.0
+""")
+    monkeypatch.setattr(toolhead_config, "_TOOLHEADS_DIR", tmp_path)
+
+    mgr = ToolheadManager()
+    with caplog.at_level("WARNING"):
+        mgr.set_toolhead("measured_probe")
+    assert mgr.toolhead.geometry_validated is True
+    assert not caplog.records

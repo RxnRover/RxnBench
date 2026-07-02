@@ -11,3 +11,4 @@ geometry:
   tip_y: -25            # mm
   tip_offset_z: 110     # mm, below carriage mount
   z_engage: 25          # mm, depth into well
+  geometry_validated: false  # tip_x/tip_y are placeholders, not yet measured

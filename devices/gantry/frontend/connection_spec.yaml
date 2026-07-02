@@ -89,6 +89,7 @@ commands:
     params: MoveToWell_Parameters
     args:
       - {name: label, field: label, type: str}
+      - {name: override_unvalidated, field: override_unvalidated, type: bool, default: False}
 
   - method: set_toolhead
     rpc: SetToolhead

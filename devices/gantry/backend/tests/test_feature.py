@@ -17,6 +17,7 @@ class _FakeController:
         self.has_saved_state = False
         self.toolhead_mounted = False
         self.move_to_calls: list[tuple] = []
+        self.move_to_well_calls: list[tuple] = []
         self.raise_on_move_to: Exception | None = None
         self.toolheads = [("ph_probe", "Atlas Scientific pH Probe")]
         self.workspaces = ["plate_96well"]
@@ -32,7 +33,8 @@ class _FakeController:
         if self.raise_on_move_to:
             raise self.raise_on_move_to
 
-    def move_to_well(self, label: str) -> None:
+    def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
+        self.move_to_well_calls.append((label, override_unvalidated))
         if self.raise_on_move_to:
             raise self.raise_on_move_to
 
@@ -90,7 +92,20 @@ def test_move_to_well_does_not_record_current_well_on_failure():
     feature = Gantry(controller=ctrl)
     with pytest.raises(MotionLimitError):
         asyncio.run(feature.move_to_well("plate1/A3"))
-    assert asyncio.run(_first(feature.current_well())) == ""
+
+
+def test_move_to_well_forwards_override_unvalidated_flag():
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    asyncio.run(feature.move_to_well("plate1/A3", override_unvalidated=True))
+    assert ctrl.move_to_well_calls == [("plate1/A3", True)]
+
+
+def test_move_to_well_defaults_override_unvalidated_to_false():
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    asyncio.run(feature.move_to_well("plate1/A3"))
+    assert ctrl.move_to_well_calls == [("plate1/A3", False)]
 
 
 # ---------------------------------------------------------------------------

@@ -166,8 +166,8 @@ class Gantry:
     def move_to(self, x: float, y: float, z: float) -> None:
         self._g.Gantry.MoveTo(X=x, Y=y, Z=z)
 
-    def move_to_well(self, label: str) -> None:
-        self._g.Gantry.MoveToWell(Label=label)
+    def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
+        self._g.Gantry.MoveToWell(Label=label, OverrideUnvalidated=override_unvalidated)
 
     def jog(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> None:
         self._g.Gantry.Jog(Dx=dx, Dy=dy, Dz=dz)

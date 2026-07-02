@@ -18,6 +18,7 @@ class ToolheadGeometry:
     z_engage: float
     tip_x: float = 0.0
     tip_y: float = 0.0
+    geometry_validated: bool = True  # False = placeholder, not yet measured
 
 
 @dataclass
@@ -55,6 +56,7 @@ class ToolheadConfig:
                 z_engage=geom_data['z_engage'],
                 tip_x=geom_data.get('tip_x', 0.0),
                 tip_y=geom_data.get('tip_y', 0.0),
+                geometry_validated=geom_data.get('geometry_validated', True),
             ),
         )
 

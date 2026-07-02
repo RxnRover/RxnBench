@@ -3,7 +3,7 @@ from typing import Any
 
 from rxn_bench_gantry.interfaces import MotionClientProtocol
 from rxn_bench_gantry.toolhead_config import ToolheadGeometry
-from rxn_bench_gantry.errors import MotionLimitError
+from rxn_bench_gantry.errors import MotionLimitError, UnvalidatedGeometryError
 from rxn_bench_gantry.toolhead_manager import ToolheadManager
 from rxn_bench_gantry.homing_manager import HomingManager
 from rxn_bench_gantry.motion_engine import MotionEngine
@@ -321,18 +321,29 @@ class GantryController:
         """
         self._workspace_mgr.load_from_yaml(content)
 
-    def move_to_well(self, label: str) -> None:
+    def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
         """Move to a well by label using the active workspace.
 
         Args:
             label: Well label, e.g. ``'A3'``, ``'H12'``, or ``'plate1/A3'``.
+            override_unvalidated: If True, proceed even when the active toolhead's
+                geometry is unvalidated (placeholder). Defaults to refusing.
 
         Raises:
             RuntimeError: If no workspace is loaded.
             KeyError: If the plate ID is not found in the current workspace.
             ValueError: If the well label format is invalid.
             MotionLimitError: If the resolved position exceeds axis limits.
+            UnvalidatedGeometryError: If the active toolhead's geometry is
+                unvalidated and override_unvalidated is False.
         """
+        th = self._toolhead_mgr.toolhead
+        if th is not None and not th.geometry_validated and not override_unvalidated:
+            raise UnvalidatedGeometryError(
+                f"Toolhead {self._toolhead_mgr.name!r} has unvalidated (placeholder) "
+                "geometry. Well-targeted moves are refused until it is measured; "
+                "pass override_unvalidated=True to proceed anyway."
+            )
         x, y, _z = self._workspace_mgr.resolve_well(label)
         self.move_to(x=x, y=y)
 

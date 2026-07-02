@@ -1,10 +1,25 @@
 """Tests for GantryController: bounds enforcement, toolhead-aware limits, homing integration."""
+import textwrap
+
 import pytest
 
 from rxn_bench_gantry.controller import GantryController
-from rxn_bench_gantry.errors import MotionLimitError
+from rxn_bench_gantry.errors import MotionLimitError, UnvalidatedGeometryError
 
 from tests.fakes import FakeMotionClient
+
+_SIMPLE_WORKSPACE_YAML = textwrap.dedent("""\
+    name: test_bench
+    calibration_reference_well: plate1/A1
+    plates:
+      - id: plate1
+        plate_type: 96_well_standard
+        origin:
+          x: 50.0
+          y: 100.0
+          z: 15.0
+        orientation: standard
+""")
 
 
 @pytest.fixture
@@ -141,6 +156,29 @@ def test_set_toolhead_invalidates_saved_homing_state(ctrl):
 
     ctrl.set_toolhead("ph_probe")
     assert not ctrl.has_saved_state
+
+
+# ---------------------------------------------------------------------------
+# Placeholder-geometry guard on well-targeted moves
+# ---------------------------------------------------------------------------
+
+def test_move_to_well_refuses_unvalidated_toolhead_geometry(ctrl):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")  # ph_probe_toolhead.yaml sets geometry_validated: false
+    with pytest.raises(UnvalidatedGeometryError, match="unvalidated"):
+        ctrl.move_to_well("plate1/A1")
+
+
+def test_move_to_well_override_unvalidated_proceeds(ctrl, client):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")
+    ctrl.move_to_well("plate1/A1", override_unvalidated=True)
+    assert any(name == "move" for name, _ in client.calls)
+
+
+def test_move_to_well_with_no_toolhead_is_not_refused(ctrl):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.move_to_well("plate1/A1")  # bare carriage has no geometry to validate
 
 
 # ---------------------------------------------------------------------------
