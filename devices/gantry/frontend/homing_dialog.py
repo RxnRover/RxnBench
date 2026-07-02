@@ -39,8 +39,18 @@ class HomingDialog(QDialog):
         content = loader.load(f, self)
         f.close()
 
+        self._lock_banner = QLabel(
+            "An experiment has acquired the lock - jog/confirm controls are disabled."
+        )
+        self._lock_banner.setWordWrap(True)
+        self._lock_banner.setStyleSheet(
+            "background: #7c5200; color: #ffe0a0; border-radius: 4px; padding: 6px 8px;"
+        )
+        self._lock_banner.hide()
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._lock_banner)
         layout.addWidget(content)
         self._content = content
 
@@ -74,6 +84,7 @@ class HomingDialog(QDialog):
         self._load_diagrams()
         self._apply_theme()
         self._wire()
+        self._client.experiment_active_changed.connect(self._on_experiment_active)
         self._stack.setCurrentIndex(_PAGE_ASK)
 
     def _load_diagrams(self) -> None:
@@ -146,6 +157,18 @@ class HomingDialog(QDialog):
         )
         if self._finish_btn: self._finish_btn.clicked.connect(self._finish)
 
+    def _on_experiment_active(self, active: bool) -> None:
+        """Disable jog/confirm controls if a script acquires the lock while this dialog is open."""
+        self._lock_banner.setVisible(active)
+        for btn in (
+            self._jog_x_pos, self._jog_x_neg, self._jog_y_pos, self._jog_y_neg,
+            self._jog_z_pos, self._jog_z_neg,
+            self._confirm_xmin, self._confirm_xmax, self._confirm_ymin,
+            self._confirm_ymax, self._confirm_zref, self._finish_btn,
+        ):
+            if btn:
+                btn.setEnabled(not active)
+
     def _mark_confirmed(self, btn: QPushButton) -> None:
         t = self._t
         btn.setStyleSheet(
@@ -160,3 +183,10 @@ class HomingDialog(QDialog):
     def _finish(self) -> None:
         self._client.finish_homing()
         self.accept()
+
+    def closeEvent(self, event) -> None:
+        try:
+            self._client.experiment_active_changed.disconnect(self._on_experiment_active)
+        except RuntimeError:
+            pass
+        super().closeEvent(event)

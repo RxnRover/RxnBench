@@ -56,8 +56,18 @@ class ToolheadCalibrationDialog(QDialog):
         content = loader.load(f, self)
         f.close()
 
+        self._lock_banner = QLabel(
+            "An experiment has acquired the lock - jog/confirm controls are disabled."
+        )
+        self._lock_banner.setWordWrap(True)
+        self._lock_banner.setStyleSheet(
+            "background: #7c5200; color: #ffe0a0; border-radius: 4px; padding: 6px 8px;"
+        )
+        self._lock_banner.hide()
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._lock_banner)
         layout.addWidget(content)
         self.setWindowTitle("Toolhead Calibration")
         self.resize(520, 500)
@@ -105,6 +115,7 @@ class ToolheadCalibrationDialog(QDialog):
         self._stack.setCurrentIndex(_PAGE_INTRO)
 
         self._client.position_updated.connect(self._on_position)
+        self._client.experiment_active_changed.connect(self._on_experiment_active)
 
 
     def _load_corner_diagram(self) -> None:
@@ -209,9 +220,25 @@ class ToolheadCalibrationDialog(QDialog):
     def _on_position(self, x: float, y: float, _z: float) -> None:
         self._cur_x, self._cur_y = x, y
 
+    def _on_experiment_active(self, active: bool) -> None:
+        """Disable jog/confirm controls if a script acquires the lock while this dialog is open."""
+        self._lock_banner.setVisible(active)
+        for btn in (
+            self._start_btn,
+            self._jog_x_pos, self._jog_x_neg, self._jog_y_pos, self._jog_y_neg,
+            self._jog_z_pos, self._jog_z_neg,
+            self._confirm_btn,
+        ):
+            if btn:
+                btn.setEnabled(not active)
+
     def closeEvent(self, event) -> None:
         try:
             self._client.position_updated.disconnect(self._on_position)
+        except RuntimeError:
+            pass
+        try:
+            self._client.experiment_active_changed.disconnect(self._on_experiment_active)
         except RuntimeError:
             pass
         super().closeEvent(event)
