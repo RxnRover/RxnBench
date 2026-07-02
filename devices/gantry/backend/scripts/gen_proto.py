@@ -5,7 +5,7 @@ Generate motion_platform.proto from backend dataclasses.
 Usage (from repo root):
     cd software/backend
     uv run python ../../devices/gantry/backend/scripts/gen_proto.py \
-        > ../frontend/src/rxn_bench_ui/proto/motion_platform.proto
+        > ../../devices/gantry/frontend/proto/motion_platform.proto
 
 Or via the Makefile shortcut (from software/backend):
     make gen-proto

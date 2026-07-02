@@ -60,9 +60,7 @@ software/frontend/src/rxn_bench_ui/
 ├── discovery.py
 ├── themes.py
 ├── proto/
-│   ├── motion_platform.proto
-│   ├── motion_platform_pb2.py
-│   └── sila_service_pb2.py
+│   └── sila_service_pb2.py   ← shared SiLA framework stub only; device protos live with their device
 ├── connections/
 │   └── base.py
 ├── core/
@@ -89,6 +87,9 @@ devices/gantry/frontend/
 ├── experiment_panel.py
 ├── homing_dialog.py
 ├── toolhead_calibration_dialog.py
+├── proto/
+│   ├── motion_platform.proto
+│   └── motion_platform_pb2.py
 ├── assets/
 └── ui/
 
@@ -259,6 +260,7 @@ Main responsibilities:
 | `motion_platform.proto` matches backend dataclasses/feature | Done |
 | pH backend real test suite (driver, sensor, feature layers) | Done |
 | Gantry backend real test suite (motion engine sequencing, homing state machine, toolhead-aware bounds, controller, feature, well/workspace math, mock Moonraker) | Done |
+| `motion_platform` proto stubs live under `devices/gantry/frontend/proto/` | Done, moved out of the shared `proto/` tree, which now only holds `sila_service_pb2` (framework-level, genuinely shared). `gen_proto.py`, the `software/backend/Makefile` proto targets, and `connection_spec.yaml`'s `proto_module` all point at the new location; `make check-proto` still passes |
 
 ---
 
@@ -266,10 +268,11 @@ Main responsibilities:
 
 These are the active issues worth tracking now.
 
+| Gap | Location | Priority | Notes |
+|---|---|---:|---|
 | Add real pH I2C wiring | `rxn_bench_ph/server.py` | High | Instantiate `smbus2.SMBus(1)` and wire it into `AtlasScientificEZO` / `AtlasPHSensor` for real hardware mode. |
 | Add mock I2C bus | `rxn_bench_ph/` | Medium | Needed for end-to-end mock-mode testing of the real pH driver path. |
-| Generate pH protobuf stubs | frontend `proto/` + backend pH generator path | Medium | Replace temporary pH varint/LEN helpers with generated stubs like the gantry path. Blocked on the proto stub placement gap below — pH stub generation needs to land in `devices/ph_sensor/frontend/`, so the gantry placement should be fixed first to establish the pattern. |
-| `motion_platform` proto stubs live in shared frontend `proto/`, not `devices/gantry/frontend/` | `software/frontend/src/rxn_bench_ui/proto/` | Medium | `motion_platform.proto` and `motion_platform_pb2.py` currently live in the shared core proto tree, violating the device-first rule (§1) that each device owns its own frontend code. Only `sila_service_pb2` should stay shared. Resolve before generating pH protobuf stubs (above) so both devices land in the same place. |
+| Generate pH protobuf stubs | `devices/ph_sensor/frontend/proto/` + backend pH generator path | Medium | Replace temporary pH varint/LEN helpers with generated stubs like the gantry path. Stub placement is now settled: land them in `devices/ph_sensor/frontend/proto/`, matching the per-device placement gantry now uses (see §5), not the shared core `proto/` tree. |
 | Add plate overlay to gantry canvas | `devices/gantry/frontend/` | Medium | Show plate footprint and well grid in `PositionGrid`. |
 | Migrate configs to pydantic | gantry config models | Medium | Gives validation, clearer errors, and JSON Schema export. |
 | `generated_connection.py` has no drift check | `devices/*/frontend/generated_connection.py` | Medium | `gen_connections.py` (the generator) exists but no Makefile target wraps it, let alone diffs generated output against a regenerated copy. Unlike the gantry proto check (see §8), there is currently no way to detect a stale `generated_connection.py` at all. |

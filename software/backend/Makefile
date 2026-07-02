@@ -1,6 +1,6 @@
 .PHONY: install start-gantry start-ph start-mock test-gantry test-ph test gen-proto check-proto
 
-FRONTEND_PROTO_DIR := ../frontend/src/rxn_bench_ui/proto
+FRONTEND_PROTO_DIR := ../../devices/gantry/frontend/proto
 FRONTEND_PROTO     := $(FRONTEND_PROTO_DIR)/motion_platform.proto
 
 GANTRY_DIR    := ../../devices/gantry/backend

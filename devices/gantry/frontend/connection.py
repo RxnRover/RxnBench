@@ -12,7 +12,7 @@ from typing import Any
 from PySide6.QtCore import Signal
 
 from .generated_connection import GantryConnectionBase
-from ...proto import motion_platform_pb2 as _mp
+from .proto import motion_platform_pb2 as _mp
 
 
 @dataclasses.dataclass

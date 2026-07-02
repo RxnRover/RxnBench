@@ -49,7 +49,7 @@ autodoc_mock_imports = [
     "google.protobuf.reflection",
     # compiled proto stubs in the source tree (can't load without the full runtime)
     "rxn_bench_ui.proto.sila_service_pb2",
-    "rxn_bench_ui.proto.motion_platform_pb2",
+    "rxn_bench_ui.devices.gantry.proto.motion_platform_pb2",
     # other deps
     "zeroconf",
     "yaml",

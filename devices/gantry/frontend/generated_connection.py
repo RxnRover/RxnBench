@@ -11,7 +11,7 @@ from typing import Any
 from PySide6.QtCore import Signal
 
 from rxn_bench_ui.connections.base import _FeatureConnection
-import rxn_bench_ui.proto.motion_platform_pb2 as _pb
+import rxn_bench_ui.devices.gantry.proto.motion_platform_pb2 as _pb
 
 
 _PKG = "sila2.edu.iastate.ames.rxnbench.gantry.v0"
