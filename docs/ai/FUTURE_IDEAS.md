@@ -4,28 +4,22 @@
 
 ---
 
-## 1. Generic FDL-Driven UI
+## 1. Generic FDL-Driven UI (implemented — see `core/generic_device.py` + `core/fdl_types.py`)
 
-SiLA feature definitions can expose commands, properties, parameters, and data types through FDL. A future frontend could use this to build a generic device panel for unknown or newly added SiLA features.
+**This is already built and live**, not a future idea — `GenericDeviceWidget` in `software/frontend/src/rxn_bench_ui/core/generic_device.py` is the automatic fallback in `device_registry.py` for any device that doesn't match a known plugin. It does the full pipeline: fetches `SiLAService.GetFeatureDefinition(identifier)`, parses the FDL XML (commands/properties/parameter types, constraints), and renders a live collapsible panel per feature with working Get (property read) and Run (command execution) buttons over real gRPC calls.
 
-Potential pipeline:
+As of 2026-07-01, the four gaps below (originally identified the same day) have all been closed:
 
-```text
-SiLAService.GetFeatureDefinition(identifier)
-  -> FDL XML
-  -> parse commands/properties/data types
-  -> generate a generic Qt panel
-  -> allow basic command execution and observable-property display
-```
+- **Dynamic FDL→protobuf construction** (`core/fdl_types.py`, `FeatureMessageBuilder`). Real, typed protobuf messages are built at parse time from the FDL — using `google.protobuf.descriptor_pb2`/`descriptor_pool`/`message_factory` — instead of guessing value types from raw wire bytes. Wire shapes were grounded directly in `SiLAFramework.proto` and `sila.framework.data_types.*` source (installed with unitelabs-cdk), then verified against real live traffic: decoding the `Position` Structure property byte-for-byte identical to the officially compiled `motion_platform_pb2` stub, and successfully calling `PHSensor.Calibrate` (an enum-constrained String param + a Real param) against a running mock server. This also fixed a real latent bug: the old heuristic encoder zigzag-encoded `Integer` values, but the real SiLA wire type is plain `int64` — confirmed by comparing wire bytes directly against `SiLAFramework.proto`'s `Integer{int64 value=1}`.
+- **Structured/List command parameters.** `_ParamInput` in `generic_device.py` renders a Structure as a nested sub-form and a List as a repeatable add/remove group of sub-forms, recursively. Verified with a full widget → dict → dynamic message → wire bytes → message → display round trip (no real device here has a Structure/List command parameter yet, so this was checked with a synthetic FDL fixture, not live backend traffic).
+- **Observable commands.** `_ObservableCmdRunner` drives the real SiLA wire pattern (initiate → `CommandExecutionUUID` → poll `<Command>_Info` for status/progress → fetch `<Command>_Result`). Verified against a genuinely running server: spun up unitelabs-cdk's own built-in `ObservableCommandTest` feature (ships with the SDK for exactly this kind of testing) and drove its `Count` command end-to-end — real status transitions (`running` at 0%/50%/100% → `finishedSuccessfully`) and the correct final result.
+- **Typed input widgets with validation.** Enum constraints render as a `QComboBox` (verified live against `PHSensor.Calibrate`'s `Point` parameter — dropdown populated with `mid`/`low`/`high`/`clear`); numeric range constraints render as a `QSpinBox`/`QDoubleSpinBox` with `setRange()` (Qt clamps out-of-range input at the UI level); everything else falls back to `QLineEdit`. `validate_value()` checks constraints before a Run is allowed to proceed.
 
-This should remain a fallback or inspection tool, not a replacement for high-quality handwritten widgets such as the gantry and pH panels.
+Remaining open items:
 
-### Open questions
-
-- How much of the SiLA FDL type system should be mapped to Qt widgets?
-- How should units, ranges, enums, and validation errors be presented?
-- Should generated panels be read-only by default for safety?
-- How should long-running observable commands be visualized?
+- No compiled-stub support for `Date`/`Time`/`Timestamp`/`Binary`/`Any` command-parameter *input* widgets (decode/encode is fully implemented and correct for these; only the input-widget ergonomics are a plain text-box fallback rather than e.g. a date picker) — no real device here uses these types yet.
+- `<Command>_Intermediate` streams (intermediate responses during an observable command, distinct from status/progress) are not implemented — `_ObservableCmdRunner` only handles the Info/Result pair.
+- No confirmation/safety gate before Run beyond constraint validation (e.g. no "are you sure" for a command with no declared constraints on a real physical device).
 
 ---
 

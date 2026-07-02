@@ -1,4 +1,14 @@
-"""Generic SiLA2 device inspector. Loads FDL feature definitions where available; falls back to feature identifiers from discovery."""
+"""
+Generic SiLA2 device inspector. Loads FDL feature definitions where available;
+falls back to feature identifiers from discovery.
+
+Per-feature command/property wire encoding and decoding uses dynamically
+constructed protobuf messages (see fdl_types.py) built from the FDL itself,
+not guessed from raw bytes. The hand-rolled varint/LEN helpers below
+(_collect_values et al.) are kept only to extract the embedded FDL XML string
+from SiLAService.GetFeatureDefinition's own response - a fixed, well-known
+shape that doesn't need per-feature schema knowledge to read.
+"""
 from __future__ import annotations
 
 import struct
@@ -8,11 +18,15 @@ from xml.etree.ElementTree import Element
 import grpc
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QScrollArea, QToolButton, QVBoxLayout, QWidget,
+    QComboBox, QDoubleSpinBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QScrollArea, QSpinBox, QToolButton, QVBoxLayout, QWidget,
 )
 
 from ..discovery import DiscoveredServer
+from .fdl_types import (
+    DataTypeInfo, FeatureMessageBuilder, display_value, format_label,
+    resolve_datatype, set_field_value, validate_value,
+)
 
 _FDL_NS   = "http://www.sila-standard.org"
 _SS_BASE  = "/sila2.org.silastandard.core.silaservice.v1.SiLAService"
@@ -39,27 +53,6 @@ def _encode_sstring(s: str) -> bytes:
 
 def _encode_fdl_params(feature_id: str) -> bytes:
     return _ldelim(1, _encode_sstring(feature_id))
-
-
-def _encode_param(value: str, sila_type: str, field: int) -> bytes:
-    if sila_type == "String":
-        return _ldelim(field, _encode_sstring(value))
-    if sila_type in ("Integer", "UInteger"):
-        try:
-            n = int(value)
-            zz = (n << 1) ^ (n >> 63)  # zigzag
-            return _ldelim(field, _varint(1 << 3) + _varint(zz))
-        except ValueError:
-            return b""
-    if sila_type == "Real":
-        try:
-            return _ldelim(field, b"\x09" + struct.pack("<d", float(value)))
-        except ValueError:
-            return b""
-    if sila_type == "Boolean":
-        v = b"\x01" if value.lower() in ("true", "1", "yes") else b"\x00"
-        return _ldelim(field, b"\x08" + v)
-    return b""
 
 
 def _decode_varint(data: bytes, pos: int) -> tuple[int, int]:
@@ -117,12 +110,6 @@ def _collect_values(data: bytes, out: list[str]) -> None:
             break
 
 
-def _decode_response(data: bytes) -> str:
-    out: list[str] = []
-    _collect_values(data, out)
-    return "  ".join(out) if out else "(no value)"
-
-
 
 def _t(name: str) -> str:
     return f"{{{_FDL_NS}}}{name}"
@@ -133,76 +120,76 @@ def _txt(el: Element, tag: str) -> str:
     return (c.text or "").strip() if c is not None else ""
 
 
-def _dtype(el: Element) -> str:
+def _dtype(el: Element) -> DataTypeInfo:
     dt = el.find(_t("DataType"))
-    return _resolve_dtype(dt) if dt is not None else "Any"
+    return resolve_datatype(dt) if dt is not None else DataTypeInfo(kind="unsupported")
 
 
-def _resolve_dtype(dt: Element) -> str:
-    basic = dt.find(_t("Basic"))
-    if basic is not None and basic.text:
-        return basic.text.strip()
-
-    constrained = dt.find(_t("Constrained"))
-    if constrained is not None:
-        # Unwrap to the underlying type, then append constraint hint
-        inner_dt = constrained.find(_t("DataType"))
-        base = _resolve_dtype(inner_dt) if inner_dt is not None else "Any"
-        constraints = constrained.find(_t("Constraints"))
-        if constraints is not None:
-            allowed = [v.text for v in constraints.findall(_t("Set") + "/" + _t("Value")) if v.text]
-            if allowed:
-                return f"{base} ({' | '.join(allowed)})"
-            min_v = constraints.findtext(_t("MinimalInclusive")) or constraints.findtext(_t("MinimalExclusive"))
-            max_v = constraints.findtext(_t("MaximalInclusive")) or constraints.findtext(_t("MaximalExclusive"))
-            if min_v or max_v:
-                return f"{base} [{min_v or ''}…{max_v or ''}]"
-        return base
-
-    for compound in ("Structure", "List"):
-        if dt.find(_t(compound)) is not None:
-            return compound
-    return "Any"
-
-
-def _parse_fdl(xml_str: str) -> dict:
+def _parse_fdl(xml_str: str, feature_id: str) -> dict:
+    """
+    Parse FDL into a dict of commands/properties (each param/response/property
+    carries both a "type" display label and a "dtype" DataTypeInfo for
+    widget-building), plus a "builder" FeatureMessageBuilder with every needed
+    message already declared and finalized - ready for get_message_class().
+    """
     root = ET.fromstring(xml_str)
 
     def params(parent: Element, tag: str) -> list[dict]:
         return [
             {
-                "id":   _txt(p, "Identifier"),
-                "name": _txt(p, "DisplayName") or _txt(p, "Identifier"),
-                "type": _dtype(p),
-                "desc": _txt(p, "Description"),
+                "id":    _txt(p, "Identifier"),
+                "name":  _txt(p, "DisplayName") or _txt(p, "Identifier"),
+                "dtype": _dtype(p),
+                "type":  format_label(_dtype(p)),
+                "desc":  _txt(p, "Description"),
             }
             for p in parent.findall(_t(tag))
         ]
 
+    commands = [
+        {
+            "id":        _txt(c, "Identifier"),
+            "name":      _txt(c, "DisplayName") or _txt(c, "Identifier"),
+            "desc":      _txt(c, "Description"),
+            "observable": _txt(c, "Observable").lower() == "yes",
+            "params":    params(c, "Parameter"),
+            "responses": params(c, "Response"),
+        }
+        for c in root.findall(_t("Command"))
+    ]
+    properties = [
+        {
+            "id":         _txt(p, "Identifier"),
+            "name":       _txt(p, "DisplayName") or _txt(p, "Identifier"),
+            "desc":       _txt(p, "Description"),
+            "observable": _txt(p, "Observable").lower() == "yes",
+            "dtype":      _dtype(p),
+            "type":       format_label(_dtype(p)),
+        }
+        for p in root.findall(_t("Property"))
+    ]
+
+    builder = FeatureMessageBuilder(feature_id)
+    for cmd in commands:
+        builder.declare_wrapper_message(
+            f"{cmd['id']}_Parameters", [(p["id"], p["dtype"]) for p in cmd["params"]]
+        )
+        builder.declare_wrapper_message(
+            f"{cmd['id']}_Responses", [(r["id"], r["dtype"]) for r in cmd["responses"]]
+        )
+    if any(cmd["observable"] for cmd in commands):
+        builder.ensure_observable_command_messages()
+    for prop in properties:
+        prefix = "Subscribe" if prop["observable"] else "Get"
+        builder.declare_wrapper_message(f"{prefix}_{prop['id']}_Responses", [(prop["id"], prop["dtype"])])
+    builder.finalize()
+
     return {
-        "name":  _txt(root, "DisplayName"),
-        "desc":  _txt(root, "Description"),
-        "commands": [
-            {
-                "id":        _txt(c, "Identifier"),
-                "name":      _txt(c, "DisplayName") or _txt(c, "Identifier"),
-                "desc":      _txt(c, "Description"),
-                "observable": _txt(c, "Observable").lower() == "yes",
-                "params":    params(c, "Parameter"),
-                "responses": params(c, "Response"),
-            }
-            for c in root.findall(_t("Command"))
-        ],
-        "properties": [
-            {
-                "id":         _txt(p, "Identifier"),
-                "name":       _txt(p, "DisplayName") or _txt(p, "Identifier"),
-                "desc":       _txt(p, "Description"),
-                "observable": _txt(p, "Observable").lower() == "yes",
-                "type":       _dtype(p),
-            }
-            for p in root.findall(_t("Property"))
-        ],
+        "name": _txt(root, "DisplayName"),
+        "desc": _txt(root, "Description"),
+        "commands": commands,
+        "properties": properties,
+        "builder": builder,
     }
 
 
@@ -240,7 +227,7 @@ class _FdlFetcher(QThread):
                     _collect_values(bytes(raw), out)
                     xml = next((s for s in out if "<Feature" in s), None)
                     if xml:
-                        self.feature_parsed.emit(fid, _parse_fdl(xml))
+                        self.feature_parsed.emit(fid, _parse_fdl(xml, fid))
                     else:
                         self.feature_failed.emit(fid, "No FDL in response")
                 except Exception as e:
@@ -254,13 +241,16 @@ class _PropGetter(QThread):
     result = Signal(str)
 
     def __init__(
-        self, host: str, port: int, feature_id: str, prop_id: str, observable: bool
+        self, host: str, port: int, feature_id: str, prop_id: str, observable: bool,
+        builder: FeatureMessageBuilder, dtype: DataTypeInfo,
     ) -> None:
         super().__init__()
         self._addr       = f"{host}:{port}"
         self._fid        = feature_id
         self._pid        = prop_id
         self._observable = observable
+        self._builder    = builder
+        self._dtype      = dtype
 
     def run(self) -> None:
         base = _rpc_base(self._fid)
@@ -271,10 +261,15 @@ class _PropGetter(QThread):
                 path = f"{base}/Subscribe_{self._pid}"
                 stream   = ch.unary_stream(path)(b"", timeout=_TIMEOUT)
                 raw      = next(iter(stream))
+                msg_name = f"Subscribe_{self._pid}_Responses"
             else:
                 path = f"{base}/Get_{self._pid}"
                 raw  = ch.unary_unary(path)(b"", timeout=_TIMEOUT)
-            self.result.emit(_decode_response(bytes(raw)))
+                msg_name = f"Get_{self._pid}_Responses"
+            cls = self._builder.get_message_class(msg_name)
+            msg = cls()
+            msg.ParseFromString(bytes(raw))
+            self.result.emit(display_value(self._dtype, getattr(msg, self._pid)))
         except Exception as e:
             self.result.emit(f"Error: {e}")
         finally:
@@ -282,37 +277,122 @@ class _PropGetter(QThread):
 
 
 class _CmdRunner(QThread):
+    """Runs a plain (non-observable) command: one request, one response."""
     result = Signal(str)
 
     def __init__(
-        self, host: str, port: int, feature_id: str, cmd_id: str, payload: bytes
+        self, host: str, port: int, feature_id: str, cmd_id: str, payload: bytes,
+        builder: FeatureMessageBuilder, responses: list[dict],
     ) -> None:
         super().__init__()
-        self._addr    = f"{host}:{port}"
-        self._fid     = feature_id
-        self._cid     = cmd_id
-        self._payload = payload
+        self._addr      = f"{host}:{port}"
+        self._fid       = feature_id
+        self._cid       = cmd_id
+        self._payload   = payload
+        self._builder   = builder
+        self._responses = responses
 
     def run(self) -> None:
         path = f"{_rpc_base(self._fid)}/{self._cid}"
         ch = grpc.insecure_channel(self._addr)
         try:
-            raw     = ch.unary_unary(path)(self._payload, timeout=_TIMEOUT)
-            self.result.emit(_decode_response(bytes(raw)))
+            raw = ch.unary_unary(path)(self._payload, timeout=_TIMEOUT)
+            self.result.emit(self._decode_result(bytes(raw)))
         except Exception as e:
             self.result.emit(f"Error: {e}")
         finally:
             ch.close()
 
+    def _decode_result(self, raw: bytes) -> str:
+        if not self._responses:
+            return "(done)"
+        cls = self._builder.get_message_class(f"{self._cid}_Responses")
+        msg = cls()
+        msg.ParseFromString(raw)
+        return ", ".join(
+            f"{r['name']}={display_value(r['dtype'], getattr(msg, r['id']))}" for r in self._responses
+        )
+
+
+class _ObservableCmdRunner(QThread):
+    """
+    Drives a SiLA ObservableCommand: initiate (get a CommandExecutionUUID),
+    poll <Cmd>_Info for status/progress until finished, then fetch
+    <Cmd>_Result. See SiLAFramework.proto / docs/ai/FUTURE_IDEAS.md §1 for the
+    wire pattern this implements - verified against a real running server
+    exercising unitelabs-cdk's own ObservableCommandTest feature.
+    """
+    status = Signal(str)
+    result = Signal(str)
+
+    def __init__(
+        self, host: str, port: int, feature_id: str, cmd_id: str, payload: bytes,
+        builder: FeatureMessageBuilder, responses: list[dict],
+    ) -> None:
+        super().__init__()
+        self._addr      = f"{host}:{port}"
+        self._fid       = feature_id
+        self._cid       = cmd_id
+        self._payload   = payload
+        self._builder   = builder
+        self._responses = responses
+
+    _STATUS_NAMES = {0: "waiting", 1: "running", 2: "finished", 3: "error"}
+
+    def run(self) -> None:
+        base = _rpc_base(self._fid)
+        ch = grpc.insecure_channel(self._addr)
+        try:
+            confirmation_cls = self._builder.get_message_class("CommandConfirmation")
+            conf_raw = ch.unary_unary(f"{base}/{self._cid}")(self._payload, timeout=_TIMEOUT)
+            confirmation = confirmation_cls()
+            confirmation.ParseFromString(bytes(conf_raw))
+            uuid_bytes = confirmation.commandExecutionUUID.SerializeToString()
+
+            info_cls = self._builder.get_message_class("ExecutionInfo")
+            finished_error = False
+            for raw in ch.unary_stream(f"{base}/{self._cid}_Info")(uuid_bytes, timeout=None):
+                info = info_cls()
+                info.ParseFromString(bytes(raw))
+                status_name = self._STATUS_NAMES.get(info.commandStatus, str(info.commandStatus))
+                progress = info.progressInfo.value
+                self.status.emit(f"{status_name} ({progress:.0%})" if progress else status_name)
+                if info.commandStatus in (2, 3):
+                    finished_error = info.commandStatus == 3
+                    break
+
+            if finished_error:
+                self.result.emit("Command finished with an error")
+                return
+
+            result_raw = ch.unary_unary(f"{base}/{self._cid}_Result")(uuid_bytes, timeout=_TIMEOUT)
+            self.result.emit(self._decode_result(bytes(result_raw)))
+        except Exception as e:
+            self.result.emit(f"Error: {e}")
+        finally:
+            ch.close()
+
+    def _decode_result(self, raw: bytes) -> str:
+        if not self._responses:
+            return "(done)"
+        cls = self._builder.get_message_class(f"{self._cid}_Responses")
+        msg = cls()
+        msg.ParseFromString(raw)
+        return ", ".join(
+            f"{r['name']}={display_value(r['dtype'], getattr(msg, r['id']))}" for r in self._responses
+        )
+
 
 
 class _PropertyRow(QWidget):
     def __init__(
-        self, host: str, port: int, feature_id: str, prop: dict, t: dict, parent=None
+        self, host: str, port: int, feature_id: str, prop: dict, t: dict,
+        builder: FeatureMessageBuilder, parent=None
     ) -> None:
         super().__init__(parent)
         self._host = host; self._port = port
         self._fid  = feature_id; self._prop = prop
+        self._builder = builder
         self._worker: _PropGetter | None = None
 
         row = QHBoxLayout(self)
@@ -367,6 +447,7 @@ class _PropertyRow(QWidget):
         self._worker = _PropGetter(
             self._host, self._port, self._fid,
             self._prop["id"], self._prop["observable"],
+            self._builder, self._prop["dtype"],
         )
         self._worker.result.connect(self._on_result)
         self._worker.start()
@@ -376,16 +457,177 @@ class _PropertyRow(QWidget):
         self._get_btn.setEnabled(True)
 
 
+class _ParamInput(QWidget):
+    """
+    Input control(s) for one parameter, built from its DataTypeInfo:
+    enum-constrained -> QComboBox, range-constrained numeric -> QSpinBox/
+    QDoubleSpinBox, everything else basic -> QLineEdit. Structure recurses
+    into a labeled sub-form; List renders a repeatable, addable/removable
+    group of sub-forms for its element type.
+    """
+
+    def __init__(self, dtype: DataTypeInfo, t: dict, parent=None) -> None:
+        super().__init__(parent)
+        self._dtype = dtype
+        self._t = t
+        self._widget: QWidget | None = None
+        self._children: list[tuple[str, "_ParamInput"]] = []  # structure: (element_id, input)
+        self._list_rows: list["_ParamInput"] = []              # list: repeated inputs
+        self._list_rows_layout: QVBoxLayout | None = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+
+        if dtype.kind == "basic":
+            self._widget = self._build_basic_widget(dtype, t)
+            layout.addWidget(self._widget)
+        elif dtype.kind == "structure":
+            for elem_id, name, elem_dtype in dtype.elements:
+                row = QHBoxLayout()
+                row.setContentsMargins(0, 0, 0, 0)
+                row.setSpacing(6)
+                lbl = QLabel(name)
+                lbl.setStyleSheet(f"color: {t['text_dim']}; font-size: 8pt;")
+                lbl.setFixedWidth(70)
+                row.addWidget(lbl)
+                child = _ParamInput(elem_dtype, t)
+                row.addWidget(child, 1)
+                self._children.append((elem_id, child))
+                layout.addLayout(row)
+        elif dtype.kind == "list":
+            rows_container = QWidget()
+            self._list_rows_layout = QVBoxLayout(rows_container)
+            self._list_rows_layout.setContentsMargins(0, 0, 0, 0)
+            self._list_rows_layout.setSpacing(3)
+            layout.addWidget(rows_container)
+
+            add_btn = QPushButton("+ item")
+            add_btn.setStyleSheet(
+                f"QPushButton {{ background: {t['bg_hover']}; color: {t['text_muted']};"
+                f" border: 1px solid {t['border']}; border-radius: 3px; font-size: 8pt; }}"
+            )
+            add_btn.clicked.connect(self._add_list_row)
+            layout.addWidget(add_btn, alignment=Qt.AlignLeft)
+        else:
+            note = QLabel(dtype.unsupported_reason or "Unsupported type")
+            note.setStyleSheet(f"color: {t['text_dim']}; font-size: 8pt;")
+            layout.addWidget(note)
+
+    def _build_basic_widget(self, dtype: DataTypeInfo, t: dict) -> QWidget:
+        input_ss = (
+            f"background: {t['bg']}; color: {t['text']}; border: 1px solid {t['border']};"
+            f" border-radius: 4px; padding: 2px 6px; font-size: 9pt;"
+        )
+        if dtype.allowed:
+            combo = QComboBox()
+            combo.addItems(dtype.allowed)
+            combo.setStyleSheet(input_ss)
+            return combo
+        if dtype.basic == "Boolean":
+            combo = QComboBox()
+            combo.addItems(["true", "false"])
+            combo.setStyleSheet(input_ss)
+            return combo
+        if dtype.basic == "Integer" and (dtype.min_value is not None or dtype.max_value is not None):
+            spin = QSpinBox()
+            spin.setRange(
+                int(float(dtype.min_value)) if dtype.min_value is not None else -2_147_483_648,
+                int(float(dtype.max_value)) if dtype.max_value is not None else 2_147_483_647,
+            )
+            spin.setStyleSheet(input_ss)
+            return spin
+        if dtype.basic == "Real" and (dtype.min_value is not None or dtype.max_value is not None):
+            spin = QDoubleSpinBox()
+            spin.setDecimals(6)
+            spin.setRange(
+                float(dtype.min_value) if dtype.min_value is not None else -1e15,
+                float(dtype.max_value) if dtype.max_value is not None else 1e15,
+            )
+            spin.setStyleSheet(input_ss)
+            return spin
+        line = QLineEdit()
+        line.setPlaceholderText(dtype.basic or "")
+        line.setStyleSheet(
+            f"QLineEdit {{ {input_ss} }}"
+            f"QLineEdit:focus {{ border-color: {t['accent']}; }}"
+        )
+        return line
+
+    def _add_list_row(self) -> None:
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+
+        child = _ParamInput(self._dtype.inner, self._t)
+        row_layout.addWidget(child, 1)
+
+        remove_btn = QPushButton("×")
+        remove_btn.setFixedWidth(22)
+        remove_btn.setStyleSheet(
+            f"QPushButton {{ background: {self._t['bg_hover']}; color: {self._t['text_dim']};"
+            f" border: 1px solid {self._t['border']}; border-radius: 3px; }}"
+        )
+        row_layout.addWidget(remove_btn)
+
+        self._list_rows_layout.addWidget(row_widget)
+        self._list_rows.append(child)
+
+        def _remove() -> None:
+            self._list_rows.remove(child)
+            row_widget.setParent(None)
+            row_widget.deleteLater()
+
+        remove_btn.clicked.connect(_remove)
+
+    def get_value(self):
+        """Return a plain Python value: str/float/bool for basics, dict for
+        structure (keyed by element id), list for list."""
+        if self._dtype.kind == "basic":
+            w = self._widget
+            if isinstance(w, QComboBox):
+                return w.currentText()
+            if isinstance(w, (QSpinBox, QDoubleSpinBox)):
+                return w.value()
+            return w.text()
+        if self._dtype.kind == "structure":
+            return {elem_id: child.get_value() for elem_id, child in self._children}
+        if self._dtype.kind == "list":
+            return [row.get_value() for row in self._list_rows]
+        return None
+
+    def validate(self) -> str | None:
+        """Return an error message (for display) if the current value is invalid, else None."""
+        if self._dtype.kind == "basic":
+            return validate_value(self._dtype, self.get_value())
+        if self._dtype.kind == "structure":
+            for elem_id, child in self._children:
+                err = child.validate()
+                if err:
+                    return f"{elem_id}: {err}"
+            return None
+        if self._dtype.kind == "list":
+            for i, row in enumerate(self._list_rows):
+                err = row.validate()
+                if err:
+                    return f"item {i}: {err}"
+            return None
+        return None
+
+
 class _CommandPanel(QWidget):
     def __init__(
-        self, host: str, port: int, feature_id: str, cmd: dict, t: dict, parent=None
+        self, host: str, port: int, feature_id: str, cmd: dict, t: dict,
+        builder: FeatureMessageBuilder, parent=None
     ) -> None:
         super().__init__(parent)
         self._host = host; self._port = port
         self._fid  = feature_id; self._cmd = cmd
         self._t    = t
-        self._worker: _CmdRunner | None = None
-        self._inputs: list[tuple[QLineEdit, str]] = []  # (widget, sila_type)
+        self._builder = builder
+        self._worker: _CmdRunner | _ObservableCmdRunner | None = None
+        self._inputs: list[tuple[str, _ParamInput]] = []  # (param_id, input)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 4, 0, 4)
@@ -419,7 +661,7 @@ class _CommandPanel(QWidget):
             layout.addWidget(desc)
 
         can_run = True
-        for i, param in enumerate(cmd.get("params", [])):
+        for param in cmd.get("params", []):
             prow = QHBoxLayout()
             prow.setContentsMargins(14, 0, 0, 0)
             prow.setSpacing(8)
@@ -427,29 +669,19 @@ class _CommandPanel(QWidget):
             plbl = QLabel(param["name"])
             plbl.setStyleSheet(f"color: {t['text_muted']}; font-size: 9pt;")
             plbl.setFixedWidth(120)
+            plbl.setAlignment(Qt.AlignTop)
             prow.addWidget(plbl)
 
             tlbl = QLabel(param["type"])
             tlbl.setStyleSheet(f"color: {t['text_dim']}; font-size: 8pt;")
             tlbl.setFixedWidth(70)
+            tlbl.setAlignment(Qt.AlignTop)
             prow.addWidget(tlbl)
 
-            simple_types = {"String", "Integer", "UInteger", "Real", "Boolean"}
-            if param["type"] in simple_types:
-                inp = QLineEdit()
-                inp.setPlaceholderText(param["desc"] or param["type"])
-                inp.setStyleSheet(
-                    f"QLineEdit {{ background: {t['bg']}; color: {t['text']};"
-                    f" border: 1px solid {t['border']}; border-radius: 4px;"
-                    f" padding: 2px 6px; font-size: 9pt; }}"
-                    f"QLineEdit:focus {{ border-color: {t['accent']}; }}"
-                )
-                prow.addWidget(inp, 1)
-                self._inputs.append((inp, param["type"]))
-            else:
-                note = QLabel(f"({param['type']} - not editable in generic UI)")
-                note.setStyleSheet(f"color: {t['text_dim']}; font-size: 8pt;")
-                prow.addWidget(note, 1)
+            inp = _ParamInput(param["dtype"], t)
+            prow.addWidget(inp, 1)
+            self._inputs.append((param["id"], inp))
+            if param["dtype"].kind == "unsupported":
                 can_run = False
 
             layout.addLayout(prow)
@@ -461,9 +693,7 @@ class _CommandPanel(QWidget):
 
         self._run_btn = QPushButton("Run")
         self._run_btn.setFixedSize(54, 24)
-        self._run_btn.setEnabled(can_run and not cmd.get("observable"))
-        if cmd.get("observable"):
-            self._run_btn.setToolTip("Observable commands are not supported in the generic UI")
+        self._run_btn.setEnabled(can_run)
         self._run_btn.setStyleSheet(
             f"QPushButton {{ background: {t['accent']}; color: {t['accent_text']};"
             f" border: none; border-radius: 4px; font-size: 9pt; font-weight: bold; }}"
@@ -487,15 +717,35 @@ class _CommandPanel(QWidget):
             layout.addWidget(rlbl)
 
     def _run(self) -> None:
-        payload = b""
-        for i, (inp, sila_type) in enumerate(self._inputs):
-            payload += _encode_param(inp.text(), sila_type, i + 1)
+        for param_id, inp in self._inputs:
+            err = inp.validate()
+            if err:
+                self._out_lbl.setText(f"{param_id}: {err}")
+                return
+
+        if self._inputs:
+            params_cls = self._builder.get_message_class(f"{self._cmd['id']}_Parameters")
+            params_msg = params_cls()
+            for param in self._cmd["params"]:
+                inp = next(i for pid, i in self._inputs if pid == param["id"])
+                set_field_value(param["dtype"], getattr(params_msg, param["id"]), inp.get_value())
+            payload = params_msg.SerializeToString()
+        else:
+            payload = b""
 
         self._run_btn.setEnabled(False)
-        self._out_lbl.setText("Running…")
-        self._worker = _CmdRunner(
-            self._host, self._port, self._fid, self._cmd["id"], payload
-        )
+        responses = self._cmd.get("responses", [])
+        if self._cmd.get("observable"):
+            self._out_lbl.setText("Starting…")
+            self._worker = _ObservableCmdRunner(
+                self._host, self._port, self._fid, self._cmd["id"], payload, self._builder, responses
+            )
+            self._worker.status.connect(lambda s: self._out_lbl.setText(f"Status: {s}"))
+        else:
+            self._out_lbl.setText("Running…")
+            self._worker = _CmdRunner(
+                self._host, self._port, self._fid, self._cmd["id"], payload, self._builder, responses
+            )
         self._worker.result.connect(self._on_result)
         self._worker.start()
 
@@ -638,6 +888,8 @@ class _FeatureSection(QWidget):
             self._content_layout.addWidget(desc)
             self._content_layout.addSpacing(4)
 
+        builder = info["builder"]
+
         if info.get("commands"):
             self._section_label("Commands")
             sep = QFrame(); sep.setFrameShape(QFrame.HLine)
@@ -645,7 +897,7 @@ class _FeatureSection(QWidget):
             self._content_layout.addWidget(sep)
             for cmd in info["commands"]:
                 self._content_layout.addWidget(
-                    _CommandPanel(self._host, self._port, self._fid, cmd, t)
+                    _CommandPanel(self._host, self._port, self._fid, cmd, t, builder)
                 )
 
         if info.get("properties"):
@@ -657,7 +909,7 @@ class _FeatureSection(QWidget):
             self._content_layout.addWidget(sep)
             for prop in info["properties"]:
                 self._content_layout.addWidget(
-                    _PropertyRow(self._host, self._port, self._fid, prop, t)
+                    _PropertyRow(self._host, self._port, self._fid, prop, t, builder)
                 )
 
         if not info.get("commands") and not info.get("properties"):
