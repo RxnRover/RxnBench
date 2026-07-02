@@ -258,6 +258,7 @@ Main responsibilities:
 | `device_template` frontend half (was backend-only) | Done |
 | `motion_platform.proto` matches backend dataclasses/feature | Done |
 | pH backend real test suite (driver, sensor, feature layers) | Done |
+| Gantry backend real test suite (motion engine sequencing, homing state machine, toolhead-aware bounds, controller, feature, well/workspace math, mock Moonraker) | Done |
 
 ---
 
@@ -265,9 +266,6 @@ Main responsibilities:
 
 These are the active issues worth tracking now.
 
-| Gap | Location | Priority | Notes |
-|---|---|---:|---|
-| Gantry backend test coverage gaps | `devices/gantry/backend/tests/` | High | A suite exists (56 tests) covering bare axis bounds, `ToolheadManager` YAML loading, well-plate/workspace coordinate math. But `MotionEngine` (raise→XY→lower sequencing) and `HomingManager`'s manual-homing state machine (`confirm_x_min/x_max/y_min/y_max`, `confirm_z_reference`, `finish_homing`, `homing_jog_update`) have zero direct tests, and `GantryController`'s toolhead-aware bounds checking (footprint/tip-offset compensation in `move_to`/`_check_bounds`) is untested. `tests/test_feature_discovery.py` is also mislabeled — it tests a duplicated copy of frontend `SilaClient` matching logic, not the backend's actual `feature.py`. |
 | Add real pH I2C wiring | `rxn_bench_ph/server.py` | High | Instantiate `smbus2.SMBus(1)` and wire it into `AtlasScientificEZO` / `AtlasPHSensor` for real hardware mode. |
 | Add mock I2C bus | `rxn_bench_ph/` | Medium | Needed for end-to-end mock-mode testing of the real pH driver path. |
 | Generate pH protobuf stubs | frontend `proto/` + backend pH generator path | Medium | Replace temporary pH varint/LEN helpers with generated stubs like the gantry path. Blocked on the proto stub placement gap below — pH stub generation needs to land in `devices/ph_sensor/frontend/`, so the gantry placement should be fixed first to establish the pattern. |
