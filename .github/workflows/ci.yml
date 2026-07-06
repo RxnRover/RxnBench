@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install workspace
+        working-directory: software/backend
+        run: uv sync
+      - name: Gantry tests
+        working-directory: software/backend
+        run: make test-gantry
+      - name: pH tests
+        working-directory: software/backend
+        run: make test-ph
+      - name: Proto drift check
+        working-directory: software/backend
+        run: make check-proto
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Qt runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1
+      - name: Install frontend
+        working-directory: software/frontend
+        run: uv sync
+      - name: Generated-connection drift check
+        working-directory: software/frontend
+        run: make check-connections
+      - name: Frontend tests
+        working-directory: software/frontend
+        run: make test

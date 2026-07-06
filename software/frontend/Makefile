@@ -1,6 +1,12 @@
-.PHONY: gen-connections check-connections
+.PHONY: gen-connections check-connections test
 
 DEVICES_DIR := ../../devices
+
+# Headless frontend tests (generator golden checks, error formatting, canvas
+# geometry conversion - no display needed).
+# PYTHONPATH is cleared to prevent ROS2 pytest plugins from interfering.
+test:
+	PYTHONPATH="" QT_QPA_PLATFORM=offscreen uv run pytest tests/ -v
 
 # Regenerate every device's generated_connection.py from its connection_spec.yaml.
 gen-connections:

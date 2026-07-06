@@ -1,6 +1,6 @@
 # Rxn Bench — Current State
 
-**Last cleaned:** July 1, 2026  
+**Last cleaned:** July 2, 2026  
 **Purpose:** Keep the active architecture, current gaps, and next engineering moves visible without preserving every historical migration note.
 
 ---
@@ -99,8 +99,15 @@ devices/ph_sensor/frontend/
 ├── generated_connection.py
 ├── connection.py
 ├── widget.py
+├── proto/
+│   ├── ph_sensor.proto
+│   └── ph_sensor_pb2.py
 └── ui/
 ```
+
+`devices/device_template/frontend/` mirrors the same shape, including its own
+`proto/my_device{.proto,_pb2.py}` stubs, so the template teaches the compiled-stub
+pattern end-to-end (the hand-rolled varint helpers it used to demonstrate are gone).
 
 ### Frontend rule
 
@@ -199,6 +206,8 @@ devices/ph_sensor/backend/src/rxn_bench_ph/
 ├── atlas_scientific_driver.py
 ├── base_sensor.py
 ├── base_driver.py
+├── i2c_bus.py
+├── mock_i2c.py
 ├── mock_ph_sensor.py
 ├── enums.py
 └── session_log.py
@@ -208,7 +217,10 @@ Main responsibilities:
 
 - Expose the pH SiLA feature.
 - Keep pH feature logic decoupled from concrete sensor implementation through `PHSensorProtocol`.
-- Support mock pH readings for development.
+- Support mock pH readings for development (`MockPHSensor`), plus `MockI2CBus`, an
+  EZO-protocol emulator that exercises the *real* driver stack end-to-end without hardware.
+- Bridge smbus2 to the driver's raw write/read interface via `i2c_bus.SMBusI2C`
+  (EZO circuits speak raw I2C byte streams, not the SMBus register protocol).
 - Keep pH-specific calibration concepts inside the pH package.
 
 ### Client package
@@ -246,21 +258,29 @@ Main responsibilities:
 | Gantry frontend widget | Done |
 | pH frontend widget | Done |
 | Generic FDL-driven device inspector (`GenericDeviceWidget`) | Done, including dynamic FDL→protobuf construction, structured/list params, observable commands, typed input widgets — see `FUTURE_IDEAS.md` §1 |
-| Frontend pH connection | Done, but still uses temporary hand-rolled protobuf helpers |
+| Frontend pH connection | Done — uses generated protobuf stubs (`proto/ph_sensor_pb2.py`); the hand-rolled varint helpers are gone (from pH *and* the device template) |
 | Shared frontend connection base | Done |
 | Per-device generated connection layer | Done |
 | Session JSONL logs | Done |
 | CSV viewer and experiment notes panels | Done |
 | Multi-tab frontend workspaces | Done |
 | `SiLAService.GetImplementedFeatures` discovery | Done |
-| Proto drift check for gantry | Done |
+| Proto drift check for all devices | Done — `make check-proto` covers gantry, pH, and the template; protos come from per-device manifests in `software/backend/scripts/gen_proto.py` (the old gantry-only script is gone) |
+| Backend experiment-lock gating of motion RPCs | Done — `AcquireExperimentLock` returns a secret token; motion/toolhead/workspace commands accept a `Token` parameter and reject non-holders with `ExperimentLockError` while the lock is held; homing commands are always rejected while locked; Pause/Resume/Stop stay tokenless so the UI can always halt a run. Verified end-to-end against a live mock server. |
+| Labware geometry served from backend (`GetLabware`) | Done — single source of truth for plate dimensions; the deck canvases and `rxn_bench_client.get_workspace_wells()` fetch it instead of hardcoding grids (the frontend's 24-well A1 offsets had already drifted ~9 mm from the backend's) |
+| Workspace YAML source of truth | Done — `GetWorkspaceYaml`/`Subscribe_CurrentWorkspaceYaml` read from the controller's workspace manager, so name-loaded (`SetWorkspace`) and boot-restored workspaces are visible to clients (previously only `LoadWorkspaceYaml` updated a feature-level cache) |
+| Multi-toolhead support (two heads mounted at once) | Done — mount confirmations are **per-head** and survive activation switches: confirm each physically installed head once at setup, then scripts alternate between them unattended (`set_toolhead` is a pure software switch; `mount_toolhead` is idempotent). `move_to_well` refuses a head that was never confirmed mounted (`ToolheadNotMountedError`) or whose geometry is unvalidated. Homing invalidation moved from switching to the *physical-change* events (confirm/clear mounted, remove head), and only when state actually changes — so a mid-script switch no longer kills `save_and_park`. `ToolheadInfo` streams `mounted_toolheads` (pipe-delimited) so both UI slots show their own head's mount readiness; each slot's Activate switches the active head, the matching slot shows the ACTIVE badge, and mount/remove/calibrate only enable on the active slot. Verified end-to-end against a live mock server. |
+| Mock I2C bus (`MockI2CBus`) + SMBus adapter (`SMBusI2C`) | Done — the real pH driver stack runs end-to-end against the EZO emulator in tests; `SMBusI2C` fixes a latent crash where `smbus2.SMBus` was passed directly to a driver expecting raw `write`/`read` |
+| Frontend test suite | Done (first pass) — `software/frontend/tests/`: generator golden checks per device, `_format_error` decoding, labware→canvas spec conversion; run with `make test` (headless) |
+| CI workflow | Done — `.github/workflows/ci.yml` runs both backend suites, frontend tests, `check-proto`, and `check-connections` on push/PR |
+| Moonraker HTTP timeouts | Done — all requests carry (connect, read) timeouts, so a wedged Moonraker can no longer hang the server while holding the hardware lock |
 | Split-service install/systemd scripts | Done |
 | Device-first repo layout (`devices/<name>/{backend,frontend}`) | Done |
 | `device_template` frontend half (was backend-only) | Done |
 | `motion_platform.proto` matches backend dataclasses/feature | Done |
 | pH backend real test suite (driver, sensor, feature layers) | Done |
 | Gantry backend real test suite (motion engine sequencing, homing state machine, toolhead-aware bounds, controller, feature, well/workspace math, mock Moonraker) | Done |
-| Experiment-lock frontend visibility | Done — banner + Pause/Resume/Stop wired to `experiment_active_changed` in the main widget (`_set_controls_locked` disables toolhead-management buttons, including the ones that launch the Homing/Toolhead Calibration dialogs). Homing and Toolhead Calibration dialogs also now disable their own jog/confirm controls if the lock is acquired while already open. Backend-level RPC gating (a direct call bypassing the UI) is a separate, still-open gap — see §6. |
+| Experiment-lock frontend visibility | Done — banner + Pause/Resume/Stop wired to `experiment_active_changed` in the main widget (`_set_controls_locked` disables toolhead-management buttons, including the ones that launch the Homing/Toolhead Calibration dialogs). Homing and Toolhead Calibration dialogs also disable their own jog/confirm controls if the lock is acquired while already open. Backend-level RPC gating now backs this up (see the lock-token row above), so the UI disabling is defense-in-depth, not the only barrier. |
 | `generated_connection.py` drift check | Done — `make check-connections` (new `software/frontend/Makefile`) regenerates every device's `generated_connection.py` from its `connection_spec.yaml` and diffs; `make gen-connections` regenerates in place. Loops over `devices/*/frontend/connection_spec.yaml` generically, so it covers new devices automatically. |
 | `motion_platform` proto stubs live under `devices/gantry/frontend/proto/` | Done, moved out of the shared `proto/` tree, which now only holds `sila_service_pb2` (framework-level, genuinely shared). `gen_proto.py`, the `software/backend/Makefile` proto targets, and `connection_spec.yaml`'s `proto_module` all point at the new location; `make check-proto` still passes |
 
@@ -272,34 +292,23 @@ These are the active issues worth tracking now.
 
 | Gap | Location | Priority | Notes |
 |---|---|---:|---|
-| Add real pH I2C wiring | `rxn_bench_ph/server.py` | High | Instantiate `smbus2.SMBus(1)` and wire it into `AtlasScientificEZO` / `AtlasPHSensor` for real hardware mode. |
-| Add mock I2C bus | `rxn_bench_ph/` | Medium | Needed for end-to-end mock-mode testing of the real pH driver path. |
-| Generate pH protobuf stubs | `devices/ph_sensor/frontend/proto/` + backend pH generator path | Medium | Replace temporary pH varint/LEN helpers with generated stubs like the gantry path. Stub placement is now settled: land them in `devices/ph_sensor/frontend/proto/`, matching the per-device placement gantry now uses (see §5), not the shared core `proto/` tree. |
-| Add plate overlay to gantry canvas | `devices/gantry/frontend/` | Medium | Show plate footprint and well grid in `PositionGrid`. |
+| Verify real pH I2C path on the Pi | `rxn_bench_ph/i2c_bus.py` + physical bench | High | The code path is complete (`SMBusI2C(SMBus(1))` → `AtlasScientificEZO`) and exercised against `MockI2CBus` in tests, but it has not yet been run against the physical EZO circuit. One bench session: boot the Pi service without `RXN_BENCH_MOCK` and confirm readings/calibration. |
 | Migrate configs to pydantic | gantry config models | Medium | Gives validation, clearer errors, and JSON Schema export. |
 | Entry-points plugin refactor for frontend device discovery | `rxn_bench_ui/devices/__init__.py` | Medium | Current `all_devices()` loader uses `importlib.util.spec_from_file_location` to scan `devices/*/frontend/` at the repo root. Should land before device #3: turn each `devices/<name>/frontend/` into a small installable package exposing an entry point in a `rxn-bench-ui.devices` group, discovered via `importlib.metadata`, symmetric with the backend's uv workspace members. Not attempted in this pass — file-location scanning still works for two devices. |
-| Add TLS + authentication deployment guide | docs/config | Low until shared-network deployment | Bare, unauthenticated gRPC is acceptable for isolated bench development but not for a shared lab network. Note: Moonraker's own HTTP API on the Pi is itself unauthenticated by default, so network exposure bypasses *all* gantry safety logic (bounds, clearance, experiment lock) the moment this leaves an isolated bench network — TLS on the SiLA/gRPC layer alone would not close that hole. |
-| Measure pH probe `tip_x` / `tip_y` | `toolheads/ph_probe/ph_probe_toolhead.yaml` | Low | Current values are still placeholders — the physical measurement itself hasn't happened. The guard is now implemented: `ToolheadGeometry.geometry_validated` (default `True`, `False` for `ph_probe`) logs a warning on `set_toolhead()` and `GantryController.move_to_well()` refuses to run with a `UnvalidatedGeometryError` unless `override_unvalidated=True` is passed. Plain `move_to()`/`jog()` are unaffected — only well-targeted moves are gated. |
+| Add TLS + authentication deployment guide | docs/config | Low until shared-network deployment | Bare, unauthenticated gRPC is acceptable for isolated bench development but not for a shared lab network. Note: Moonraker's own HTTP API on the Pi is itself unauthenticated by default, so network exposure bypasses *all* gantry safety logic (bounds, clearance, experiment lock) the moment this leaves an isolated bench network — TLS on the SiLA/gRPC layer alone would not close that hole. The experiment-lock token is a coordination mechanism, not authentication: any client on the network can still acquire the lock when it's free. |
+| Measure pH probe `tip_x` / `tip_y` | `toolheads/ph_probe/ph_probe_toolhead.yaml` | Low | Current values are still placeholders — the physical measurement itself hasn't happened. The guard is implemented: `ToolheadGeometry.geometry_validated` (default `True`, `False` for `ph_probe`) logs a warning on `set_toolhead()` and `GantryController.move_to_well()` refuses to run with a `UnvalidatedGeometryError` unless `override_unvalidated=True` is passed. Plain `move_to()`/`jog()` are unaffected — only well-targeted moves are gated. |
 | Camera support | new package/device | Low | Phase 2+ feature, not part of current bench core. |
-| Experiment lock does not gate motion RPCs at the backend | `devices/gantry/backend/src/rxn_bench_gantry/feature.py` | High | Confirmed in code: `move_to`/`jog`/etc. call `self._run(...)`, which only acquires `self._hw_lock` (an `asyncio.Lock` used purely for serialization) — it never checks `self._experiment_state`. A motion RPC sent directly (bypassing the UI, e.g. from another script or a raw gRPC call) while a script holds the experiment lock is **executed**, not rejected; it is merely serialized behind the same lock the script is also using. This is a real collision/safety risk, not fixed by frontend gating alone. Frontend visibility (see §5/§8) closes the *normal-operation* path but not this one. |
 
 ---
 
 ## 7. Immediate Next Work
 
-1. Wire the real pH hardware path:
-   - instantiate the I2C bus
-   - wire `AtlasScientificEZO`
-   - wire `AtlasPHSensor`
-   - preserve mock mode
+1. Bench-verify the real pH I2C path on the Pi (code is done; the physical
+   EZO circuit hasn't been exercised through `SMBusI2C` yet).
 
-2. Add `MockI2CBus` so pH can be exercised end-to-end without hardware.
+2. Measure the pH probe's `tip_x`/`tip_y` and flip `geometry_validated` to true.
 
-3. Generate pH protobuf stubs and remove temporary hand-rolled wire encode/decode from the frontend pH connection.
-
-4. Add plate overlay rendering to the gantry frontend.
-
-5. Start pydantic migration for config models:
+3. Start pydantic migration for config models:
    - `ToolheadConfig`
    - `WorkspaceConfig`
    - `MachineConfig`
@@ -320,8 +329,12 @@ These are the active issues worth tracking now.
 - Keep toolhead and labware definitions YAML/config-driven.
 - Keep experiment scripts using `rxn_bench_client` rather than directly depending on frontend code.
 - Keep the shared uv workspace venv for local dev/test only. Production deployment gives gantry and ph_sensor their own standalone venv each (via `scripts/install_service.sh`), so either service can be updated/restarted without affecting the other.
-- Duplicate small utilities per device rather than extracting a shared common package. `rxn_bench_gantry/session_log.py` and `rxn_bench_ph/session_log.py` are functionally identical (byte-for-byte except one docstring word) — this is intentional, not drift to fix. Keeping each device's backend self-contained (no shared runtime dependency between otherwise-independent device packages) outweighs de-duplicating ~70 lines.
-- Both drift checks (`make check-proto` in `software/backend/Makefile`; `make check-connections` in `software/frontend/Makefile`) are manual-only today — there is no CI workflow or pre-commit hook in this repo that runs either automatically. Treat them as a "run before you PR" step, not a safety net.
+- Duplicate small utilities per device rather than extracting a shared common package. `rxn_bench_gantry/session_log.py` and `rxn_bench_ph/session_log.py` are functionally identical (byte-for-byte except one docstring word) — this is intentional, not drift to fix. Keeping each device's backend self-contained (no shared runtime dependency between otherwise-independent device packages) outweighs de-duplicating ~70 lines. (Build scripts are the exception: `software/backend/scripts/gen_proto.py` is one generator with a per-device manifest, because generated wire formats must not drift between devices.)
+- Both drift checks (`make check-proto`, `make check-connections`) and all test suites now run in CI (`.github/workflows/ci.yml`) on every push/PR, in addition to being runnable locally before a PR.
+- Experiment lock uses a **token**, not caller identity: `AcquireExperimentLock` returns a secret; state-changing commands take an optional `Token` parameter checked backend-side. The UI never sends a token (so it is locked out during runs, except Pause/Resume/Stop); `rxn_bench_client.Gantry` attaches its token automatically. This is coordination between cooperating clients, not authentication (see the TLS gap in §6).
+- Plate/labware geometry is served by the gantry backend (`GetLabware`, YAML) and consumed by the frontend canvases and the experiment client. Never hardcode plate dimensions outside `rxn_bench_gantry/labware/*.yaml` — the frontend's former hardcoded table had already drifted ~9 mm from the backend on the 24-well plate.
+- Multiple toolheads can be physically mounted at once; exactly one is *active* (its geometry drives targeting/bounds). Mount confirmations are per-head and survive activation switches — switching (`set_toolhead`) is a pure software change that preserves homing state, so scripts alternate between pre-confirmed heads without operator interaction. Homing invalidates on *physical* changes only (confirming/clearing a mount, removing a head) and only when the state actually changes (re-confirming is a no-op). Well-targeted moves require the active head to be confirmed mounted and geometry-validated; plain `move_to`/`jog` are ungated. The two frontend slots are selection presets over this model.
+- Frontend plugins talk to servers **only** through their device connection (`connection.py` / generated base). No raw `grpc.insecure_channel` or hand-rolled protobuf in widgets — the last two violations (workspace loader's ad-hoc channels; pH/template varint helpers) were removed in this pass.
 
 ---
 

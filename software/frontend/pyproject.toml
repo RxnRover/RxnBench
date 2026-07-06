@@ -18,6 +18,11 @@ rxn-bench-client = { path = "../backend/client", editable = true }
 [project.scripts]
 rxn-bench-ui = "rxn_bench_ui.app:main"
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
