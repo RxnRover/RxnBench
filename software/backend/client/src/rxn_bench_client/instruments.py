@@ -35,11 +35,6 @@ def _once(prop) -> Any:
     finally:
         sub.cancel()
 
-_PLATE_GRIDS: dict[str, tuple[int, int]] = {
-    "96_well_standard": (8, 12),
-    "24_well_standard": (4, 6),
-}
-
 
 def _well_labels(rows: int, cols: int) -> list[str]:
     return [f"{chr(65 + r)}{c + 1}" for r in range(rows) for c in range(cols)]
@@ -67,6 +62,7 @@ class Gantry:
             sila: Connected SilaClient pointed at the gantry server.
         """
         self._g = sila
+        self._token = ""  # experiment lock token; set by acquire_experiment_lock()
 
     def get_workspace_yaml(self) -> str:
         """Return raw YAML of the active workspace."""
@@ -93,15 +89,23 @@ class Gantry:
             return
         if if_empty and self.get_workspace_yaml():
             return
-        self._g.Gantry.LoadWorkspaceYaml(Content=content)
+        self._g.Gantry.LoadWorkspaceYaml(Content=content, Token=self._token)
 
     def load_workspace(self, name: str) -> None:
         """Load a named workspace from the server's bundled definitions."""
-        self._g.Gantry.SetWorkspace(Name=name)
+        self._g.Gantry.SetWorkspace(Name=name, Token=self._token)
 
     def list_workspaces(self) -> list[str]:
         text = self._g.Gantry.ListWorkspaces()[0]
         return [w for w in text.splitlines() if w]
+
+    def get_labware(self) -> dict:
+        """Return the server's labware definitions as ``{plate_type: geometry dict}``.
+
+        The gantry server is the single source of truth for plate geometry
+        (rows, columns, spacing_mm, a1 offsets, footprint).
+        """
+        return _yaml.safe_load(self._g.Gantry.GetLabware()[0]) or {}
 
     def get_workspace_wells(
         self,
@@ -111,15 +115,23 @@ class Gantry:
     ) -> list[str]:
         """Return every well in the loaded workspace as ``'plate_id/well'`` strings.
 
+        Plate dimensions come from the server's labware definitions
+        (see :meth:`get_labware`), so any plate type installed on the server
+        works without client-side registration.
+
         Args:
             plate_id:    Limit results to one plate (e.g. ``"plate1"``).
-            plate_grids: Extra plate types not in the built-in registry.
+            plate_grids: Optional ``{plate_type: (rows, cols)}`` overrides.
 
         Raises:
             RuntimeError: No workspace is loaded.
             ValueError:   Unknown plate type.
         """
-        grids = {**_PLATE_GRIDS, **(plate_grids or {})}
+        grids = {
+            name: (spec["rows"], spec["columns"])
+            for name, spec in self.get_labware().items()
+        }
+        grids.update(plate_grids or {})
         raw = self.get_workspace_yaml()
         if not raw:
             raise RuntimeError(
@@ -142,18 +154,36 @@ class Gantry:
         return wells
 
     def set_toolhead(self, name: str) -> None:
-        self._g.Gantry.SetToolhead(Name=name)
+        """Switch the active toolhead - a pure software change.
+
+        Mount confirmations are per-head and survive switching, so alternating
+        between two heads that were each confirmed once (mount_toolhead, or the
+        UI at setup) needs no operator interaction mid-script::
+
+            bench.gantry.mount_toolhead("ph_probe")   # confirm once at setup
+            bench.gantry.mount_toolhead("pipette")    # confirm once at setup
+            ...
+            bench.gantry.set_toolhead("ph_probe")     # switch freely mid-run
+            bench.gantry.set_toolhead("pipette")
+        """
+        self._g.Gantry.SetToolhead(Name=name, Token=self._token)
 
     def confirm_toolhead_mounted(self) -> None:
-        self._g.Gantry.ConfirmToolheadMounted()
+        """Confirm the *active* toolhead is physically mounted (idempotent)."""
+        self._g.Gantry.ConfirmToolheadMounted(Token=self._token)
 
     def mount_toolhead(self, name: str) -> None:
-        """Select a toolhead and confirm it is physically mounted."""
-        self._g.Gantry.SetToolhead(Name=name)
-        self._g.Gantry.ConfirmToolheadMounted()
+        """Activate a toolhead and confirm it is physically mounted.
+
+        Idempotent: re-confirming an already-confirmed head is a no-op on the
+        server (and does not invalidate homing), so calling this at script
+        startup for heads the operator already confirmed is safe.
+        """
+        self._g.Gantry.SetToolhead(Name=name, Token=self._token)
+        self._g.Gantry.ConfirmToolheadMounted(Token=self._token)
 
     def clear_toolhead_mounted(self) -> None:
-        self._g.Gantry.ClearToolheadMounted()
+        self._g.Gantry.ClearToolheadMounted(Token=self._token)
 
     def list_toolheads(self) -> list[tuple[str, str]]:
         text = self._g.Gantry.ListToolheads()[0]
@@ -164,23 +194,25 @@ class Gantry:
         ]
 
     def move_to(self, x: float, y: float, z: float) -> None:
-        self._g.Gantry.MoveTo(X=x, Y=y, Z=z)
+        self._g.Gantry.MoveTo(X=x, Y=y, Z=z, Token=self._token)
 
     def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
-        self._g.Gantry.MoveToWell(Label=label, OverrideUnvalidated=override_unvalidated)
+        self._g.Gantry.MoveToWell(
+            Label=label, OverrideUnvalidated=override_unvalidated, Token=self._token
+        )
 
     def jog(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> None:
-        self._g.Gantry.Jog(Dx=dx, Dy=dy, Dz=dz)
+        self._g.Gantry.Jog(Dx=dx, Dy=dy, Dz=dz, Token=self._token)
 
     def engage_tool(self, depth: float | None = None) -> None:
         if depth is None:
             depth = _once(self._g.Gantry.ToolheadInfo).ZEngage
-        self._g.Gantry.EngageTool(Depth=depth)
+        self._g.Gantry.EngageTool(Depth=depth, Token=self._token)
 
     def disengage_tool(self, depth: float | None = None) -> None:
         if depth is None:
             depth = _once(self._g.Gantry.ToolheadInfo).ZEngage
-        self._g.Gantry.DisengageTool(Depth=depth)
+        self._g.Gantry.DisengageTool(Depth=depth, Token=self._token)
 
     def get_position(self) -> tuple[float, float, float]:
         pos = _once(self._g.Gantry.Position)
@@ -190,19 +222,23 @@ class Gantry:
         return self._g.Gantry.GetLimits()[0]
 
     def save_and_park(self) -> None:
-        self._g.Gantry.SaveAndPark()
+        self._g.Gantry.SaveAndPark(Token=self._token)
 
     def acquire_experiment_lock(self) -> None:
-        """Claim the experiment lock, blocking any other client from issuing commands.
+        """Claim the experiment lock; all other clients' motion commands are rejected.
 
         The lock is acquired automatically by :class:`RxnBenchClient` on connect and
         released when the session closes. Only one client can hold the lock at a time.
+        The server returns a secret token, which this instrument attaches to every
+        subsequent motion/toolhead/workspace command so they pass the backend's
+        lock gate; manual UI commands (no token) are rejected until release.
         """
-        self._g.Gantry.AcquireExperimentLock()
+        self._token = self._g.Gantry.AcquireExperimentLock()[0]
 
     def release_experiment_lock(self) -> None:
         """Release the experiment lock so another client may connect."""
-        self._g.Gantry.ReleaseExperimentLock()
+        self._g.Gantry.ReleaseExperimentLock(Token=self._token)
+        self._token = ""
 
     def get_experiment_state(self) -> str:
         """Return the current experiment state string (e.g. ``'running'``, ``'paused'``, ``'stop_requested'``)."""
