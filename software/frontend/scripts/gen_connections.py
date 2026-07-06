@@ -43,9 +43,8 @@ def _signal_type_str(args: list) -> str:
 
 
 def _spawn_call_lines(s: dict) -> list[str]:
-    rpc          = s["rpc"]
-    decode_type  = s.get("decode_type")      # None → raw bytes, no decode= kwarg
-    feature_name = s.get("feature_name", "")
+    rpc         = s["rpc"]
+    decode_type = s.get("decode_type")      # None → raw bytes, no decode= kwarg
 
     if "handler" in s:
         handler_expr = f"self.{s['handler']}"
@@ -64,8 +63,6 @@ def _spawn_call_lines(s: dict) -> list[str]:
     if decode_type:
         lines.append(f"            decode=_pb.{decode_type}.FromString,")
     # else: omit → _spawn_stream default is decode=bytes (raw)
-    if feature_name:
-        lines.append(f"            feature_name=\"{feature_name}\",")
     lines.append("        )")
     return lines
 

@@ -1,21 +1,25 @@
 """
 Base class for all SiLA device connections in the frontend.
 
-Each device has two connection files in its devices/<name>/ folder:
-  generated_connection.py - generated from connections/specs/<name>.yaml, do not edit
+Each device has two connection files in its devices/<name>/frontend/ folder:
+  generated_connection.py - generated from connection_spec.yaml, do not edit
   connection.py           - human-maintained; extends the generated base
 
-Run scripts/gen_connections.py to regenerate a device's generated_connection.py.
+Run scripts/gen_connections.py (or `make gen-connections`) to regenerate a
+device's generated_connection.py.
 """
 from __future__ import annotations
 
 import base64
+import logging
 import re
 import threading
 from typing import Any, Callable
 
 import grpc
 from PySide6.QtCore import QObject, Signal
+
+log = logging.getLogger(__name__)
 
 SILA_PORT = 50051
 
@@ -27,7 +31,7 @@ def _format_error(method: str, exc: Exception) -> str:
     if m:
         try:
             decoded = base64.b64decode(m.group(1)).decode("utf-8", errors="replace")
-            for marker in ("HTTPError:", "ValueError:", "MotionLimitError:", "Error:"):
+            for marker in ("HTTPError:", "ValueError:", "MotionLimitError:", "ExperimentLockError:", "Error:"):
                 if marker in decoded:
                     return decoded[decoded.index(marker):].split("\n")[0][:150]
             return decoded[:150]
@@ -48,9 +52,8 @@ class _FeatureConnection(QObject):
     via the generation counter (_gen).
     """
 
-    connection_changed    = Signal(bool)       # True = channel READY
-    error_occurred        = Signal(str)
-    feature_state_changed = Signal(str, bool)  # (feature_name, streams_ok)
+    connection_changed = Signal(bool)  # True = channel READY
+    error_occurred     = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -93,6 +96,8 @@ class _FeatureConnection(QObject):
     def disconnect(self) -> None:
         """Cancel all streams and close the channel."""
         self._stop.set()
+        if self._channel:
+            self._channel.close()
 
     def _on_connected(self, gen: int) -> None:
         """Called in a daemon thread after each connect_to(). Override in subclass."""
@@ -104,14 +109,13 @@ class _FeatureConnection(QObject):
         handler: Callable[[Any], None],
         *,
         decode: Callable[[bytes], Any] = bytes,
-        feature_name: str = "",
         retry_delay: float = 3.0,
     ) -> None:
         """Spawn a daemon thread that streams rpc_path, calling handler(decode(raw))."""
         threading.Thread(
             target=self._stream_loop,
             args=(gen, rpc_path, handler),
-            kwargs={"decode": decode, "feature_name": feature_name, "retry_delay": retry_delay},
+            kwargs={"decode": decode, "retry_delay": retry_delay},
             daemon=True,
         ).start()
 
@@ -122,23 +126,24 @@ class _FeatureConnection(QObject):
         handler: Callable[[Any], None],
         *,
         decode: Callable[[bytes], Any] = bytes,
-        feature_name: str = "",
         retry_delay: float = 3.0,
     ) -> None:
+        logged_failure = False
         while self._gen == gen and not self._stop.is_set():
-            first = True
             try:
                 for raw in self._channel.unary_stream(rpc_path)(b""):
                     if self._gen != gen or self._stop.is_set():
                         return
-                    if first:
-                        if feature_name:
-                            self.feature_state_changed.emit(feature_name, True)
-                        first = False
+                    logged_failure = False
                     handler(decode(bytes(raw)))
-            except Exception:
-                if feature_name:
-                    self.feature_state_changed.emit(feature_name, False)
+            except Exception as exc:
+                # First failure per outage at WARNING; the 3s-retry churn at DEBUG.
+                if not logged_failure:
+                    log.warning("stream %s failed (%s); retrying every %.0fs",
+                                rpc_path, exc, retry_delay)
+                    logged_failure = True
+                else:
+                    log.debug("stream %s still failing: %s", rpc_path, exc)
                 if self._gen != gen or self._stop.wait(retry_delay):
                     return
 
@@ -148,7 +153,7 @@ class _FeatureConnection(QObject):
             self._channel.unary_unary(rpc_path)(request)
         except Exception as e:
             method = rpc_path.rsplit("/", 1)[-1]
-            print(f"[gRPC] {method} error: {e}")
+            log.warning("%s error: %s", method, e)
             self.error_occurred.emit(_format_error(method, e))
 
     def _fire(self, rpc_path: str, request: bytes = b"") -> None:
