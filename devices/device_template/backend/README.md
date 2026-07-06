@@ -60,7 +60,7 @@ devices/my_device/frontend/
 ```
 
 - `__init__.py` follows the same contract as [devices/gantry/frontend/`__init__.py`](../../gantry/frontend/__init__.py): a `FEATURE_FRAGMENTS: list[str]` matched against advertised SiLA feature identifiers, and `create_widget(server, theme) -> QWidget`. Rename the fragments and widget class.
-- Update `connection_spec.yaml` (see [devices/ph_sensor/frontend/connection_spec.yaml](../../ph_sensor/frontend/connection_spec.yaml) for a spec with no compiled proto stubs, or [devices/gantry/frontend/connection_spec.yaml](../../gantry/frontend/connection_spec.yaml) for one with `proto_module` set), then regenerate the boilerplate from `software/frontend/`:
+- Add your device to `_DEVICES` in `software/backend/scripts/gen_proto.py` and run `make gen-proto` (from `software/backend`) to generate the protobuf stubs into `frontend/proto/`. Then update `connection_spec.yaml` (see [devices/gantry/frontend/connection_spec.yaml](../../gantry/frontend/connection_spec.yaml) or [devices/ph_sensor/frontend/connection_spec.yaml](../../ph_sensor/frontend/connection_spec.yaml)) and regenerate the boilerplate from `software/frontend/`:
 
   ```bash
   python scripts/gen_connections.py \

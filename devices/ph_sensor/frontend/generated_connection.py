@@ -11,6 +11,7 @@ from typing import Any
 from PySide6.QtCore import Signal
 
 from rxn_bench_ui.connections.base import _FeatureConnection
+import rxn_bench_ui.devices.ph_sensor.proto.ph_sensor_pb2 as _pb
 
 
 _PKG = "sila2.edu.iastate.ames.rxnbench.phsensor.v1"
@@ -32,17 +33,13 @@ class PHConnectionBase(_FeatureConnection):
     def _on_connected(self, gen: int) -> None:
         self._spawn_stream(
             gen, self._rpc("Subscribe_Ph"),
-            self._handle_ph_raw,
-            feature_name="PHSensor",
+            lambda r: self.ph_updated.emit(r.Ph.value),
+            decode=_pb.Subscribe_Ph_Responses.FromString,
         )
 
         self._after_connected(gen)
 
     def _after_connected(self, gen: int) -> None:
         """Override in subclass to run post-connect logic (e.g. blocking fetches)."""
-
-    # --- Custom stream handlers - implement in subclass ---
-    def _handle_ph_raw(self, resp: Any) -> None:
-        raise NotImplementedError("_handle_ph_raw must be implemented in subclass")
 
     # --- Commands ---

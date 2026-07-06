@@ -27,7 +27,10 @@ async def create_app(config):
         try:
             from smbus2 import SMBus
             from rxn_bench_ph.atlas_ph_sensor import AtlasPHSensor
-            sensor = AtlasPHSensor(SMBus(1))
+            from rxn_bench_ph.i2c_bus import SMBusI2C
+            # SMBusI2C adapts smbus2 to the raw write/read byte-stream
+            # interface the EZO driver expects - SMBus alone has no such API.
+            sensor = AtlasPHSensor(SMBusI2C(SMBus(1)))
             log.info("Atlas pH sensor initialised on I2C bus 1")
         except ImportError:
             raise RuntimeError(

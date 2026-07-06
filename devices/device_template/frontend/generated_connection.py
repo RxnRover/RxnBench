@@ -11,6 +11,7 @@ from typing import Any
 from PySide6.QtCore import Signal
 
 from rxn_bench_ui.connections.base import _FeatureConnection
+import rxn_bench_ui.devices.device_template.proto.my_device_pb2 as _pb
 
 
 _PKG = "sila2.edu.iastate.ames.rxnbench.mydevice.v1"
@@ -32,8 +33,8 @@ class MyDeviceConnectionBase(_FeatureConnection):
     def _on_connected(self, gen: int) -> None:
         self._spawn_stream(
             gen, self._rpc("Subscribe_Measurement"),
-            self._handle_measurement_raw,
-            feature_name="MyDevice",
+            lambda r: self.measurement_updated.emit(r.Measurement.value),
+            decode=_pb.Subscribe_Measurement_Responses.FromString,
         )
 
         self._after_connected(gen)
@@ -41,8 +42,9 @@ class MyDeviceConnectionBase(_FeatureConnection):
     def _after_connected(self, gen: int) -> None:
         """Override in subclass to run post-connect logic (e.g. blocking fetches)."""
 
-    # --- Custom stream handlers - implement in subclass ---
-    def _handle_measurement_raw(self, resp: Any) -> None:
-        raise NotImplementedError("_handle_measurement_raw must be implemented in subclass")
-
     # --- Commands ---
+    def perform_action(self, parameter: float) -> None:
+        _p = _pb.PerformAction_Parameters()
+        _p.parameter.value = parameter
+        self._fire(self._rpc("PerformAction"), _p.SerializeToString())
+

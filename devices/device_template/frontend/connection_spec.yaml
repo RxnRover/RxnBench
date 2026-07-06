@@ -5,26 +5,26 @@
 #     --out ../../devices/mydevice/frontend/generated_connection.py
 #
 # TODO: rename mydevice/MyDevice throughout this file and the generated
-# output. No compiled protobuf stubs exist for this template (see the
-# backend device_template's own TODOs), so decode_type is omitted below and
-# the `measurement` stream is decoded by hand in connection.py - see
-# devices/ph_sensor/frontend/connection.py for the pattern (varint/LEN
-# helpers + a small SiLA Real decoder). Generate proto stubs on the backend
-# to switch to the simpler decode_type: pattern used by devices/gantry.
+# output. Protobuf stubs come from the backend manifest: add your device to
+# _DEVICES in software/backend/scripts/gen_proto.py, then run `make gen-proto`
+# (from software/backend) to produce proto/<name>_pb2.py next to this file.
 
 meta:
   package: sila2.edu.iastate.ames.rxnbench.mydevice.v1
   service: MyDevice
   class_name: MyDeviceConnectionBase
-  # proto_module: omitted — no compiled stubs; see TODO above
+  proto_module: rxn_bench_ui.devices.device_template.proto.my_device_pb2
 
 streams:
   - rpc: Subscribe_Measurement
-    # decode_type: omitted — raw bytes passed to handler
+    decode_type: Subscribe_Measurement_Responses
     signal: measurement_updated
     signal_args: [float]
-    handler: _handle_measurement_raw
-    feature_name: MyDevice
+    emit: ["r.Measurement.value"]
 
-# Commands - perform_action requires raw byte construction (no compiled
-# stubs), so it is implemented by hand in connection.py, not generated.
+commands:
+  - method: perform_action
+    rpc: PerformAction
+    params: PerformAction_Parameters
+    args:
+      - {name: parameter, field: parameter, type: float}
