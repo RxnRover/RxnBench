@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QFile, QThread, Signal
@@ -96,6 +97,9 @@ class _LivePanel(QWidget):
     def set_position(self, x: float, y: float) -> None:
         self._canvas.set_current_position(x, y)
 
+    def set_plate_specs(self, labware: dict) -> None:
+        self._canvas.set_plate_specs(labware)
+
     def load_workspace(self, ws: dict) -> None:
         self._canvas.load(ws)
 
@@ -121,9 +125,12 @@ class GantryWidget(QWidget):
         self._server = server
         self._t      = t
         self._homed  = False
+        self._locked = False                 # experiment lock held by a script
+        self._last_th_info = None            # latest ToolheadInfo from the stream
 
         self._client     = GantryConnection()
         self._live_panel: _LivePanel | None = None
+        self._th_worker: _ToolheadListWorker | None = None
 
         loader = QUiLoader()
         f = QFile(str(_UI_DIR / "gantry_widget.ui"))
@@ -165,7 +172,7 @@ class GantryWidget(QWidget):
         self._th1_combo      = c.findChild(QComboBox,   "toolhead1_combo")
         self._th1_lbl        = c.findChild(QLabel,      "toolhead1_display_lbl")
         self._th1_mounted    = c.findChild(QLabel,      "toolhead1_mounted_lbl")
-        self._th1_cal_lbl    = c.findChild(QLabel,      "slot1_last_cal_lbl")
+        self._slot1_active   = c.findChild(QLabel,      "slot1_active_lbl")
         self._activate1_btn  = c.findChild(QPushButton, "activate_slot1_btn")
         self._confirm1_btn   = c.findChild(QPushButton, "confirm_mounted1_btn")
         self._clrmount1_btn  = c.findChild(QPushButton, "clear_mounted1_btn")
@@ -177,7 +184,7 @@ class GantryWidget(QWidget):
         self._th2_combo      = c.findChild(QComboBox,   "toolhead2_combo")
         self._th2_lbl        = c.findChild(QLabel,      "toolhead2_display_lbl")
         self._th2_mounted    = c.findChild(QLabel,      "toolhead2_mounted_lbl")
-        self._th2_cal_lbl    = c.findChild(QLabel,      "slot2_last_cal_lbl")
+        self._slot2_active   = c.findChild(QLabel,      "slot2_active_lbl")
         self._activate2_btn  = c.findChild(QPushButton, "activate_slot2_btn")
         self._confirm2_btn   = c.findChild(QPushButton, "confirm_mounted2_btn")
         self._clrmount2_btn  = c.findChild(QPushButton, "clear_mounted2_btn")
@@ -185,7 +192,7 @@ class GantryWidget(QWidget):
         self._cal2_btn       = c.findChild(QPushButton, "calibrate_slot2_btn")
 
     def _inject_right_panel(self) -> None:
-        self._workspace_widget = WorkspaceLoaderWidget(self._t, server=self._server)
+        self._workspace_widget = WorkspaceLoaderWidget(self._t, client=self._client)
         self._workspace_widget.workspace_changed.connect(self._on_workspace_changed)
 
         self._live_panel = _LivePanel(self._t)
@@ -263,48 +270,57 @@ class GantryWidget(QWidget):
         c.action_changed.connect(self._on_action_changed)
         c.workspace_yaml_changed.connect(self._on_workspace_yaml_changed)
         c.experiment_active_changed.connect(self._on_experiment_active)
+        c.labware_updated.connect(self._on_labware)
 
     def _wire_controls(self) -> None:
         if self._home_btn:
             self._home_btn.clicked.connect(self._open_homing)
-        # Slot 1
-        if self._activate1_btn:
-            self._activate1_btn.clicked.connect(self._activate_slot1)
-        if self._confirm1_btn:
-            self._confirm1_btn.clicked.connect(self._client.confirm_toolhead_mounted)
-        if self._clrmount1_btn:
-            self._clrmount1_btn.clicked.connect(self._client.clear_toolhead_mounted)
-        if self._clearth1_btn:
-            self._clearth1_btn.clicked.connect(self._client.clear_toolhead)
-        if self._cal1_btn:
-            self._cal1_btn.clicked.connect(self._open_calibration)
-        # Slot 2
+        # Per-slot mount/remove buttons act on the *active* toolhead, so
+        # _refresh_slots only enables them on the slot that is active.
+        for combo, activate_btn in (
+            (self._th1_combo, self._activate1_btn),
+            (self._th2_combo, self._activate2_btn),
+        ):
+            if activate_btn:
+                activate_btn.clicked.connect(partial(self._activate_slot, combo))
+            if combo:
+                combo.currentIndexChanged.connect(lambda _i: self._refresh_slots())
+        for btn in (self._confirm1_btn, self._confirm2_btn):
+            if btn:
+                btn.clicked.connect(self._client.confirm_toolhead_mounted)
+        for btn in (self._clrmount1_btn, self._clrmount2_btn):
+            if btn:
+                btn.clicked.connect(self._client.clear_toolhead_mounted)
+        for btn in (self._clearth1_btn, self._clearth2_btn):
+            if btn:
+                btn.clicked.connect(self._client.clear_toolhead)
+        for btn in (self._cal1_btn, self._cal2_btn):
+            if btn:
+                btn.clicked.connect(self._open_calibration)
         if self._add_slot2_btn:
             self._add_slot2_btn.clicked.connect(self._toggle_slot2)
-        if self._activate2_btn:
-            self._activate2_btn.clicked.connect(self._activate_slot2)
-        if self._confirm2_btn:
-            self._confirm2_btn.clicked.connect(self._client.confirm_toolhead_mounted)
-        if self._clrmount2_btn:
-            self._clrmount2_btn.clicked.connect(self._client.clear_toolhead_mounted)
-        if self._clearth2_btn:
-            self._clearth2_btn.clicked.connect(self._client.clear_toolhead)
-        if self._cal2_btn:
-            self._cal2_btn.clicked.connect(self._open_calibration)
 
     def _load_toolheads(self) -> None:
+        if self._th_worker is not None and self._th_worker.isRunning():
+            return  # a fetch is already in flight; it will deliver fresh data
         w = _ToolheadListWorker(self._client)
         w.done.connect(self._on_toolheads_loaded)
         w.start()
         self._th_worker = w
 
-
     def _on_toolheads_loaded(self, toolheads: list[tuple[str, str]]) -> None:
-        if not self._th1_combo:
-            return
-        self._th1_combo.clear()
-        for name, display in toolheads:
-            self._th1_combo.addItem(display or name, userData=name)
+        for combo in (self._th1_combo, self._th2_combo):
+            if not combo:
+                continue
+            selected = combo.currentData()
+            combo.clear()
+            for name, display in toolheads:
+                combo.addItem(display or name, userData=name)
+            if selected:
+                idx = combo.findData(selected)
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+        self._refresh_slots()
 
     def _toggle_slot2(self) -> None:
         if self._slot2_group:
@@ -313,20 +329,12 @@ class GantryWidget(QWidget):
             if self._add_slot2_btn:
                 self._add_slot2_btn.setText("− Multi-head" if visible else "+ Multi-head")
 
-    def _activate_slot1(self) -> None:
-        if self._th1_combo:
-            name = self._th1_combo.currentData()
+    def _activate_slot(self, combo: QComboBox | None) -> None:
+        """Switch the active toolhead to this slot's selection."""
+        if combo:
+            name = combo.currentData()
             if name:
-                display = self._th1_combo.currentText()
-                self._set_action(f"Activating Tool 1 - {display}")
-                self._client.set_toolhead(name)
-
-    def _activate_slot2(self) -> None:
-        if self._th2_combo:
-            name = self._th2_combo.currentData()
-            if name:
-                display = self._th2_combo.currentText()
-                self._set_action(f"Activating Tool 2 - {display}")
+                self._set_action(f"Activating {combo.currentText()}")
                 self._client.set_toolhead(name)
 
 
@@ -397,13 +405,72 @@ class GantryWidget(QWidget):
             pass
 
     def _on_toolhead(self, info) -> None:
-        if self._th1_lbl:
-            self._th1_lbl.setText(info.display_name or info.name or "None selected")
-        if self._th1_mounted:
-            self._th1_mounted.setText("Mounted ✓" if info.toolhead_mounted else "Not mounted")
-        if self._th1_cal_lbl:
-            cal = getattr(info, "last_calibrated", None)
-            self._th1_cal_lbl.setText(f"Last calibrated: {cal}" if cal else "Last calibrated: -")
+        self._last_th_info = info
+        self._refresh_slots()
+
+    def _on_labware(self, labware: dict) -> None:
+        """Server-sourced plate geometry: forward to both deck canvases."""
+        if self._live_panel:
+            self._live_panel.set_plate_specs(labware)
+        if hasattr(self, "_workspace_widget"):
+            self._workspace_widget._canvas.set_plate_specs(labware)
+
+    def _slot_widgets(self):
+        """Yield (combo, display_lbl, mounted_lbl, active_lbl, per-slot buttons) per slot."""
+        return (
+            (self._th1_combo, self._th1_lbl, self._th1_mounted, self._slot1_active,
+             (self._confirm1_btn, self._clrmount1_btn, self._clearth1_btn, self._cal1_btn)),
+            (self._th2_combo, self._th2_lbl, self._th2_mounted, self._slot2_active,
+             (self._confirm2_btn, self._clrmount2_btn, self._clearth2_btn, self._cal2_btn)),
+        )
+
+    def _refresh_slots(self) -> None:
+        """Reflect the server's toolhead state onto both slots.
+
+        One toolhead is *active* at a time, but several can be physically
+        mounted at once - mount confirmations are per-head and survive
+        activation switches. A slot is "active" when its combo selection
+        matches the server's active toolhead (slot 1 wins a tie, and hosts the
+        active head if no slot's selection matches, e.g. state restored at
+        boot). Each slot's mounted label reflects its own selected head's
+        confirmation, so both heads' readiness is visible before a script runs.
+        Mount/remove/calibrate act on the active toolhead, so those buttons are
+        only enabled on the active slot.
+        """
+        info = self._last_th_info
+        slots = self._slot_widgets()
+        mounted_names = set(info.mounted_toolheads) if info is not None else set()
+
+        active_idx = -1
+        if info is not None and info.active:
+            for i, (combo, *_rest) in enumerate(slots):
+                if combo and combo.currentData() == info.name:
+                    active_idx = i
+                    break
+            if active_idx < 0:
+                active_idx = 0  # active head not selected in any slot: show on slot 1
+
+        for i, (combo, lbl, mounted_lbl, active_lbl, buttons) in enumerate(slots):
+            is_active = i == active_idx
+            selected = combo.currentData() if combo else None
+            if active_lbl:
+                active_lbl.setVisible(is_active)
+            if lbl:
+                if is_active:
+                    lbl.setText(info.display_name or info.name)
+                else:
+                    lbl.setText(combo.currentText() if selected else "None selected")
+            if mounted_lbl:
+                shown = info.name if is_active and info is not None else selected
+                if shown:
+                    mounted_lbl.setText("Mounted ✓" if shown in mounted_names else "Not mounted")
+                else:
+                    mounted_lbl.setText("—")
+            for btn in buttons:
+                if btn:
+                    btn.setEnabled(is_active and not self._locked)
+            if combo:
+                combo.setEnabled(not self._locked)
 
     def _on_saved_state(self, has_state: bool) -> None:
         self._homed = has_state
@@ -441,23 +508,21 @@ class GantryWidget(QWidget):
 
     def _set_controls_locked(self, locked: bool) -> None:
         """Disable/enable all manual controls while an experiment holds the lock."""
+        self._locked = locked
         for btn in (
             self._home_btn,
-            self._activate1_btn, self._confirm1_btn,
-            self._clrmount1_btn, self._clearth1_btn, self._cal1_btn,
-            self._activate2_btn, self._confirm2_btn,
-            self._clrmount2_btn, self._clearth2_btn, self._cal2_btn,
+            self._activate1_btn, self._activate2_btn,
             self._add_slot2_btn,
         ):
             if btn:
                 btn.setEnabled(not locked)
-        if self._th1_combo:
-            self._th1_combo.setEnabled(not locked)
-        if self._th2_combo:
-            self._th2_combo.setEnabled(not locked)
+        # Per-slot mount/remove/calibrate buttons and combos are managed by
+        # _refresh_slots (their enabled state also depends on the active slot).
+        self._refresh_slots()
 
     def _on_error(self, msg: str) -> None:
-        pass  # errors are shown in the Live tab action label; leave conn_status alone
+        """Surface command/stream errors in the Live tab action label."""
+        self._set_action(f"Error: {msg}")
 
 
     def set_theme(self, t: dict) -> None:

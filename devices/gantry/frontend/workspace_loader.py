@@ -1,13 +1,18 @@
-"""Workspace loader panel - imports workspace YAML and renders a to-scale 2-D deck view."""
+"""Workspace loader panel - imports workspace YAML and renders a to-scale 2-D deck view.
+
+All server communication goes through the shared GantryConnection (see
+connection.py); plate geometry is fetched from the backend's labware
+definitions instead of being hardcoded here.
+"""
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import grpc
 import yaml
-from PySide6.QtCore import QFile, QRectF, Qt, QThread, Signal
+from PySide6.QtCore import QFile, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
@@ -15,13 +20,10 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout, QWidget,
 )
 
-from ...discovery import DiscoveredServer
-from ...core.generic_device import _ldelim, _encode_sstring
+if TYPE_CHECKING:
+    from .connection import GantryConnection
 
 _UI_DIR = Path(__file__).parent / "ui"
-_TIMEOUT = 6.0
-_GANTRY_BASE = "/sila2.edu.iastate.ames.rxnbench.gantry.v0.Gantry"
-
 
 
 @dataclass(frozen=True)
@@ -36,21 +38,8 @@ class _PlateSpec:
     height: float        # mm, overall plate footprint
 
 
-_PLATES: dict[str, _PlateSpec] = {
-    "96_well_standard": _PlateSpec(
-        rows=8,  cols=12, spacing=9.0,  diam=6.94,
-        a1x=14.38, a1y=11.24, width=127.76, height=85.48,
-    ),
-    "24_well_standard": _PlateSpec(
-        rows=4,  cols=6,  spacing=19.3, diam=15.62,
-        a1x=15.63, a1y=13.79, width=127.76, height=85.48,
-    ),
-    "384_well_standard": _PlateSpec(
-        rows=16, cols=24, spacing=4.5,  diam=3.3,
-        a1x=12.13, a1y=8.99,  width=127.76, height=85.48,
-    ),
-}
-
+# Used only until the server's labware definitions arrive (or if the fetch
+# fails): a standard SBS 96-well plate.
 _FALLBACK_SPEC = _PlateSpec(
     rows=8, cols=12, spacing=9.0, diam=6.94,
     a1x=14.38, a1y=11.24, width=127.76, height=85.48,
@@ -62,50 +51,24 @@ _PALETTE = [
 ]
 
 
+def plate_spec_from_labware(data: dict) -> _PlateSpec:
+    """Convert one server-side labware geometry dict into a canvas _PlateSpec.
 
-def _encode_str_param(s: str) -> bytes:
-    """Encode a single SiLA String command parameter (field 1)."""
-    return _ldelim(1, _encode_sstring(s))
-
-
-class _CmdWorker(QThread):
-    done = Signal(str)   # "OK" or error message
-
-    def __init__(self, host: str, port: int, path: str, payload: bytes) -> None:
-        super().__init__()
-        self._addr    = f"{host}:{port}"
-        self._path    = path
-        self._payload = payload
-
-    def run(self) -> None:
-        ch = grpc.insecure_channel(self._addr)
-        try:
-            ch.unary_unary(self._path)(self._payload, timeout=_TIMEOUT)
-            self.done.emit("OK")
-        except Exception as e:
-            self.done.emit(f"Error: {e}")
-        finally:
-            ch.close()
-
-
-class _ListWorker(QThread):
-    done = Signal(str)   # raw response text or error
-
-    def __init__(self, host: str, port: int) -> None:
-        super().__init__()
-        self._addr = f"{host}:{port}"
-
-    def run(self) -> None:
-        from ...core.generic_device import _decode_response
-        ch = grpc.insecure_channel(self._addr)
-        try:
-            raw = ch.unary_unary(f"{_GANTRY_BASE}/ListWorkspaces")(b"", timeout=_TIMEOUT)
-            self.done.emit(_decode_response(bytes(raw)))
-        except Exception as e:
-            self.done.emit(f"Error: {e}")
-        finally:
-            ch.close()
-
+    Args:
+        data: Geometry dict as served by the gantry's GetLabware command
+            (rows, columns, spacing_mm, well_diameter_mm, a1_offset_x/y,
+            width_mm, height_mm).
+    """
+    return _PlateSpec(
+        rows=int(data["rows"]),
+        cols=int(data["columns"]),
+        spacing=float(data["spacing_mm"]),
+        diam=float(data["well_diameter_mm"]),
+        a1x=float(data["a1_offset_x"]),
+        a1y=float(data["a1_offset_y"]),
+        width=float(data.get("width_mm", _FALLBACK_SPEC.width)),
+        height=float(data.get("height_mm", _FALLBACK_SPEC.height)),
+    )
 
 
 class WorkspaceCanvas(QWidget):
@@ -115,10 +78,27 @@ class WorkspaceCanvas(QWidget):
         super().__init__(parent)
         self._t           = t
         self._plates: list[dict] = []
+        self._plate_specs: dict[str, _PlateSpec] = {}
         self._cal_ref     = ""
         self._active_well = ("", "")   # (plate_id, well_label) to highlight
         self._current_pos: tuple[float, float] | None = None  # gantry XY mm
         self.setMinimumSize(300, 200)
+
+    def set_plate_specs(self, labware: dict) -> None:
+        """Install server-sourced plate geometries and repaint.
+
+        Args:
+            labware: Dict mapping plate type name to its geometry dict, as
+                returned by GantryConnection.fetch_labware().
+        """
+        specs: dict[str, _PlateSpec] = {}
+        for name, data in labware.items():
+            try:
+                specs[name] = plate_spec_from_labware(data)
+            except (KeyError, TypeError, ValueError):
+                continue  # skip malformed entries, keep the rest
+        self._plate_specs = specs
+        self.update()
 
     def load(self, workspace: dict) -> None:
         """Parse a workspace dict and repaint the canvas.
@@ -179,13 +159,9 @@ class WorkspaceCanvas(QWidget):
         # Gather plate specs and bounding box (in mm)
         entries: list[tuple[dict, _PlateSpec]] = []
         for plate in self._plates:
-            spec = _PLATES.get(plate.get("plate_type", ""), _FALLBACK_SPEC)
+            spec = self._plate_specs.get(plate.get("plate_type", ""), _FALLBACK_SPEC)
             entries.append((plate, spec))
 
-        origins = [
-            (p_["origin"].get("x", 0.0), p_["origin"].get("y", 0.0))
-            for p_, _ in entries
-        ]
         def plate_extents(plate: dict, spec: _PlateSpec) -> tuple[float, float, float, float]:
             ox_ = plate["origin"].get("x", 0.0)
             oy_ = plate["origin"].get("y", 0.0)
@@ -387,7 +363,6 @@ class WorkspaceCanvas(QWidget):
         )
 
 
-
 class WorkspaceLoaderWidget(QWidget):
     """Workspace loader panel - edit/import YAML, send to server, preview canvas."""
 
@@ -396,13 +371,19 @@ class WorkspaceLoaderWidget(QWidget):
     def __init__(
         self,
         t: dict,
-        server: DiscoveredServer | None = None,
+        client: "GantryConnection | None" = None,
         parent: QWidget | None = None,
     ) -> None:
+        """
+        Args:
+            t: Theme dict.
+            client: Live GantryConnection used for server operations, or None
+                for offline preview-only use.
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self._t      = t
-        self._server = server
-        self._worker: QThread | None = None
+        self._client = client
 
         loader = QUiLoader()
         f = QFile(str(_UI_DIR / "workspace_loader.ui"))
@@ -431,9 +412,12 @@ class WorkspaceLoaderWidget(QWidget):
         self._apply_style()
         self._wire()
 
-        if server is None:
+        if client is None:
             self._load_btn.setEnabled(False)
             self._load_btn.setToolTip("No server connected")
+        else:
+            client.workspace_op_done.connect(self._on_op_done)
+            client.labware_updated.connect(self._canvas.set_plate_specs)
 
         self._status("")
 
@@ -498,7 +482,7 @@ class WorkspaceLoaderWidget(QWidget):
             self._status(f"Error reading file: {e}", error=True)
 
     def _on_load_by_name(self) -> None:
-        if not self._server:
+        if not self._client:
             return
         name, ok = QInputDialog.getText(
             self, "Load Workspace", "Workspace name (see ListWorkspaces for options):"
@@ -507,20 +491,18 @@ class WorkspaceLoaderWidget(QWidget):
             return
         name = name.strip()
         self._status(f"Loading '{name}'…")
-        payload = _encode_str_param(name)
-        self._run(f"{_GANTRY_BASE}/SetWorkspace", payload,
-                  ok_msg=f"Workspace '{name}' loaded.")
+        self._set_busy(True)
+        self._client.load_workspace_by_name(name)
 
     def _on_apply(self) -> None:
         text = self._yaml_edit.toPlainText().strip()
         if not text:
             return
         self._try_render(text)
-        if self._server:
+        if self._client:
             self._status("Sending workspace to server…")
-            payload = _encode_str_param(text)
-            self._run(f"{_GANTRY_BASE}/LoadWorkspaceYaml", payload,
-                      ok_msg="Workspace applied.")
+            self._set_busy(True)
+            self._client.apply_workspace_yaml(text)
         else:
             self._status("Canvas updated (no server connected).")
 
@@ -530,24 +512,15 @@ class WorkspaceLoaderWidget(QWidget):
         self._canvas.clear()
         self._status("Workspace cleared.")
 
-    def _run(self, path: str, payload: bytes, ok_msg: str) -> None:
-        if not self._server:
-            return
-        self._apply_btn.setEnabled(False)
-        self._load_btn.setEnabled(False)
-        worker = _CmdWorker(self._server.host, self._server.port, path, payload)
-        worker.done.connect(lambda msg: self._on_cmd_done(msg, ok_msg))
-        worker.start()
-        self._worker = worker
+    def _on_op_done(self, ok: bool, msg: str) -> None:
+        self._status(msg, error=not ok)
+        self._set_busy(False)
 
-    def _on_cmd_done(self, msg: str, ok_msg: str) -> None:
-        if msg == "OK":
-            self._status(ok_msg)
-        else:
-            self._status(msg, error=True)
-        self._apply_btn.setEnabled(bool(self._yaml_edit.toPlainText().strip()))
-        if self._server:
-            self._load_btn.setEnabled(True)
+    def _set_busy(self, busy: bool) -> None:
+        self._apply_btn.setEnabled(
+            not busy and bool(self._yaml_edit.toPlainText().strip())
+        )
+        self._load_btn.setEnabled(not busy and self._client is not None)
 
     def _status(self, text: str, error: bool = False) -> None:
         if not self._status_lbl:

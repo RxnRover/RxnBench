@@ -42,7 +42,6 @@ class GantryConnectionBase(_FeatureConnection):
             gen, self._rpc("Subscribe_Position"),
             lambda r: self.position_updated.emit(r.Position.x.value, r.Position.y.value, r.Position.z.value),
             decode=_pb.Subscribe_Position_Responses.FromString,
-            feature_name="Gantry",
         )
 
         self._spawn_stream(

@@ -19,7 +19,6 @@ streams:
     signal: position_updated
     signal_args: [float, float, float]
     emit: ["r.Position.x.value", "r.Position.y.value", "r.Position.z.value"]
-    feature_name: Gantry   # triggers feature_state_changed on first message
 
   - rpc: Subscribe_State
     decode_type: Subscribe_State_Responses

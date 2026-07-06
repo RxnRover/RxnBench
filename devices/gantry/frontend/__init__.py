@@ -12,14 +12,11 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
     from ...discovery import DiscoveredServer
 
+# Only our own feature identifier: this widget drives the rxnbench Gantry
+# feature's specific RPCs, so matching generic SiLA motion features
+# (LinearMotion, XYZStage, ...) would bind it to servers it cannot talk to.
 FEATURE_FRAGMENTS: list[str] = [
-    # Chembench native
     "Gantry",
-    # SiLA standard motion / positioning
-    "LinearMotion",
-    "XYZStage",
-    "PositioningXY",
-    "AxisSystem",
 ]
 
 
