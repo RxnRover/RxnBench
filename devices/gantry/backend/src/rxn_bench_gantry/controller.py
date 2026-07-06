@@ -1,12 +1,16 @@
 """Orchestrator above MotionEngine, HomingManager, ToolheadManager, and WorkspaceManager."""
-from typing import Any
 
-from rxn_bench_gantry.interfaces import MotionClientProtocol
-from rxn_bench_gantry.toolhead_config import ToolheadGeometry
-from rxn_bench_gantry.errors import MotionLimitError, UnvalidatedGeometryError
-from rxn_bench_gantry.toolhead_manager import ToolheadManager
+from rxn_bench_gantry.errors import (
+    MotionLimitError,
+    ToolheadNotMountedError,
+    UnvalidatedGeometryError,
+)
 from rxn_bench_gantry.homing_manager import HomingManager
+from rxn_bench_gantry.interfaces import MotionClientProtocol
 from rxn_bench_gantry.motion_engine import MotionEngine
+from rxn_bench_gantry.plate_geometry import PlateGeometry
+from rxn_bench_gantry.toolhead_config import ToolheadGeometry
+from rxn_bench_gantry.toolhead_manager import ToolheadManager
 from rxn_bench_gantry.workspace_manager import WorkspaceManager
 
 
@@ -23,7 +27,6 @@ class GantryController:
         y_max: float = 350.0,
         z_min: float = 0.0,
         z_max: float = 340.0,
-        sensor_registry: dict[str, Any] | None = None,
     ):
         """Initialise the controller and restore any persisted homing state.
 
@@ -36,10 +39,7 @@ class GantryController:
             y_max: Back axis limit in mm.
             z_min: Lower Z limit in mm (Z=0 is the reference surface).
             z_max: Upper Z limit in mm.
-            sensor_registry: Optional mapping of sensor-type strings to sensor objects,
-                used by :meth:`get_toolhead_sensor`.
         """
-        self._sensor_registry: dict[str, Any] = sensor_registry or {}
         self._toolhead_mgr = ToolheadManager()
         self._homing_mgr = HomingManager(
             client, clearance_z, x_min, x_max, y_min, y_max, z_min, z_max
@@ -72,7 +72,7 @@ class GantryController:
         h = self._homing_mgr
         half_fx = (th.footprint_x / 2) if th else 0.0
         half_fy = (th.footprint_y / 2) if th else 0.0
-        tip_z   = th.tip_offset_z if th else 0.0
+        tip_z = th.tip_offset_z if th else 0.0
 
         if x is not None:
             if x - half_fx < h.x_min or x + half_fx > h.x_max:
@@ -157,9 +157,9 @@ class GantryController:
             if dx != 0.0 or dy != 0.0 or dz != 0.0:
                 pos = self._engine.get_position()
                 self._check_bounds(
-                    x=pos['x'] + dx if dx != 0.0 else None,
-                    y=pos['y'] + dy if dy != 0.0 else None,
-                    z=pos['z'] + dz if dz != 0.0 else None,
+                    x=pos["x"] + dx if dx != 0.0 else None,
+                    y=pos["y"] + dy if dy != 0.0 else None,
+                    z=pos["z"] + dz if dz != 0.0 else None,
                 )
         self._engine.jog(dx, dy, dz, speed)
 
@@ -174,7 +174,7 @@ class GantryController:
             MotionLimitError: If the target Z would fall below z_min.
         """
         pos = self._engine.get_position()
-        target_z = pos['z'] - depth
+        target_z = pos["z"] - depth
         self._check_bounds(z=target_z)
         self._engine.move(z=target_z, speed=speed)
 
@@ -189,7 +189,7 @@ class GantryController:
             MotionLimitError: If the target Z would exceed z_max.
         """
         pos = self._engine.get_position()
-        target_z = pos['z'] + depth
+        target_z = pos["z"] + depth
         self._check_bounds(z=target_z)
         self._engine.move(z=target_z, speed=speed)
 
@@ -264,25 +264,46 @@ class GantryController:
         return self._toolhead_mgr.display_name
 
     def set_toolhead(self, name: str) -> None:
-        """Load a toolhead config by name and invalidate any saved homing state.
+        """Switch the active toolhead - a pure software change.
+
+        With multiple heads mounted on the carriage at once, activation does
+        not alter the physical configuration, so homing state and per-head
+        mount confirmations are preserved. Scripts can switch between
+        pre-confirmed heads unattended.
 
         Args:
             name: Toolhead name matching a config folder under ``toolheads/``.
         """
         self._toolhead_mgr.set_toolhead(name)
-        self._homing_mgr.invalidate_state()
 
     def clear_toolhead(self) -> None:
-        """Remove the active toolhead and revert to bare carriage geometry."""
+        """Physically remove the active toolhead and revert to bare carriage geometry.
+
+        Removing hardware changes the carriage envelope, so any saved homing
+        state is invalidated if the removed head was confirmed mounted.
+        """
+        was_mounted = self._toolhead_mgr.mounted
         self._toolhead_mgr.clear_toolhead()
+        if was_mounted:
+            self._homing_mgr.invalidate_state()
 
     def set_toolhead_mounted(self, mounted: bool) -> None:
-        """Update whether a toolhead is physically installed on the carriage.
+        """Record whether the active toolhead is physically installed.
+
+        Mounting or unmounting hardware changes the carriage envelope, so any
+        saved homing state is invalidated - but only when the state actually
+        changes: re-confirming an already-mounted head (a script's
+        mount_toolhead at startup) is a no-op and preserves homing.
 
         Args:
-            mounted: True if the toolhead is physically attached.
+            mounted: True if the active toolhead is physically attached.
         """
-        self._toolhead_mgr.set_mounted(mounted)
+        if self._toolhead_mgr.set_mounted(mounted):
+            self._homing_mgr.invalidate_state()
+
+    def get_mounted_toolheads(self) -> list[str]:
+        """Return names of every toolhead confirmed as physically mounted."""
+        return self._toolhead_mgr.mounted_toolheads
 
     def list_toolheads(self) -> list[tuple[str, str]]:
         """Return ``[(name, display_name), …]`` for every installed toolhead config."""
@@ -292,18 +313,6 @@ class GantryController:
         """Return calibrated axis limits as a pipe-delimited string: ``x_min|x_max|y_min|y_max|z_min|z_max``."""
         h = self._homing_mgr
         return f"{h.x_min}|{h.x_max}|{h.y_min}|{h.y_max}|{h.z_min}|{h.z_max}"
-
-    def get_toolhead_sensor(self) -> Any:
-        """Return the sensor object matching the active toolhead's sensor_type, or None.
-
-        Returns:
-            The sensor instance from the registry, or None if no toolhead is active or
-            the sensor type is not registered.
-        """
-        sensor_type = self._toolhead_mgr.sensor_type
-        if not sensor_type:
-            return None
-        return self._sensor_registry.get(sensor_type)
 
     def set_workspace(self, name: str) -> None:
         """Load a workspace config by name from the bundled definitions directory.
@@ -324,6 +333,10 @@ class GantryController:
     def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
         """Move to a well by label using the active workspace.
 
+        Using a toolhead for well work requires it to be confirmed: physically
+        mounted (per-head confirmation, done once at setup) and with measured
+        geometry. Bare-carriage well moves (no active toolhead) are allowed.
+
         Args:
             label: Well label, e.g. ``'A3'``, ``'H12'``, or ``'plate1/A3'``.
             override_unvalidated: If True, proceed even when the active toolhead's
@@ -334,10 +347,18 @@ class GantryController:
             KeyError: If the plate ID is not found in the current workspace.
             ValueError: If the well label format is invalid.
             MotionLimitError: If the resolved position exceeds axis limits.
+            ToolheadNotMountedError: If the active toolhead has not been
+                confirmed physically mounted.
             UnvalidatedGeometryError: If the active toolhead's geometry is
                 unvalidated and override_unvalidated is False.
         """
         th = self._toolhead_mgr.toolhead
+        if th is not None and not self._toolhead_mgr.mounted:
+            raise ToolheadNotMountedError(
+                f"Toolhead {self._toolhead_mgr.name!r} is not confirmed mounted. "
+                "Confirm it once (ConfirmToolheadMounted / mount_toolhead) before "
+                "well-targeted moves; the confirmation persists across switches."
+            )
         if th is not None and not th.geometry_validated and not override_unvalidated:
             raise UnvalidatedGeometryError(
                 f"Toolhead {self._toolhead_mgr.name!r} has unvalidated (placeholder) "
@@ -354,3 +375,15 @@ class GantryController:
     def get_workspace_name(self) -> str:
         """Return the name of the currently loaded workspace, or empty string if none."""
         return self._workspace_mgr.name
+
+    def get_workspace_yaml(self) -> str:
+        """Return the active workspace as a YAML string, or empty string if none is loaded.
+
+        The workspace manager is the single source of truth, so this reflects
+        workspaces loaded by name, from raw YAML, or restored from disk at startup.
+        """
+        return self._workspace_mgr.to_yaml()
+
+    def get_labware_yaml(self) -> str:
+        """Return every bundled labware (plate geometry) definition as one YAML document."""
+        return PlateGeometry.dump_all_yaml()

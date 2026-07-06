@@ -1,6 +1,14 @@
 """REST client for the Moonraker API, wrapping printer GCode execution."""
 import requests
 
+# (connect, read) timeouts in seconds. A request that never times out would
+# hang the whole server: motion commands run while holding the feature-level
+# hardware lock, so one wedged HTTP call blocks every subsequent RPC.
+_QUERY_TIMEOUT = (3.05, 10.0)
+# GCode scripts block until motion completes (M400) - homing and long slow
+# moves legitimately take minutes, so the read timeout is generous but finite.
+_GCODE_TIMEOUT = (3.05, 600.0)
+
 
 class MoonrakerClient:
     """HTTP client for the Moonraker printer API. All move commands block until the motion is complete (M400)."""
@@ -74,20 +82,20 @@ class MoonrakerClient:
 
     def get_position(self) -> dict[str, float]:
         """Return the current machine position."""
-        r = requests.get(f"{self._base}/printer/objects/query?toolhead")
+        r = requests.get(f"{self._base}/printer/objects/query?toolhead", timeout=_QUERY_TIMEOUT)
         r.raise_for_status()
         pos = r.json()["result"]["status"]["toolhead"]["position"]
         return {"x": pos[0], "y": pos[1], "z": pos[2]}
 
     def get_homed_axes(self) -> str:
         """Return which axes are currently homed, e.g. 'xy', 'xyz', or ''."""
-        r = requests.get(f"{self._base}/printer/objects/query?toolhead")
+        r = requests.get(f"{self._base}/printer/objects/query?toolhead", timeout=_QUERY_TIMEOUT)
         r.raise_for_status()
         return r.json()["result"]["status"]["toolhead"].get("homed_axes", "")
 
     def get_axis_limits(self) -> dict[str, tuple[float, float]]:
         """Return Klipper's configured axis limits as {axis: (min, max)}."""
-        r = requests.get(f"{self._base}/printer/objects/query?toolhead")
+        r = requests.get(f"{self._base}/printer/objects/query?toolhead", timeout=_QUERY_TIMEOUT)
         r.raise_for_status()
         status = r.json()["result"]["status"]["toolhead"]
         mins = status["axis_minimum"]   # [x, y, z, e]
@@ -100,7 +108,7 @@ class MoonrakerClient:
 
     def get_state(self) -> str:
         """Return the Klipper state string e.g. 'ready', 'error'."""
-        r = requests.get(f"{self._base}/printer/info")
+        r = requests.get(f"{self._base}/printer/info", timeout=_QUERY_TIMEOUT)
         r.raise_for_status()
         return r.json()["result"]["state"]
 
@@ -109,5 +117,6 @@ class MoonrakerClient:
         r = requests.post(
             f"{self._base}/printer/gcode/script",
             json={"script": script},
+            timeout=_GCODE_TIMEOUT,
         )
         r.raise_for_status()

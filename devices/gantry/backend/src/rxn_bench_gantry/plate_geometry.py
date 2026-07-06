@@ -1,6 +1,7 @@
 """Well plate geometry loader. YAML definitions live in rxn_bench_gantry/labware/."""
 from __future__ import annotations
 
+import dataclasses
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,10 @@ import yaml
 
 _LABEL_RE = re.compile(r'^([A-Z])(\d+)$')
 _DEFINITIONS_DIR = Path(__file__).parent / "labware"
+
+# ANSI/SLAS standard microplate footprint, used when a definition omits it.
+_SBS_WIDTH_MM = 127.76
+_SBS_HEIGHT_MM = 85.48
 
 
 @dataclass(frozen=True)
@@ -22,6 +27,8 @@ class PlateGeometry:
     well_depth_mm: float
     a1_offset_x: float
     a1_offset_y: float
+    width_mm: float = _SBS_WIDTH_MM    # plate footprint along X
+    height_mm: float = _SBS_HEIGHT_MM  # plate footprint along Y
 
     @property
     def well_count(self) -> int:
@@ -79,6 +86,8 @@ class PlateGeometry:
             well_depth_mm=data["well_depth_mm"],
             a1_offset_x=data["a1_offset_x"],
             a1_offset_y=data["a1_offset_y"],
+            width_mm=data.get("width_mm", _SBS_WIDTH_MM),
+            height_mm=data.get("height_mm", _SBS_HEIGHT_MM),
         )
 
     @classmethod
@@ -108,3 +117,18 @@ class PlateGeometry:
         if not _DEFINITIONS_DIR.exists():
             return []
         return sorted(p.stem for p in _DEFINITIONS_DIR.glob("*.yaml"))
+
+    @classmethod
+    def dump_all_yaml(cls) -> str:
+        """Serialise every bundled labware definition to one YAML document.
+
+        Returns:
+            YAML string mapping plate type name to its geometry fields. This is
+            the single source of truth the frontend canvas and experiment client
+            fetch over SiLA instead of hardcoding plate dimensions.
+        """
+        return yaml.safe_dump(
+            {name: dataclasses.asdict(cls.load(name)) for name in cls.list_available()},
+            default_flow_style=False,
+            sort_keys=True,
+        )

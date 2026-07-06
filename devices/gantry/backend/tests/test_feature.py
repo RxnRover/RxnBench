@@ -8,7 +8,7 @@ import asyncio
 
 import pytest
 
-from rxn_bench_gantry.errors import MotionLimitError
+from rxn_bench_gantry.errors import ExperimentLockError, MotionLimitError
 from rxn_bench_gantry.feature import Gantry
 
 
@@ -21,6 +21,9 @@ class _FakeController:
         self.raise_on_move_to: Exception | None = None
         self.toolheads = [("ph_probe", "Atlas Scientific pH Probe")]
         self.workspaces = ["plate_96well"]
+        self.workspace_yaml = ""
+        self.labware_yaml = "96_well_standard:\n  rows: 8\n"
+        self.mounted_toolheads: list[str] = []
 
     def get_position(self) -> dict[str, float]:
         return {"x": 0.0, "y": 0.0, "z": 0.0}
@@ -38,11 +41,32 @@ class _FakeController:
         if self.raise_on_move_to:
             raise self.raise_on_move_to
 
+    def jog(self, dx=0.0, dy=0.0, dz=0.0, speed=None) -> None:
+        pass
+
     def list_toolheads(self) -> list[tuple[str, str]]:
         return self.toolheads
 
+    def get_toolhead(self):
+        return None
+
+    def get_mounted_toolheads(self) -> list[str]:
+        return self.mounted_toolheads
+
     def list_workspaces(self) -> list[str]:
         return self.workspaces
+
+    def set_workspace(self, name: str) -> None:
+        self.workspace_yaml = f"name: {name}\nplates: []\n"
+
+    def load_workspace_from_yaml(self, content: str) -> None:
+        self.workspace_yaml = content
+
+    def get_workspace_yaml(self) -> str:
+        return self.workspace_yaml
+
+    def get_labware_yaml(self) -> str:
+        return self.labware_yaml
 
 
 async def _first(agen):
@@ -144,14 +168,34 @@ def test_acquire_experiment_lock_moves_idle_to_running():
 def test_acquire_experiment_lock_rejects_when_already_running():
     feature = Gantry(controller=_FakeController())
     asyncio.run(feature.acquire_experiment_lock())
-    with pytest.raises(RuntimeError, match="already running"):
+    with pytest.raises(ExperimentLockError, match="already running"):
         asyncio.run(feature.acquire_experiment_lock())
+
+
+def test_acquire_experiment_lock_returns_a_token():
+    feature = Gantry(controller=_FakeController())
+    token = asyncio.run(feature.acquire_experiment_lock())
+    assert isinstance(token, str) and len(token) >= 16
 
 
 def test_release_experiment_lock_returns_to_idle():
     feature = Gantry(controller=_FakeController())
+    token = asyncio.run(feature.acquire_experiment_lock())
+    asyncio.run(feature.release_experiment_lock(token))
+    assert asyncio.run(feature.get_experiment_state()) == "idle"
+
+
+def test_release_experiment_lock_rejects_wrong_token():
+    feature = Gantry(controller=_FakeController())
     asyncio.run(feature.acquire_experiment_lock())
-    asyncio.run(feature.release_experiment_lock())
+    with pytest.raises(ExperimentLockError):
+        asyncio.run(feature.release_experiment_lock("not-the-token"))
+    assert asyncio.run(feature.get_experiment_state()) == "running"
+
+
+def test_release_experiment_lock_is_noop_while_idle():
+    feature = Gantry(controller=_FakeController())
+    asyncio.run(feature.release_experiment_lock("anything"))
     assert asyncio.run(feature.get_experiment_state()) == "idle"
 
 
@@ -189,15 +233,99 @@ def test_stop_experiment_is_noop_while_idle():
     assert asyncio.run(feature.get_experiment_state()) == "idle"
 
 
-def test_motion_is_not_rejected_while_experiment_lock_is_held():
-    """Characterizes a known gap (see docs/ai/CURRENT_STATE.md #6): _run() only
-    serializes on _hw_lock and never checks _experiment_state, so a motion RPC
-    sent while a script holds the experiment lock is executed, not rejected.
-    This test pins that behavior; it should start failing the moment the gap
-    is fixed, which is the signal to update/remove this test.
-    """
+# ---------------------------------------------------------------------------
+# Experiment lock gating of motion / toolhead / workspace commands
+# ---------------------------------------------------------------------------
+
+def test_motion_without_token_is_rejected_while_lock_is_held():
     ctrl = _FakeController()
     feature = Gantry(controller=ctrl)
     asyncio.run(feature.acquire_experiment_lock())
+    with pytest.raises(ExperimentLockError):
+        asyncio.run(feature.move_to(1.0, 2.0, 3.0))
+    assert ctrl.move_to_calls == []
+
+
+def test_motion_with_lock_token_is_accepted_while_lock_is_held():
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    token = asyncio.run(feature.acquire_experiment_lock())
+    asyncio.run(feature.move_to(1.0, 2.0, 3.0, token=token))
+    asyncio.run(feature.move_to_well("plate1/A3", token=token))
+    assert ctrl.move_to_calls == [(1.0, 2.0, 3.0, None)]
+    assert ctrl.move_to_well_calls == [("plate1/A3", False)]
+
+
+def test_motion_without_token_works_while_idle():
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    asyncio.run(feature.jog(dx=1.0))
     asyncio.run(feature.move_to(1.0, 2.0, 3.0))
     assert ctrl.move_to_calls == [(1.0, 2.0, 3.0, None)]
+
+
+def test_homing_is_always_rejected_while_lock_is_held():
+    """Homing commands accept no token: scripts never calibrate limits mid-run."""
+    feature = Gantry(controller=_FakeController())
+    asyncio.run(feature.acquire_experiment_lock())
+    with pytest.raises(ExperimentLockError):
+        asyncio.run(feature.start_manual_homing())
+    with pytest.raises(ExperimentLockError):
+        asyncio.run(feature.confirm_x_min())
+
+
+def test_gating_lifts_after_release():
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    token = asyncio.run(feature.acquire_experiment_lock())
+    asyncio.run(feature.release_experiment_lock(token))
+    asyncio.run(feature.move_to(1.0, 2.0, 3.0))
+    assert ctrl.move_to_calls == [(1.0, 2.0, 3.0, None)]
+
+
+def test_pause_and_stop_remain_available_without_token():
+    """The UI must always be able to pause/stop a running experiment."""
+    feature = Gantry(controller=_FakeController())
+    asyncio.run(feature.acquire_experiment_lock())
+    asyncio.run(feature.pause_experiment())
+    assert asyncio.run(feature.get_experiment_state()) == "paused"
+    asyncio.run(feature.stop_experiment())
+    assert asyncio.run(feature.get_experiment_state()) == "stop_requested"
+
+
+# ---------------------------------------------------------------------------
+# Workspace YAML source of truth + labware
+# ---------------------------------------------------------------------------
+
+def test_get_workspace_yaml_reflects_set_workspace_by_name():
+    """Loading a workspace by name must be visible via GetWorkspaceYaml (this
+    was previously cached at the feature level and only updated by
+    LoadWorkspaceYaml, leaving name-loaded workspaces invisible to clients)."""
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    asyncio.run(feature.set_workspace("bench_default"))
+    assert "bench_default" in asyncio.run(feature.get_workspace_yaml())
+
+
+def test_current_workspace_yaml_stream_reflects_controller_state():
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    assert asyncio.run(_first(feature.current_workspace_yaml())) == ""
+    asyncio.run(feature.load_workspace_yaml("name: from_yaml\nplates: []\n"))
+    assert "from_yaml" in asyncio.run(_first(feature.current_workspace_yaml()))
+
+
+def test_get_labware_returns_controller_yaml():
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    assert asyncio.run(feature.get_labware()) == ctrl.labware_yaml
+
+
+def test_toolhead_info_streams_per_head_mount_state():
+    """The stream carries every confirmed head (pipe-delimited), so the UI can
+    show both slots' mount readiness, not just the active head's."""
+    ctrl = _FakeController()
+    ctrl.mounted_toolheads = ["ph_probe", "pipette"]
+    feature = Gantry(controller=ctrl)
+    info = asyncio.run(_first(feature.toolhead_info()))
+    assert info.mounted_toolheads == "ph_probe|pipette"

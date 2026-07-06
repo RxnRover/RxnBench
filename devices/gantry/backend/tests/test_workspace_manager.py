@@ -102,3 +102,14 @@ def test_clear_resets_workspace(mgr):
     assert mgr.name == ""
     with pytest.raises(RuntimeError):
         mgr.resolve_well("A1")
+
+
+def test_to_yaml_empty_when_nothing_loaded():
+    assert WorkspaceManager().to_yaml() == ""
+
+
+def test_to_yaml_round_trips_through_load_from_yaml(mgr):
+    import yaml
+    data = yaml.safe_load(mgr.to_yaml())
+    assert data["name"] == "test_bench"
+    assert {p["id"] for p in data["plates"]} == {"plates", "rotated"}

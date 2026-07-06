@@ -39,11 +39,72 @@ def test_clear_toolhead():
 
 def test_set_mounted():
     mgr = ToolheadManager()
+    entries = ToolheadManager.list_toolheads()
+    mgr.set_toolhead(entries[0][0])
     assert not mgr.mounted
     mgr.set_mounted(True)
     assert mgr.mounted
     mgr.set_mounted(False)
     assert not mgr.mounted
+
+
+def test_mount_confirmation_survives_switching():
+    """Mount state is per-head: switching the active toolhead must not clear it,
+    or scripts alternating between two mounted heads would need an operator."""
+    mgr = ToolheadManager()
+    entries = ToolheadManager.list_toolheads()
+    mgr.set_toolhead(entries[0][0])
+    mgr.set_mounted(True)
+    mgr.set_toolhead(entries[0][0])  # activation switch is a software-only change
+    assert mgr.mounted
+    assert mgr.mounted_toolheads == [entries[0][0]]
+
+
+def test_set_mounted_reports_actual_changes_only():
+    """confirm/clear are idempotent - the bool return drives homing invalidation."""
+    mgr = ToolheadManager()
+    entries = ToolheadManager.list_toolheads()
+    assert mgr.set_mounted(True) is False  # no active head -> no-op
+    mgr.set_toolhead(entries[0][0])
+    assert mgr.set_mounted(True) is True
+    assert mgr.set_mounted(True) is False  # re-confirming changes nothing
+    assert mgr.set_mounted(False) is True
+    assert mgr.set_mounted(False) is False
+
+
+def test_mount_states_tracked_per_head(tmp_path, monkeypatch):
+    """Two heads mounted at once: each keeps its own confirmation."""
+    import rxn_bench_gantry.toolhead_config as toolhead_config
+
+    for name in ("head_a", "head_b"):
+        d = tmp_path / name
+        d.mkdir()
+        (d / f"{name}_toolhead.yaml").write_text(f"""
+name: {name}
+display_name: {name.title()}
+geometry:
+  footprint_x: 10.0
+  footprint_y: 10.0
+  offset_x: 0.0
+  offset_y: 0.0
+  tip_offset_z: 5.0
+  z_engage: 1.0
+""")
+    monkeypatch.setattr(toolhead_config, "_TOOLHEADS_DIR", tmp_path)
+
+    mgr = ToolheadManager()
+    mgr.set_toolhead("head_a")
+    mgr.set_mounted(True)
+    mgr.set_toolhead("head_b")
+    assert not mgr.mounted                       # b not yet confirmed
+    mgr.set_mounted(True)
+    assert mgr.mounted_toolheads == ["head_a", "head_b"]
+
+    mgr.set_toolhead("head_a")                   # switch back, still confirmed
+    assert mgr.mounted
+
+    mgr.clear_toolhead()                         # physically remove head_a
+    assert mgr.mounted_toolheads == ["head_b"]
 
 
 def test_sensor_type_exposed():

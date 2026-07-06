@@ -1,4 +1,4 @@
-"""Active toolhead configuration and mount-state tracking."""
+"""Active toolhead configuration and per-head mount-state tracking."""
 import logging
 from pathlib import Path
 
@@ -9,13 +9,20 @@ _log = logging.getLogger(__name__)
 
 
 class ToolheadManager:
-    """Owns the currently active toolhead config and whether it is physically mounted."""
+    """Owns the currently active toolhead config and per-head mount confirmations.
+
+    Several toolheads can be physically mounted on the carriage at once;
+    exactly one is *active* (its geometry drives targeting and bounds).
+    Mount confirmations are recorded per toolhead name and persist across
+    activation switches, so a script can switch between two pre-confirmed
+    heads without operator interaction.
+    """
 
     def __init__(self) -> None:
         self._toolhead: ToolheadGeometry | None = None
         self._name: str = ""
         self._display_name: str = ""
-        self._mounted: bool = False
+        self._mounted_names: set[str] = set()
         self._sensor_type: str | None = None
 
     @property
@@ -32,14 +39,24 @@ class ToolheadManager:
 
     @property
     def mounted(self) -> bool:
-        return self._mounted
+        """True if the *active* toolhead is confirmed physically mounted."""
+        return bool(self._name) and self._name in self._mounted_names
+
+    @property
+    def mounted_toolheads(self) -> list[str]:
+        """Names of every toolhead confirmed as physically mounted, sorted."""
+        return sorted(self._mounted_names)
 
     @property
     def sensor_type(self) -> str | None:
         return self._sensor_type
 
     def set_toolhead(self, name: str) -> None:
-        """Load a toolhead config by name and activate it.
+        """Activate a toolhead config by name - a pure software switch.
+
+        Mount confirmations are per-head and survive switching: activating a
+        head that was already confirmed mounted needs no re-confirmation, so
+        scripts can alternate between two mounted heads unattended.
 
         Args:
             name: Toolhead name matching a config folder under ``toolheads/``.
@@ -57,20 +74,35 @@ class ToolheadManager:
             )
 
     def clear_toolhead(self) -> None:
-        """Remove the active toolhead and reset all toolhead state to defaults."""
+        """Physically remove the active toolhead: deactivate it and drop its mount record."""
+        self._mounted_names.discard(self._name)
         self._toolhead = None
         self._name = ""
         self._display_name = ""
-        self._mounted = False
         self._sensor_type = None
 
-    def set_mounted(self, mounted: bool) -> None:
-        """Update whether a toolhead is physically installed on the carriage.
+    def set_mounted(self, mounted: bool) -> bool:
+        """Record whether the *active* toolhead is physically installed.
 
         Args:
-            mounted: True if the toolhead is physically attached.
+            mounted: True if the active toolhead is physically attached.
+
+        Returns:
+            True if this actually changed the mount state - the controller uses
+            this to invalidate homing only on real hardware changes, so
+            re-confirming an already-confirmed head (e.g. a script's
+            mount_toolhead at startup) stays a harmless no-op.
+            Always False when no toolhead is active.
         """
-        self._mounted = mounted
+        if not self._name:
+            return False
+        if mounted == (self._name in self._mounted_names):
+            return False
+        if mounted:
+            self._mounted_names.add(self._name)
+        else:
+            self._mounted_names.discard(self._name)
+        return True
 
     @staticmethod
     def list_toolheads() -> list[tuple[str, str]]:

@@ -5,7 +5,7 @@
 
 name: toolhead_name          # internal name, matches the folder
 display_name: Toolhead Name  # shown in UIs and SiLA
-sensor_type: null            # optional, e.g. 'ph'. Must match a key in sensor_registry.
+sensor_type: null            # optional metadata tag, e.g. 'ph'.
 
 geometry:
   footprint_x: 0.0           # mm

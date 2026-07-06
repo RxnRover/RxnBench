@@ -7,3 +7,5 @@ well_diameter_mm: 15.62
 well_depth_mm: 17.4
 a1_offset_x: 24.65   # mm, A1 from corner
 a1_offset_y: 16.74   # mm, A1 from corner
+width_mm: 127.76     # mm, plate footprint along X (ANSI/SLAS)
+height_mm: 85.48     # mm, plate footprint along Y (ANSI/SLAS)

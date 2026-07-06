@@ -4,7 +4,11 @@ import textwrap
 import pytest
 
 from rxn_bench_gantry.controller import GantryController
-from rxn_bench_gantry.errors import MotionLimitError, UnvalidatedGeometryError
+from rxn_bench_gantry.errors import (
+    MotionLimitError,
+    ToolheadNotMountedError,
+    UnvalidatedGeometryError,
+)
 
 from tests.fakes import FakeMotionClient
 
@@ -149,13 +153,54 @@ def test_clear_toolhead_restores_bare_carriage_bounds(ctrl):
     ctrl.move_to(290.0, 100.0, 150.0)  # no longer rejected once footprint is gone
 
 
-def test_set_toolhead_invalidates_saved_homing_state(ctrl):
+def test_set_toolhead_preserves_saved_homing_state(ctrl):
+    """Switching the active head is software-only: with several heads mounted
+    at once, activation does not change the carriage, so homing survives -
+    scripts can alternate heads mid-run and still save_and_park at the end."""
+    ctrl.set_toolhead("ph_probe")
+    ctrl.set_toolhead_mounted(True)
     ctrl.home_auto()
     ctrl.save_and_park()
     assert ctrl.has_saved_state
 
     ctrl.set_toolhead("ph_probe")
+    assert ctrl.has_saved_state
+
+
+def test_mounting_change_invalidates_saved_homing_state(ctrl):
+    """Adding/removing hardware changes the carriage envelope -> re-home."""
+    ctrl.home_auto()
+    ctrl.save_and_park()
+    ctrl.set_toolhead("ph_probe")
+    assert ctrl.has_saved_state
+
+    ctrl.set_toolhead_mounted(True)
     assert not ctrl.has_saved_state
+
+
+def test_reconfirming_mounted_head_preserves_homing(ctrl):
+    """Idempotent confirm: a script's mount_toolhead at startup must not
+    invalidate the homing the operator just did."""
+    ctrl.set_toolhead("ph_probe")
+    ctrl.set_toolhead_mounted(True)
+    ctrl.home_auto()
+    ctrl.save_and_park()
+    assert ctrl.has_saved_state
+
+    ctrl.set_toolhead_mounted(True)  # already confirmed -> no-op
+    assert ctrl.has_saved_state
+
+
+def test_clear_toolhead_of_mounted_head_invalidates_homing(ctrl):
+    ctrl.set_toolhead("ph_probe")
+    ctrl.set_toolhead_mounted(True)
+    ctrl.home_auto()
+    ctrl.save_and_park()
+    assert ctrl.has_saved_state
+
+    ctrl.clear_toolhead()  # physical removal
+    assert not ctrl.has_saved_state
+    assert ctrl.get_mounted_toolheads() == []
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +210,7 @@ def test_set_toolhead_invalidates_saved_homing_state(ctrl):
 def test_move_to_well_refuses_unvalidated_toolhead_geometry(ctrl):
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
     ctrl.set_toolhead("ph_probe")  # ph_probe_toolhead.yaml sets geometry_validated: false
+    ctrl.set_toolhead_mounted(True)
     with pytest.raises(UnvalidatedGeometryError, match="unvalidated"):
         ctrl.move_to_well("plate1/A1")
 
@@ -172,6 +218,7 @@ def test_move_to_well_refuses_unvalidated_toolhead_geometry(ctrl):
 def test_move_to_well_override_unvalidated_proceeds(ctrl, client):
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
     ctrl.set_toolhead("ph_probe")
+    ctrl.set_toolhead_mounted(True)
     ctrl.move_to_well("plate1/A1", override_unvalidated=True)
     assert any(name == "move" for name, _ in client.calls)
 
@@ -179,6 +226,24 @@ def test_move_to_well_override_unvalidated_proceeds(ctrl, client):
 def test_move_to_well_with_no_toolhead_is_not_refused(ctrl):
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
     ctrl.move_to_well("plate1/A1")  # bare carriage has no geometry to validate
+
+
+def test_move_to_well_refuses_unconfirmed_toolhead(ctrl):
+    """Using a head for well work requires its one-time mount confirmation."""
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")  # active but never confirmed mounted
+    with pytest.raises(ToolheadNotMountedError, match="not confirmed mounted"):
+        ctrl.move_to_well("plate1/A1", override_unvalidated=True)
+
+
+def test_move_to_well_allowed_after_switching_back_to_confirmed_head(ctrl, client):
+    """The dual-head script flow: confirm once, switch freely, keep working."""
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")
+    ctrl.set_toolhead_mounted(True)
+    ctrl.set_toolhead("ph_probe")  # activation switch - confirmation persists
+    ctrl.move_to_well("plate1/A1", override_unvalidated=True)
+    assert any(name == "move" for name, _ in client.calls)
 
 
 # ---------------------------------------------------------------------------
@@ -194,3 +259,30 @@ def test_save_allowed_after_homing(ctrl):
     ctrl.home_auto()
     ctrl.save_and_park()
     assert ctrl.has_saved_state
+
+
+# ---------------------------------------------------------------------------
+# Workspace YAML + labware accessors
+# ---------------------------------------------------------------------------
+
+def test_get_workspace_yaml_empty_without_workspace(ctrl):
+    assert ctrl.get_workspace_yaml() == ""
+
+
+def test_get_workspace_yaml_reflects_yaml_load(ctrl):
+    import yaml
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    data = yaml.safe_load(ctrl.get_workspace_yaml())
+    assert data["name"] == "test_bench"
+    assert data["plates"][0]["plate_type"] == "96_well_standard"
+
+
+def test_get_labware_yaml_contains_bundled_plates(ctrl):
+    import yaml
+    labware = yaml.safe_load(ctrl.get_labware_yaml())
+    assert "96_well_standard" in labware
+    plate = labware["96_well_standard"]
+    assert plate["rows"] == 8 and plate["columns"] == 12
+    # Footprint fields are required by the frontend deck canvas.
+    assert plate["width_mm"] == pytest.approx(127.76)
+    assert plate["height_mm"] == pytest.approx(85.48)

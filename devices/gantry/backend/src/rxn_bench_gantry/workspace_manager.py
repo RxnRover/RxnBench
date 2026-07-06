@@ -27,6 +27,10 @@ class WorkspaceManager:
     def name(self) -> str:
         return self._config.name if self._config else ""
 
+    def to_yaml(self) -> str:
+        """Return the active workspace as a YAML string, or empty string if none is loaded."""
+        return self._config.to_yaml_string() if self._config else ""
+
     def load(self, name: str) -> None:
         """Load a workspace by name from the bundled definitions directory and persist it.
 

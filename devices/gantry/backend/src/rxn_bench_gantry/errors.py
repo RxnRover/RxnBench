@@ -7,3 +7,11 @@ class MotionLimitError(Exception):
 
 class UnvalidatedGeometryError(Exception):
     """Raised when a workspace/well move is attempted with unmeasured toolhead geometry."""
+
+
+class ExperimentLockError(Exception):
+    """Raised when a command is rejected because another client holds the experiment lock."""
+
+
+class ToolheadNotMountedError(Exception):
+    """Raised when a well-targeted move is attempted with a toolhead that has not been confirmed mounted."""
