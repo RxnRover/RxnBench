@@ -1,4 +1,4 @@
-.PHONY: install start-gantry start-ph start-mock test-gantry test-ph test gen-proto check-proto
+.PHONY: install start-gantry start-ph start-mock test-gantry test-ph test-client test gen-proto check-proto
 
 # device-key:proto-stem pairs consumed by gen-proto/check-proto below.
 # Keys must match _DEVICES in scripts/gen_proto.py; stubs land in
@@ -29,7 +29,10 @@ test-gantry:
 test-ph:
 	PYTHONPATH="" uv run --package rxn-bench-ph pytest $(PH_SENSOR_DIR)/tests/ -v
 
-test: test-gantry test-ph
+test-client:
+	PYTHONPATH="" uv run --package rxn-bench-client pytest client/tests/ -v
+
+test: test-gantry test-ph test-client
 
 gen-proto:
 	@for pair in $(PROTO_DEVICES); do \

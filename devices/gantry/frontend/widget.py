@@ -173,6 +173,7 @@ class GantryWidget(QWidget):
         self._th1_lbl        = c.findChild(QLabel,      "toolhead1_display_lbl")
         self._th1_mounted    = c.findChild(QLabel,      "toolhead1_mounted_lbl")
         self._slot1_active   = c.findChild(QLabel,      "slot1_active_lbl")
+        self._slot1_last_cal = c.findChild(QLabel,      "slot1_last_cal_lbl")
         self._activate1_btn  = c.findChild(QPushButton, "activate_slot1_btn")
         self._confirm1_btn   = c.findChild(QPushButton, "confirm_mounted1_btn")
         self._clrmount1_btn  = c.findChild(QPushButton, "clear_mounted1_btn")
@@ -185,6 +186,7 @@ class GantryWidget(QWidget):
         self._th2_lbl        = c.findChild(QLabel,      "toolhead2_display_lbl")
         self._th2_mounted    = c.findChild(QLabel,      "toolhead2_mounted_lbl")
         self._slot2_active   = c.findChild(QLabel,      "slot2_active_lbl")
+        self._slot2_last_cal = c.findChild(QLabel,      "slot2_last_cal_lbl")
         self._activate2_btn  = c.findChild(QPushButton, "activate_slot2_btn")
         self._confirm2_btn   = c.findChild(QPushButton, "confirm_mounted2_btn")
         self._clrmount2_btn  = c.findChild(QPushButton, "clear_mounted2_btn")
@@ -205,11 +207,17 @@ class GantryWidget(QWidget):
         self._exp_pause_btn  = QPushButton("Pause")
         self._exp_resume_btn = QPushButton("Resume")
         self._exp_stop_btn   = QPushButton("Stop")
+        self._exp_force_btn  = QPushButton("Force release")
+        self._exp_force_btn.setToolTip(
+            "Recovery only: forcibly release the experiment lock when the\n"
+            "controlling script died without releasing it (killed process)."
+        )
         self._exp_resume_btn.hide()
         exp_lay.addWidget(self._exp_lbl, 1)
         exp_lay.addWidget(self._exp_pause_btn)
         exp_lay.addWidget(self._exp_resume_btn)
         exp_lay.addWidget(self._exp_stop_btn)
+        exp_lay.addWidget(self._exp_force_btn)
         self._exp_banner.hide()
         self._exp_banner.setStyleSheet(
             "QWidget { background: #7c5200; color: #ffe0a0; border-radius: 4px; }"
@@ -221,6 +229,7 @@ class GantryWidget(QWidget):
         self._exp_pause_btn.clicked.connect(self._on_exp_pause)
         self._exp_resume_btn.clicked.connect(self._on_exp_resume)
         self._exp_stop_btn.clicked.connect(self._client.stop_experiment)
+        self._exp_force_btn.clicked.connect(self._on_exp_force_release)
 
         tabs = QTabWidget()
         tabs.addTab(self._live_panel,        "Live")
@@ -287,10 +296,14 @@ class GantryWidget(QWidget):
                 combo.currentIndexChanged.connect(lambda _i: self._refresh_slots())
         for btn in (self._confirm1_btn, self._confirm2_btn):
             if btn:
-                btn.clicked.connect(self._client.confirm_toolhead_mounted)
+                # clicked emits a bool - connecting directly would pass it as
+                # confirm_toolhead_mounted's token: str param, and protobuf's
+                # strict string typing raises TypeError on every click. The
+                # button appears completely dead (no crash, no error shown).
+                btn.clicked.connect(lambda: self._client.confirm_toolhead_mounted())
         for btn in (self._clrmount1_btn, self._clrmount2_btn):
             if btn:
-                btn.clicked.connect(self._client.clear_toolhead_mounted)
+                btn.clicked.connect(lambda: self._client.clear_toolhead_mounted())
         for btn in (self._clearth1_btn, self._clearth2_btn):
             if btn:
                 btn.clicked.connect(self._client.clear_toolhead)
@@ -416,13 +429,20 @@ class GantryWidget(QWidget):
             self._workspace_widget._canvas.set_plate_specs(labware)
 
     def _slot_widgets(self):
-        """Yield (combo, display_lbl, mounted_lbl, active_lbl, per-slot buttons) per slot."""
+        """Yield (combo, display_lbl, mounted_lbl, active_lbl, last_cal_lbl, per-slot buttons) per slot."""
         return (
-            (self._th1_combo, self._th1_lbl, self._th1_mounted, self._slot1_active,
+            (self._th1_combo, self._th1_lbl, self._th1_mounted, self._slot1_active, self._slot1_last_cal,
              (self._confirm1_btn, self._clrmount1_btn, self._clearth1_btn, self._cal1_btn)),
-            (self._th2_combo, self._th2_lbl, self._th2_mounted, self._slot2_active,
+            (self._th2_combo, self._th2_lbl, self._th2_mounted, self._slot2_active, self._slot2_last_cal,
              (self._confirm2_btn, self._clrmount2_btn, self._clearth2_btn, self._cal2_btn)),
         )
+
+    @staticmethod
+    def _format_calibrated_at(iso_ts: str) -> str:
+        try:
+            return datetime.datetime.fromisoformat(iso_ts).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return iso_ts
 
     def _refresh_slots(self) -> None:
         """Reflect the server's toolhead state onto both slots.
@@ -450,11 +470,16 @@ class GantryWidget(QWidget):
             if active_idx < 0:
                 active_idx = 0  # active head not selected in any slot: show on slot 1
 
-        for i, (combo, lbl, mounted_lbl, active_lbl, buttons) in enumerate(slots):
+        for i, (combo, lbl, mounted_lbl, active_lbl, last_cal_lbl, buttons) in enumerate(slots):
             is_active = i == active_idx
             selected = combo.currentData() if combo else None
             if active_lbl:
                 active_lbl.setVisible(is_active)
+                if is_active:
+                    # Without an explicit color the "ACTIVE" label just inherits
+                    # the widget's default text color (looks black/off, not
+                    # like a status indicator at all).
+                    active_lbl.setStyleSheet(f"color: {self._t['dot_ok']}; font-weight: bold;")
             if lbl:
                 if is_active:
                     lbl.setText(info.display_name or info.name)
@@ -466,6 +491,17 @@ class GantryWidget(QWidget):
                     mounted_lbl.setText("Mounted ✓" if shown in mounted_names else "Not mounted")
                 else:
                     mounted_lbl.setText("—")
+            if last_cal_lbl:
+                # Calibration timestamp is only known for the *active* toolhead
+                # (ToolheadInfo describes whichever head is active, not every
+                # configured one) - a non-active slot's selection can't be
+                # shown without a bulk-fetch RPC that doesn't exist yet.
+                if is_active and info is not None and info.calibrated_at:
+                    last_cal_lbl.setText(f"Last calibrated: {self._format_calibrated_at(info.calibrated_at)}")
+                elif is_active:
+                    last_cal_lbl.setText("Last calibrated: never")
+                else:
+                    last_cal_lbl.setText("Last calibrated: —")
             for btn in buttons:
                 if btn:
                     btn.setEnabled(is_active and not self._locked)
@@ -506,6 +542,20 @@ class GantryWidget(QWidget):
         self._exp_pause_btn.show()
         self._exp_resume_btn.hide()
 
+    def _on_exp_force_release(self) -> None:
+        """Tokenless lock recovery for when the controlling script died."""
+        from PySide6.QtWidgets import QMessageBox
+        answer = QMessageBox.warning(
+            self, "Force-release experiment lock",
+            "Force-release the experiment lock?\n\n"
+            "Only do this if the controlling script has crashed or was killed. "
+            "If a script is still running, it will lose its exclusive control "
+            "of the gantry.",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        if answer == QMessageBox.Yes:
+            self._client.force_release_experiment_lock()
+
     def _set_controls_locked(self, locked: bool) -> None:
         """Disable/enable all manual controls while an experiment holds the lock."""
         self._locked = locked
@@ -537,5 +587,5 @@ class GantryWidget(QWidget):
 
     def closeEvent(self, event) -> None:  # noqa: N802
         """Disconnect the gRPC client when the sub-window is closed."""
-        self._client.disconnect()
+        self._client.close()
         super().closeEvent(event)

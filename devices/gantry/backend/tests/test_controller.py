@@ -19,8 +19,8 @@ _SIMPLE_WORKSPACE_YAML = textwrap.dedent("""\
       - id: plate1
         plate_type: 96_well_standard
         origin:
-          x: 50.0
-          y: 100.0
+          x: 113.88
+          y: 142.74
           z: 15.0
         orientation: standard
 """)
@@ -35,7 +35,6 @@ def client():
 def ctrl(client):
     return GantryController(
         client=client,
-        clearance_z=50.0,
         x_min=0.0, x_max=300.0,
         y_min=0.0, y_max=300.0,
         z_min=0.0, z_max=250.0,
@@ -128,21 +127,24 @@ def test_bare_carriage_allows_same_position_toolhead_would_reject(ctrl):
 
 
 def test_toolhead_offset_shifts_physical_target(ctrl, client):
-    ctrl.set_toolhead("ph_probe")  # offset_x=0, offset_y=-35, tip_x=0, tip_y=-25
+    ctrl.set_toolhead("ph_probe")  # offset_x=offset_y=0 by default now, tip_x=tip_y=0 (unmeasured)
+    ctrl._toolhead_mgr.toolhead.offset_y = -35.0  # simulate a measured mount offset
     ctrl.move_to(100.0, 150.0, 150.0)
     xy_args = client.calls[1][1]
     assert xy_args["x"] == pytest.approx(100.0)  # offset_x + tip_x == 0
-    assert xy_args["y"] == pytest.approx(90.0)  # 150 + (offset_y + tip_y) == 150 - 60
+    assert xy_args["y"] == pytest.approx(115.0)  # 150 + (offset_y + tip_y) == 150 - 35
 
 
 def test_toolhead_tip_offset_z_raises_safe_clearance_height(ctrl, client):
-    ctrl.set_toolhead("ph_probe")  # tip_offset_z=110mm, deeper than the default clearance_z=50mm
+    ctrl.set_toolhead("ph_probe")
+    ctrl._toolhead_mgr.toolhead.tip_offset_z = 110.0  # deeper than the default clearance_z=50mm
     ctrl.move_to(100.0, 150.0, 150.0)
     assert client.calls[0][1]["z"] == 110.0  # max(clearance_z=50, tip_offset_z=110)
 
 
 def test_toolhead_tip_below_z_min_raises(ctrl):
-    ctrl.set_toolhead("ph_probe")  # tip_offset_z=110mm below the carriage
+    ctrl.set_toolhead("ph_probe")
+    ctrl._toolhead_mgr.toolhead.tip_offset_z = 110.0  # tip sits 110mm below the carriage
     with pytest.raises(MotionLimitError, match="tool tip"):
         ctrl.move_to(100.0, 150.0, 50.0)  # tip would sit at 50 - 110 = -60mm, below z_min=0
 
@@ -221,6 +223,80 @@ def test_move_to_well_override_unvalidated_proceeds(ctrl, client):
     ctrl.set_toolhead_mounted(True)
     ctrl.move_to_well("plate1/A1", override_unvalidated=True)
     assert any(name == "move" for name, _ in client.calls)
+
+
+def test_move_to_well_reports_expected_and_actual_position(ctrl):
+    # Bare carriage: no toolhead offset, so actual should land exactly on
+    # the well's expected nominal position - this is the log data used to
+    # spot a mismatch between hand-computed geometry and real hardware.
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    nominal_x, nominal_y, _z = ctrl._workspace_mgr.resolve_well("plate1/A1")
+    result = ctrl.move_to_well("plate1/A1")
+    assert result["expected_well_x"] == pytest.approx(nominal_x)
+    assert result["expected_well_y"] == pytest.approx(nominal_y)
+    assert result["actual_x"] == pytest.approx(nominal_x)
+    assert result["actual_y"] == pytest.approx(nominal_y)
+
+
+def test_move_to_well_actual_position_includes_toolhead_offset(ctrl):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")  # offset_x=offset_y=0 by default now - measured via calibration
+    ctrl._toolhead_mgr.toolhead.offset_y = -35.0  # simulate a measured mount offset
+    ctrl.set_toolhead_mounted(True)
+    nominal_x, nominal_y, _z = ctrl._workspace_mgr.resolve_well("plate1/A1")
+    result = ctrl.move_to_well("plate1/A1", override_unvalidated=True)
+    assert result["expected_well_x"] == pytest.approx(nominal_x)
+    assert result["expected_well_y"] == pytest.approx(nominal_y)
+    assert result["actual_x"] == pytest.approx(nominal_x)
+    assert result["actual_y"] == pytest.approx(nominal_y - 35.0)
+
+
+# ---------------------------------------------------------------------------
+# Toolhead tip calibration
+# ---------------------------------------------------------------------------
+
+def test_calibrate_toolhead_tip_single_well(ctrl):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")  # offset_x=offset_y=0 by default now
+    ctrl._toolhead_mgr.toolhead.offset_y = -35.0  # simulate a measured mount offset
+    nominal_x, nominal_y, _z = ctrl._workspace_mgr.resolve_well("plate1/A1")
+    result = ctrl.calibrate_toolhead_tip(nominal_x + 2.0, nominal_y - 1.0, "plate1/A1")
+    th = ctrl.get_toolhead()
+    assert th.tip_x == pytest.approx(2.0)          # measured - nominal - offset_x(0)
+    assert th.tip_y == pytest.approx(-1.0 + 35.0)  # measured - nominal - offset_y(-35)
+    assert th.geometry_validated is True
+    assert result["nominal_x"] == pytest.approx(nominal_x)
+    assert result["nominal_y"] == pytest.approx(nominal_y)
+    assert result["tip_x"] == pytest.approx(2.0)
+    assert result["tip_y"] == pytest.approx(34.0)
+
+
+def test_calibrate_toolhead_tip_averages_multiple_wells(ctrl):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")
+    ctrl._toolhead_mgr.toolhead.offset_y = -35.0
+    # A1/A12/H1/H12 are this plate's 4 corner wells; by grid symmetry their
+    # nominal average is exactly the plate's own origin (113.88, 142.74).
+    wells = "plate1/A1|plate1/A12|plate1/H1|plate1/H12"
+    result = ctrl.calibrate_toolhead_tip(113.88 + 5.0, 142.74 - 3.0, wells)
+    th = ctrl.get_toolhead()
+    assert th.tip_x == pytest.approx(5.0)
+    assert th.tip_y == pytest.approx(-3.0 + 35.0)
+    assert result["nominal_x"] == pytest.approx(113.88)
+    assert result["nominal_y"] == pytest.approx(142.74)
+
+
+def test_calibrate_toolhead_tip_requires_a_well(ctrl):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")
+    with pytest.raises(RuntimeError, match="at least one well"):
+        ctrl.calibrate_toolhead_tip(0.0, 0.0, "")
+
+
+def test_calibrate_toolhead_tip_requires_active_toolhead(ctrl):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    with pytest.raises(RuntimeError, match="No active toolhead"):
+        ctrl.calibrate_toolhead_tip(0.0, 0.0, "plate1/A1")
 
 
 def test_move_to_well_with_no_toolhead_is_not_refused(ctrl):

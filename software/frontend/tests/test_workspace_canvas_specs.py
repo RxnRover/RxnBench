@@ -31,12 +31,38 @@ _SERVER_96_WELL = {
 def test_plate_spec_from_labware_maps_all_fields():
     spec = workspace_loader.plate_spec_from_labware(_SERVER_96_WELL)
     assert spec.rows == 8 and spec.cols == 12
-    assert spec.spacing == pytest.approx(9.0)
+    assert spec.spacing_x == pytest.approx(9.0)
+    assert spec.spacing_y == pytest.approx(9.0)
     assert spec.diam == pytest.approx(6.94)
     assert spec.a1x == pytest.approx(14.38)
     assert spec.a1y == pytest.approx(11.24)
     assert spec.width == pytest.approx(127.76)
     assert spec.height == pytest.approx(85.48)
+
+
+def test_plate_spec_supports_asymmetric_spacing():
+    data = {k: v for k, v in _SERVER_96_WELL.items() if k != "spacing_mm"}
+    data["spacing_mm_x"] = 26.70
+    data["spacing_mm_y"] = 32.20
+    spec = workspace_loader.plate_spec_from_labware(data)
+    assert spec.spacing_x == pytest.approx(26.70)
+    assert spec.spacing_y == pytest.approx(32.20)
+
+
+def test_plate_spec_missing_spacing_raises():
+    data = {k: v for k, v in _SERVER_96_WELL.items() if k != "spacing_mm"}
+    with pytest.raises(ValueError):
+        workspace_loader.plate_spec_from_labware(data)
+
+
+def test_plate_spec_falls_back_when_axis_keys_present_but_none():
+    # dataclasses.asdict() (used by GetLabware) includes spacing_mm_x/y as
+    # explicit None for plates that only set spacing_mm - .get() must not
+    # mistake a present-but-None value for "key absent, use the default".
+    data = {**_SERVER_96_WELL, "spacing_mm_x": None, "spacing_mm_y": None}
+    spec = workspace_loader.plate_spec_from_labware(data)
+    assert spec.spacing_x == pytest.approx(9.0)
+    assert spec.spacing_y == pytest.approx(9.0)
 
 
 def test_plate_spec_defaults_footprint_when_missing():

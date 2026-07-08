@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from rxn_bench_gantry.plate_geometry import PlateGeometry
-from rxn_bench_gantry.workspace_config import Orientation, WorkspaceConfig
+from rxn_bench_gantry.workspace_config import Orientation, OriginMode, WorkspaceConfig
 
 _log = logging.getLogger(__name__)
 _STATE_FILE = Path.home() / ".rxn_bench" / "workspace.yaml"
@@ -102,6 +102,15 @@ class WorkspaceManager:
         geom = self._load_geometry(plate.plate_type)
 
         plate_dx, plate_dy = geom.well_position(well_label)
+        if plate.origin_mode is OriginMode.CENTER:
+            # origin is the centre of the plate's footprint, not its corner, so
+            # rotation pivots in place instead of swinging the footprint out to
+            # a different quadrant of the deck.
+            plate_dx -= geom.width_mm / 2
+            plate_dy -= geom.height_mm / 2
+        # else CORNER: origin is the plate's un-rotated corner, so rotation
+        # pivots around that corner and the footprint swings into the
+        # adjacent quadrant - the caller is responsible for leaving room.
         gantry_dx, gantry_dy = self._apply_orientation(plate_dx, plate_dy, plate.orientation)
 
         return (

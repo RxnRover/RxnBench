@@ -50,9 +50,10 @@ def test_short_label_uses_first_plate(mgr):
 
 
 def test_a1_position_standard(mgr):
+    # origin is the centre of the plate's footprint, not its corner.
     x, y, z = mgr.resolve_well("plates/A1")
-    assert x == pytest.approx(50.0 + 14.38)
-    assert y == pytest.approx(30.0 + 11.24)
+    assert x == pytest.approx(50.0 + 14.38 - 127.76 / 2)
+    assert y == pytest.approx(30.0 + 11.24 - 85.48 / 2)
     assert z == pytest.approx(15.0)
 
 
@@ -69,9 +70,13 @@ def test_b1_advances_y_by_spacing(mgr):
 
 
 def test_rotated_a1_position(mgr):
+    # origin is the footprint centre; A1's offset from centre is rotated
+    # -90 degrees (dx, dy) -> (-dy, dx) around that fixed pivot point.
+    centre_dx = 14.38 - 127.76 / 2
+    centre_dy = 11.24 - 85.48 / 2
     x, y, z = mgr.resolve_well("rotated/A1")
-    assert x == pytest.approx(200.0 + (-11.24))
-    assert y == pytest.approx(30.0  + 14.38)
+    assert x == pytest.approx(200.0 + (-centre_dy))
+    assert y == pytest.approx(30.0 + centre_dx)
     assert z == pytest.approx(15.0)
 
 

@@ -340,5 +340,5 @@ class PHSensorWidget(QWidget):
 
     def closeEvent(self, event) -> None:  # noqa: N802
         """Disconnect the gRPC client when the sub-window is closed."""
-        self._client.disconnect()
+        self._client.close()
         super().closeEvent(event)

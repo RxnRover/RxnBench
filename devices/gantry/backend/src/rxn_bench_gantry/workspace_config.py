@@ -15,6 +15,13 @@ class Orientation(str, Enum):
     ROTATED_90 = "rotated_90"
 
 
+class OriginMode(str, Enum):
+    """What point of the plate's footprint ``origin`` refers to."""
+
+    CENTER = "center"  # origin is the centre of the plate footprint (rotates in place)
+    CORNER = "corner"  # origin is the plate's corner (A1 corner before rotation)
+
+
 @dataclass(frozen=True)
 class PlacedPlate:
     """A plate type placed at a specific position and orientation on the deck."""
@@ -25,6 +32,7 @@ class PlacedPlate:
     origin_y: float
     origin_z: float
     orientation: Orientation = Orientation.STANDARD
+    origin_mode: OriginMode = OriginMode.CENTER
 
 
 @dataclass(frozen=True)
@@ -72,6 +80,7 @@ class WorkspaceConfig:
                 origin_y=float(origin["y"]),
                 origin_z=float(origin["z"]),
                 orientation=Orientation(entry.get("orientation", "standard")),
+                origin_mode=OriginMode(entry.get("origin_mode", "center")),
             ))
         return cls(
             name=data["name"],
@@ -129,6 +138,7 @@ class WorkspaceConfig:
                     "plate_type": p.plate_type,
                     "origin": {"x": p.origin_x, "y": p.origin_y, "z": p.origin_z},
                     "orientation": p.orientation.value,
+                    "origin_mode": p.origin_mode.value,
                 }
                 for p in self.plates
             ],

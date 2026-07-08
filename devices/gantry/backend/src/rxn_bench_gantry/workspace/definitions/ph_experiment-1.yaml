@@ -1,0 +1,60 @@
+name: ph_experiment-1
+
+# Well used as the physical reference point during deck calibration.
+# Use "plate_id/well_label" format, e.g. "reagents/A1".
+calibration_reference_well: 96-well/H1
+
+plates:
+  - id: 96-well                     # unique id used in well labels, e.g. "plate1/A3"
+    plate_type: 96_well_standard   # must match a file in labware/
+    origin:
+      x: 175    # mm, centre of the plate's footprint in gantry X
+      y: 175   # mm, centre of the plate's footprint in gantry Y
+      z: 15.0    # mm, top of deck surface where plate rests
+    orientation: rotated_90          # standard | rotated_90
+    origin_mode: center
+
+  - id: wash-station
+    plate_type: 100ml_beaker
+    origin:
+      x: 175
+      y: 58
+      z: 15.0
+    orientation: standard
+    origin_mode: center
+
+  - id: 6-well
+    plate_type: 6_well_sample_holder
+    origin:
+      x: 79
+      y: 292
+      z: 15.0
+    orientation: standard
+    origin_mode: center
+
+  - id: 15-well
+    plate_type: 15_well_sample_holder
+    origin:
+      x: 271
+      y: 292
+      z: 15.0
+    orientation: standard
+    origin_mode: center
+
+  - id: Calibration
+    plate_type: 3_well_sample_holder
+    origin:
+      x: 27.5
+      y: 58.0
+      z: 15.0
+    orientation: rotated_90
+    origin_mode: center
+
+  - id: 3-well-2
+    plate_type: 3_well_sample_holder
+    origin:
+      x: 322.5
+      y: 58.0
+      z: 15.0
+    orientation: rotated_90
+    origin_mode: center

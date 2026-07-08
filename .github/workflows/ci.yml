@@ -20,6 +20,9 @@ jobs:
       - name: pH tests
         working-directory: software/backend
         run: make test-ph
+      - name: Client tests
+        working-directory: software/backend
+        run: make test-client
       - name: Proto drift check
         working-directory: software/backend
         run: make check-proto

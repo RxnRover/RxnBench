@@ -19,6 +19,7 @@ class ToolheadGeometry:
     tip_x: float = 0.0
     tip_y: float = 0.0
     geometry_validated: bool = True  # False = placeholder, not yet measured
+    calibrated_at: str = ""  # ISO timestamp of the last calibration wizard run, "" if never
 
 
 @dataclass

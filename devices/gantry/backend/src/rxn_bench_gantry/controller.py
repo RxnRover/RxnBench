@@ -17,10 +17,16 @@ from rxn_bench_gantry.workspace_manager import WorkspaceManager
 class GantryController:
     """High-level gantry controller - bounds-checked motion with toolhead geometry compensation."""
 
+    # Safe raise height for a bare carriage (or a toolhead shallow enough not
+    # to need more). Not machine-configurable: it is not a physical fact about
+    # the machine like the axis limits are, just a comfortable travel height,
+    # and every Z move is bounds-checked against z_min/tip_offset_z regardless
+    # of this value, so getting it "wrong" costs a rejected move, not a crash.
+    _BARE_CLEARANCE_Z_MM = 50.0
+
     def __init__(
         self,
         client: MotionClientProtocol,
-        clearance_z: float = 50.0,
         x_min: float = 0.0,
         x_max: float = 350.0,
         y_min: float = 0.0,
@@ -32,7 +38,6 @@ class GantryController:
 
         Args:
             client: Low-level motion client (MoonrakerClient or MockMoonrakerClient).
-            clearance_z: Z height used as the safe travel altitude between moves, in mm.
             x_min: Left-side axis limit in mm.
             x_max: Right-side axis limit in mm.
             y_min: Front axis limit in mm.
@@ -41,9 +46,7 @@ class GantryController:
             z_max: Upper Z limit in mm.
         """
         self._toolhead_mgr = ToolheadManager()
-        self._homing_mgr = HomingManager(
-            client, clearance_z, x_min, x_max, y_min, y_max, z_min, z_max
-        )
+        self._homing_mgr = HomingManager(client, x_min, x_max, y_min, y_max, z_min, z_max)
         self._engine = MotionEngine(client)
         self._workspace_mgr = WorkspaceManager()
         self._restore_state()
@@ -58,9 +61,16 @@ class GantryController:
 
     @property
     def _safe_clearance_z(self) -> float:
+        """Height to raise to during clearance travel: enough to clear the active tip.
+
+        Derived, not configured - a fixed bare-carriage floor, or (for a
+        toolhead whose tip hangs down further than that) exactly enough to
+        keep the tip above z_min while raised. Every Z target is still
+        bounds-checked against z_min/tip_offset_z regardless of this value.
+        """
         th = self._toolhead_mgr.toolhead
         tip_z = th.tip_offset_z if th else 0.0
-        return max(self._homing_mgr.clearance_z, tip_z + self._homing_mgr.z_min)
+        return max(self._BARE_CLEARANCE_Z_MM, tip_z + self._homing_mgr.z_min)
 
     def _check_bounds(
         self,
@@ -140,7 +150,7 @@ class GantryController:
         dz: float = 0.0,
         speed: float | None = None,
     ) -> None:
-        """Relative move from the current position. Routes through the homing state machine when homing is active.
+        """Relative move from the current position. Bounds checking is skipped while homing is active.
 
         Args:
             dx: X displacement in mm. Positive = right.
@@ -151,9 +161,7 @@ class GantryController:
         Raises:
             MotionLimitError: If the resulting position would exceed the calibrated axis limits.
         """
-        if self._homing_mgr.homing_active:
-            self._homing_mgr.homing_jog_update(dx, dy, dz)
-        else:
+        if not self._homing_mgr.homing_active:
             if dx != 0.0 or dy != 0.0 or dz != 0.0:
                 pos = self._engine.get_position()
                 self._check_bounds(
@@ -220,19 +228,19 @@ class GantryController:
         self._homing_mgr.start_manual_homing()
 
     def confirm_x_min(self) -> None:
-        """Declare the current X position as X=0 (left physical limit)."""
+        """Declare the current X position as X=0 (left physical limit). Use whichever X corner you're at."""
         self._homing_mgr.confirm_x_min()
 
     def confirm_x_max(self) -> None:
-        """Record the current X travel distance as x_max."""
+        """Declare the current X position as the fixed x_max (right physical limit)."""
         self._homing_mgr.confirm_x_max()
 
     def confirm_y_min(self) -> None:
-        """Declare the current Y position as Y=0 (front physical limit)."""
+        """Declare the current Y position as Y=0 (front physical limit). Use whichever Y corner you're at."""
         self._homing_mgr.confirm_y_min()
 
     def confirm_y_max(self) -> None:
-        """Record the current Y travel distance as y_max."""
+        """Declare the current Y position as the fixed y_max (back physical limit)."""
         self._homing_mgr.confirm_y_max()
 
     def confirm_z_reference(self) -> None:
@@ -240,8 +248,15 @@ class GantryController:
         self._homing_mgr.confirm_z_reference()
 
     def finish_homing(self) -> None:
-        """End manual homing mode and re-enable bounds checking."""
+        """End manual homing mode, re-enable bounds checking, and persist the result.
+
+        Saves immediately (rather than waiting for the next SaveAndPark) so the
+        UI's homed indicator reflects reality as soon as the operator finishes
+        the wizard, instead of silently staying "Not homed" until some later,
+        unrelated command happens to save.
+        """
         self._homing_mgr.finish_homing()
+        self._homing_mgr.save(toolhead_name=self._toolhead_mgr.name)
 
     def set_z(self, z: float) -> None:
         """Manually declare the current Z height without moving.
@@ -275,6 +290,66 @@ class GantryController:
             name: Toolhead name matching a config folder under ``toolheads/``.
         """
         self._toolhead_mgr.set_toolhead(name)
+
+    def calibrate_toolhead_tip(self, measured_x: float, measured_y: float, wells: str) -> dict[str, float]:
+        """Derive and persist the active toolhead's tip offset from measured well centre(s).
+
+        The operator jogs the physical tip to the centre of one or more
+        calibration wells and reports the *averaged* resulting machine
+        coordinates here; ``wells`` names every well that went into that
+        average (pipe-delimited ``plate_id/well_label`` entries). The offset
+        is back-solved against the average of those wells' nominal positions,
+        so it is independent of where the wells sit on the deck. Averaging
+        several of a plate's corner wells (instead of just one) also cancels
+        out per-well measurement noise and catches gross rotation/placement
+        errors that a single well can't reveal.
+
+        Args:
+            measured_x: Average machine X across the measured well centres.
+            measured_y: Average machine Y across the measured well centres.
+            wells: Pipe-delimited ``plate_id/well_label`` entries, e.g.
+                ``'96-well/H1|96-well/H12|96-well/A1|96-well/A12'``.
+
+        Returns:
+            Dict with the averaged nominal well position and the resulting
+            tip_x/tip_y - logged verbatim by the caller, and returned to the
+            operator so the calibration dialog can show exactly what was
+            measured and saved instead of leaving it opaque.
+
+        Raises:
+            RuntimeError: If no toolhead is active or no wells were given.
+        """
+        th = self._toolhead_mgr.toolhead
+        if th is None:
+            raise RuntimeError("No active toolhead to calibrate.")
+        well_labels = [w.strip() for w in wells.split("|") if w.strip()]
+        if not well_labels:
+            raise RuntimeError("calibrate_toolhead_tip requires at least one well.")
+        nominals = [self._workspace_mgr.resolve_well(label) for label in well_labels]
+        nominal_x = sum(n[0] for n in nominals) / len(nominals)
+        nominal_y = sum(n[1] for n in nominals) / len(nominals)
+        tip_x = measured_x - nominal_x - th.offset_x
+        tip_y = measured_y - nominal_y - th.offset_y
+        self._toolhead_mgr.set_tip_offset(tip_x, tip_y)
+        return {"nominal_x": nominal_x, "nominal_y": nominal_y, "tip_x": tip_x, "tip_y": tip_y}
+
+    def calibrate_toolhead_tip_z(self, measured_z: float) -> None:
+        """Derive and persist the active toolhead's Z offset from a measured surface touch.
+
+        The operator lowers the tip until it touches the deck/reference
+        surface (Z=0) and reports the resulting carriage Z here. Since the tip
+        is physically at Z=0 at that instant, the carriage's Z reading at that
+        moment *is* the toolhead's tip_offset_z - no well lookup needed.
+
+        Args:
+            measured_z: Carriage Z position in mm when the tip touches the Z=0 reference surface.
+
+        Raises:
+            RuntimeError: If no toolhead is active.
+        """
+        if self._toolhead_mgr.toolhead is None:
+            raise RuntimeError("No active toolhead to calibrate.")
+        self._toolhead_mgr.set_tip_offset_z(measured_z)
 
     def clear_toolhead(self) -> None:
         """Physically remove the active toolhead and revert to bare carriage geometry.
@@ -330,7 +405,7 @@ class GantryController:
         """
         self._workspace_mgr.load_from_yaml(content)
 
-    def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
+    def move_to_well(self, label: str, override_unvalidated: bool = False) -> dict[str, float]:
         """Move to a well by label using the active workspace.
 
         Using a toolhead for well work requires it to be confirmed: physically
@@ -341,6 +416,13 @@ class GantryController:
             label: Well label, e.g. ``'A3'``, ``'H12'``, or ``'plate1/A3'``.
             override_unvalidated: If True, proceed even when the active toolhead's
                 geometry is unvalidated (placeholder). Defaults to refusing.
+
+        Returns:
+            Dict with the well's expected (nominal, pre-toolhead-offset)
+            position and the gantry's actual position once the move
+            completes - logged verbatim by the caller so a mismatch between
+            hand-computed geometry and real hardware behaviour is visible in
+            the session log for every well move, not just during calibration.
 
         Raises:
             RuntimeError: If no workspace is loaded.
@@ -367,6 +449,13 @@ class GantryController:
             )
         x, y, _z = self._workspace_mgr.resolve_well(label)
         self.move_to(x=x, y=y)
+        actual = self._engine.get_position()
+        return {
+            "expected_well_x": x,
+            "expected_well_y": y,
+            "actual_x": actual["x"],
+            "actual_y": actual["y"],
+        }
 
     def list_workspaces(self) -> list[str]:
         """Return names of all available workspace definition files."""

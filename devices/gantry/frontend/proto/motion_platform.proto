@@ -44,6 +44,7 @@ message ToolheadInfo {
   Real tip_y = 11;
   Boolean toolhead_mounted = 12;
   SString mounted_toolheads = 13;
+  SString calibrated_at = 14;
 }
 
 // Observable property messages
@@ -86,6 +87,9 @@ message SetToolhead_Parameters { SString name = 1; SString token = 2; }
 message ConfirmToolheadMounted_Parameters { SString token = 1; }
 message ClearToolheadMounted_Parameters { SString token = 1; }
 message ListToolheads_Responses { SString Toolheads = 1; }
+message CalibrateToolheadTip_Parameters { Real measured_x = 1; Real measured_y = 2; SString wells = 3; SString token = 4; }
+message CalibrateToolheadTip_Responses { SString Result = 1; }
+message CalibrateToolheadTipZ_Parameters { Real measured_z = 1; SString token = 2; }
 message SetWorkspace_Parameters { SString name = 1; SString token = 2; }
 message LoadWorkspaceYaml_Parameters { SString content = 1; SString token = 2; }
 message GetWorkspaceYaml_Responses { SString WorkspaceYaml = 1; }
@@ -127,6 +131,8 @@ service Gantry {
   rpc ConfirmToolheadMounted (ConfirmToolheadMounted_Parameters) returns (Empty);
   rpc ClearToolheadMounted (ClearToolheadMounted_Parameters) returns (Empty);
   rpc ListToolheads (Empty) returns (ListToolheads_Responses);
+  rpc CalibrateToolheadTip (CalibrateToolheadTip_Parameters) returns (CalibrateToolheadTip_Responses);
+  rpc CalibrateToolheadTipZ (CalibrateToolheadTipZ_Parameters) returns (Empty);
   rpc SetWorkspace (SetWorkspace_Parameters) returns (Empty);
   rpc LoadWorkspaceYaml (LoadWorkspaceYaml_Parameters) returns (Empty);
   rpc GetWorkspaceYaml (Empty) returns (GetWorkspaceYaml_Responses);
@@ -134,6 +140,7 @@ service Gantry {
   rpc GetLabware (Empty) returns (GetLabware_Responses);
   rpc AcquireExperimentLock (Empty) returns (AcquireExperimentLock_Responses);
   rpc ReleaseExperimentLock (ReleaseExperimentLock_Parameters) returns (Empty);
+  rpc ForceReleaseExperimentLock (Empty) returns (Empty);
   rpc PauseExperiment (Empty) returns (Empty);
   rpc ResumeExperiment (Empty) returns (Empty);
   rpc StopExperiment (Empty) returns (Empty);

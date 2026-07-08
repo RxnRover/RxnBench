@@ -141,7 +141,7 @@
       </widget>
      </item>
 
-     <!-- Unknown SiLA Servers column -->
+     <!-- Unknown Devices column -->
      <item>
       <widget class="QWidget" name="unknown_col">
        <layout class="QVBoxLayout" name="unknown_col_layout">
@@ -153,7 +153,7 @@
 
         <item>
          <widget class="QLabel" name="unknown_title_lbl">
-          <property name="text"><string>Unknown SiLA Servers</string></property>
+          <property name="text"><string>Unknown Devices</string></property>
           <property name="font">
            <font><pointsize>9</pointsize><bold>true</bold></font>
           </property>

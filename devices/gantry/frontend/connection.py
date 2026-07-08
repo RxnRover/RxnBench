@@ -36,6 +36,7 @@ class ToolheadInfo:
     toolhead_mounted: bool = False
     # Every head confirmed mounted (per-head state, survives activation switches).
     mounted_toolheads: tuple[str, ...] = ()
+    calibrated_at: str = ""  # ISO timestamp of the last calibration wizard run, "" if never
 
 
 class GantryConnection(GantryConnectionBase):
@@ -69,6 +70,7 @@ class GantryConnection(GantryConnectionBase):
             mounted_toolheads=tuple(
                 n for n in th.mounted_toolheads.value.split("|") if n
             ),
+            calibrated_at    = th.calibrated_at.value,
         ))
 
     def _handle_action(self, resp: Any) -> None:
@@ -94,12 +96,14 @@ class GantryConnection(GantryConnectionBase):
         """Send raw workspace YAML to the server. Emits workspace_op_done(ok, msg)."""
         _p = _mp.LoadWorkspaceYaml_Parameters()
         _p.content.value = content
+        _p.token.value = ""
         self._workspace_op("LoadWorkspaceYaml", _p.SerializeToString(), "Workspace applied.")
 
     def load_workspace_by_name(self, name: str) -> None:
         """Load a bundled workspace by name. Emits workspace_op_done(ok, msg)."""
         _p = _mp.SetWorkspace_Parameters()
         _p.name.value = name
+        _p.token.value = ""
         self._workspace_op("SetWorkspace", _p.SerializeToString(), f"Workspace '{name}' loaded.")
 
     def _workspace_op(self, rpc: str, payload: bytes, ok_msg: str) -> None:
@@ -138,6 +142,16 @@ class GantryConnection(GantryConnectionBase):
             self.error_occurred.emit(f"fetch_workspace_list: {e}")
             return []
 
+    def fetch_workspace_yaml(self) -> str:
+        """Fetch the active workspace's raw YAML from the server. Blocking - call from a worker thread."""
+        try:
+            raw  = self._channel.unary_unary(self._rpc("GetWorkspaceYaml"))(b"", timeout=5.0)
+            resp = _mp.GetWorkspaceYaml_Responses.FromString(bytes(raw))
+            return resp.WorkspaceYaml.value
+        except Exception as e:
+            self.error_occurred.emit(f"fetch_workspace_yaml: {e}")
+            return ""
+
     def fetch_labware(self) -> dict:
         """Fetch plate geometry definitions from the server. Blocking - call from a worker thread.
 
@@ -155,6 +169,36 @@ class GantryConnection(GantryConnectionBase):
         except Exception as e:
             self.error_occurred.emit(f"fetch_labware: {e}")
             return {}
+
+    def calibrate_toolhead_tip(
+        self, measured_x: float, measured_y: float, wells: str, token: str = ""
+    ) -> tuple[float, float, float, float] | None:
+        """Derive and persist the active toolhead's tip offset. Blocking - call from a worker thread.
+
+        Unlike most commands (fire-and-forget), this one is blocking so the
+        caller gets back exactly what was measured and saved - the nominal
+        (expected) well position and the resulting tip_x/tip_y - instead of
+        having to guess from a delayed ToolheadInfo stream sample.
+
+        Returns:
+            (nominal_x, nominal_y, tip_x, tip_y), or None on failure
+            (error_occurred is emitted with details).
+        """
+        try:
+            _p = _mp.CalibrateToolheadTip_Parameters()
+            _p.measured_x.value = measured_x
+            _p.measured_y.value = measured_y
+            _p.wells.value = wells
+            _p.token.value = token
+            raw  = self._channel.unary_unary(self._rpc("CalibrateToolheadTip"))(
+                _p.SerializeToString(), timeout=10.0
+            )
+            resp = _mp.CalibrateToolheadTip_Responses.FromString(bytes(raw))
+            nominal_x, nominal_y, tip_x, tip_y = (float(v) for v in resp.Result.value.split("|"))
+            return nominal_x, nominal_y, tip_x, tip_y
+        except Exception as e:
+            self.error_occurred.emit(_format_error("CalibrateToolheadTip", e))
+            return None
 
     def fetch_limits(self) -> tuple[float, float, float, float, float, float] | None:
         """Fetch axis limits as (x_min, x_max, y_min, y_max, z_min, z_max). Returns None on failure."""

@@ -1,0 +1,11 @@
+# 100ml Beaker
+
+rows: 1          
+columns: 1       
+spacing_mm: 0 
+well_diameter_mm: 50
+well_depth_mm: 72.5
+a1_offset_x: 63.88   # mm, A1 from corner
+a1_offset_y: 42.74   # mm, A1 from corner
+width_mm: 127.76     # mm, plate footprint along X (ANSI/SLAS)
+height_mm: 85.48     # mm, plate footprint along Y (ANSI/SLAS)

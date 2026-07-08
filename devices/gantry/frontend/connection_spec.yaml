@@ -74,6 +74,7 @@ commands:
       - {name: dx, field: dx, type: float, default: 0.0}
       - {name: dy, field: dy, type: float, default: 0.0}
       - {name: dz, field: dz, type: float, default: 0.0}
+      - {name: token, field: token, type: str, default: '""'}
 
   - method: move_to
     rpc: MoveTo
@@ -82,6 +83,7 @@ commands:
       - {name: x, field: x, type: float}
       - {name: y, field: y, type: float}
       - {name: z, field: z, type: float}
+      - {name: token, field: token, type: str, default: '""'}
 
   - method: move_to_well
     rpc: MoveToWell
@@ -89,24 +91,52 @@ commands:
     args:
       - {name: label, field: label, type: str}
       - {name: override_unvalidated, field: override_unvalidated, type: bool, default: False}
+      - {name: token, field: token, type: str, default: '""'}
 
   - method: set_toolhead
     rpc: SetToolhead
     params: SetToolhead_Parameters
     args:
       - {name: name, field: name, type: str}
+      - {name: token, field: token, type: str, default: '""'}
 
   - method: set_workspace
     rpc: SetWorkspace
     params: SetWorkspace_Parameters
     args:
       - {name: name, field: name, type: str}
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: confirm_toolhead_mounted
+    rpc: ConfirmToolheadMounted
+    params: ConfirmToolheadMounted_Parameters
+    args:
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: clear_toolhead_mounted
+    rpc: ClearToolheadMounted
+    params: ClearToolheadMounted_Parameters
+    args:
+      - {name: token, field: token, type: str, default: '""'}
+
+  # calibrate_toolhead_tip is hand-written in connection.py (blocking, needs
+  # the parsed nominal/tip result back) - not generated here.
+
+  - method: calibrate_toolhead_tip_z
+    rpc: CalibrateToolheadTipZ
+    params: CalibrateToolheadTipZ_Parameters
+    args:
+      - {name: measured_z, field: measured_z, type: float}
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: save_and_park
+    rpc: SaveAndPark
+    params: SaveAndPark_Parameters
+    args:
+      - {name: token, field: token, type: str, default: '""'}
 
   # No-arg commands
   - {method: clear_toolhead,           rpc: ClearToolhead}
-  - {method: confirm_toolhead_mounted, rpc: ConfirmToolheadMounted}
-  - {method: clear_toolhead_mounted,   rpc: ClearToolheadMounted}
-  - {method: save_and_park,            rpc: SaveAndPark}
   - {method: start_manual_homing,      rpc: StartManualHoming}
   - {method: finish_homing,            rpc: FinishHoming}
   - {method: confirm_x_min,            rpc: ConfirmXMin}
@@ -117,3 +147,4 @@ commands:
   - {method: pause_experiment,         rpc: PauseExperiment}
   - {method: resume_experiment,        rpc: ResumeExperiment}
   - {method: stop_experiment,          rpc: StopExperiment}
+  - {method: force_release_experiment_lock, rpc: ForceReleaseExperimentLock}

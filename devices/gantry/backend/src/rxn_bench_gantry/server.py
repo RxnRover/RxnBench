@@ -42,28 +42,32 @@ async def create_app(config):
             log.warning("Moonraker not discovered - falling back to %s", host)
         motion_client = MoonrakerClient(host)
 
-    if _MOCK:
-        controller = GantryController(
-            client=motion_client,
-            clearance_z=machine.clearance_z,
-            x_min=-500.0,
-            x_max=1000.0,
-            y_min=-500.0,
-            y_max=1000.0,
-            z_min=-500.0,
-            z_max=1000.0,
-        )
-    else:
-        controller = GantryController(
-            client=motion_client,
-            clearance_z=machine.clearance_z,
-            x_min=machine.x_min,
-            x_max=machine.x_max,
-            y_min=machine.y_min,
-            y_max=machine.y_max,
-            z_min=machine.z_min,
-            z_max=machine.z_max,
-        )
+    # get_axis_limits() is the single source of truth for the starting bounds -
+    # Klipper's own configured travel range for real hardware, or the fixed
+    # simulated bed for mock mode - instead of a second, separately maintained
+    # set of numbers that can silently drift out of sync with it. This is only
+    # the *initial* default: manual homing (confirm_x_min/max, confirm_y_min/max)
+    # and its saved state always take precedence once calibrated, exactly as
+    # before. Falls back to a conservative default if the query fails, so a
+    # motion controller that's slow to come up doesn't take the whole SiLA
+    # server down with it.
+    try:
+        limits = motion_client.get_axis_limits()
+        x_min, x_max = limits["x"]
+        y_min, y_max = limits["y"]
+        z_min, z_max = limits["z"]
+    except Exception as exc:
+        log.warning("Could not query axis limits (%s) - using conservative defaults.", exc)
+        x_min, x_max = 0.0, 350.0
+        y_min, y_max = 0.0, 350.0
+        z_min, z_max = 0.0, 340.0
+
+    controller = GantryController(
+        client=motion_client,
+        x_min=x_min, x_max=x_max,
+        y_min=y_min, y_max=y_max,
+        z_min=z_min, z_max=z_max,
+    )
 
     app.register(Gantry(controller=controller))
     yield app

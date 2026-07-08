@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import TextIO
 
@@ -64,11 +65,27 @@ class _ScriptRunner(QThread):
                 pass
 
     def stop(self) -> None:
-        if self._proc and self._proc.poll() is None:
+        """Ask the script to exit cleanly; escalate to SIGTERM if it won't.
+
+        SIGINT raises KeyboardInterrupt inside the script, so its
+        `with RxnBenchClient()` block still runs and releases the experiment
+        lock. A bare terminate() kills Python before that cleanup, stranding
+        the lock on the gantry server (recoverable only via Force release).
+        """
+        proc = self._proc
+        if proc and proc.poll() is None:
             try:
-                self._proc.terminate()
+                os.kill(proc.pid, signal.SIGINT)
             except Exception:
                 pass
+
+            def _escalate() -> None:
+                if proc.poll() is None:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+            threading.Timer(5.0, _escalate).start()
 
 
 class ExperimentPanel(QWidget):

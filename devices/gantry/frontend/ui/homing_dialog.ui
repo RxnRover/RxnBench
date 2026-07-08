@@ -100,7 +100,7 @@
        </item>
        <item>
         <widget class="QLabel" name="manual_instruction">
-         <property name="text"><string>Jog the gantry to each reference position and confirm. All axes must be confirmed before finishing.</string></property>
+         <property name="text"><string>Jog to whichever corner is convenient and confirm it - only ONE X button and ONE Y button below need to be clicked (not all four), plus Z Reference, before finishing.</string></property>
          <property name="wordWrap"><bool>true</bool></property>
         </widget>
        </item>
@@ -186,8 +186,8 @@
              <widget class="QDoubleSpinBox" name="jog_step_spin">
               <property name="minimum"><double>0.100000000000000</double></property>
               <property name="maximum"><double>50.000000000000000</double></property>
-              <property name="singleStep"><double>0.500000000000000</double></property>
-              <property name="value"><double>1.000000000000000</double></property>
+              <property name="singleStep"><double>1.000000000000000</double></property>
+              <property name="value"><double>10.000000000000000</double></property>
              </widget>
             </item>
            </layout>
@@ -199,30 +199,40 @@
        <!-- Confirm buttons -->
        <item>
         <widget class="QGroupBox" name="confirm_group">
-         <property name="title"><string>Confirm Reference Positions</string></property>
+         <property name="title"><string>Confirm Reference Position — pick whichever corner you're at</string></property>
          <layout class="QGridLayout" name="confirm_grid">
           <property name="spacing"><number>6</number></property>
           <item row="0" column="0">
-           <widget class="QPushButton" name="confirm_x_min_btn">
-            <property name="text"><string>X Min</string></property>
+           <widget class="QLabel">
+            <property name="text"><string>X:</string></property>
            </widget>
           </item>
           <item row="0" column="1">
+           <widget class="QPushButton" name="confirm_x_min_btn">
+            <property name="text"><string>Left (X Min)</string></property>
+           </widget>
+          </item>
+          <item row="0" column="2">
            <widget class="QPushButton" name="confirm_x_max_btn">
-            <property name="text"><string>X Max</string></property>
+            <property name="text"><string>Right (X Max)</string></property>
            </widget>
           </item>
           <item row="1" column="0">
-           <widget class="QPushButton" name="confirm_y_min_btn">
-            <property name="text"><string>Y Min</string></property>
+           <widget class="QLabel">
+            <property name="text"><string>Y:</string></property>
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="QPushButton" name="confirm_y_max_btn">
-            <property name="text"><string>Y Max</string></property>
+           <widget class="QPushButton" name="confirm_y_min_btn">
+            <property name="text"><string>Front (Y Min)</string></property>
            </widget>
           </item>
-          <item row="2" column="0" colspan="2">
+          <item row="1" column="2">
+           <widget class="QPushButton" name="confirm_y_max_btn">
+            <property name="text"><string>Back (Y Max)</string></property>
+           </widget>
+          </item>
+          <item row="2" column="0" colspan="3">
            <widget class="QPushButton" name="confirm_z_ref_btn">
             <property name="text"><string>Z Reference</string></property>
            </widget>

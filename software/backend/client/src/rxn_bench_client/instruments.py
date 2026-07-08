@@ -240,6 +240,15 @@ class Gantry:
         self._g.Gantry.ReleaseExperimentLock(Token=self._token)
         self._token = ""
 
+    def force_release_experiment_lock(self) -> None:
+        """Forcibly clear a stranded experiment lock (no token required).
+
+        Recovery for when a previous script died without releasing - e.g. a
+        killed process. Only use when you are sure no script is running.
+        """
+        self._g.Gantry.ForceReleaseExperimentLock()
+        self._token = ""
+
     def get_experiment_state(self) -> str:
         """Return the current experiment state string (e.g. ``'running'``, ``'paused'``, ``'stop_requested'``)."""
         return self._g.Gantry.GetExperimentState()[0]

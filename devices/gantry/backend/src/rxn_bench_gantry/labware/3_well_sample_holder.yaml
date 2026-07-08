@@ -1,0 +1,15 @@
+# 6-Well Sample Holder
+#
+# TODO: these are standard 6-well plate dimensions used as placeholders -
+# verify every value against the physical holder with calipers before
+# running wells on it (compare the 15_well_sample_holder.yaml you measured).
+
+rows: 1           # A-B
+columns: 3        # 1-3
+spacing_mm: 27.8  # centre-to-centre, both axes
+well_diameter_mm: 27.8
+well_depth_mm: 61
+a1_offset_x: 20.1716   # mm, A1 from corner
+a1_offset_y: 17.5   # mm, A1 from corner
+width_mm: 96     # mm, plate footprint along X
+height_mm: 35     # mm, plate footprint along Y

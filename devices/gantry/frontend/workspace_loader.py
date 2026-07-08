@@ -30,7 +30,8 @@ _UI_DIR = Path(__file__).parent / "ui"
 class _PlateSpec:
     rows: int
     cols: int
-    spacing: float       # mm, centre-to-centre both axes
+    spacing_x: float     # mm, centre-to-centre along columns
+    spacing_y: float     # mm, centre-to-centre along rows
     diam: float          # mm, well diameter
     a1x: float           # mm, A1 centre from plate corner X
     a1y: float           # mm, A1 centre from plate corner Y
@@ -41,7 +42,7 @@ class _PlateSpec:
 # Used only until the server's labware definitions arrive (or if the fetch
 # fails): a standard SBS 96-well plate.
 _FALLBACK_SPEC = _PlateSpec(
-    rows=8, cols=12, spacing=9.0, diam=6.94,
+    rows=8, cols=12, spacing_x=9.0, spacing_y=9.0, diam=6.94,
     a1x=14.38, a1y=11.24, width=127.76, height=85.48,
 )
 
@@ -56,13 +57,19 @@ def plate_spec_from_labware(data: dict) -> _PlateSpec:
 
     Args:
         data: Geometry dict as served by the gantry's GetLabware command
-            (rows, columns, spacing_mm, well_diameter_mm, a1_offset_x/y,
-            width_mm, height_mm).
+            (rows, columns, spacing_mm or spacing_mm_x/spacing_mm_y,
+            well_diameter_mm, a1_offset_x/y, width_mm, height_mm).
     """
+    spacing = data.get("spacing_mm")
+    spacing_x = data.get("spacing_mm_x") if data.get("spacing_mm_x") is not None else spacing
+    spacing_y = data.get("spacing_mm_y") if data.get("spacing_mm_y") is not None else spacing
+    if spacing_x is None or spacing_y is None:
+        raise ValueError("labware entry missing spacing_mm or spacing_mm_x/spacing_mm_y")
     return _PlateSpec(
         rows=int(data["rows"]),
         cols=int(data["columns"]),
-        spacing=float(data["spacing_mm"]),
+        spacing_x=float(spacing_x),
+        spacing_y=float(spacing_y),
         diam=float(data["well_diameter_mm"]),
         a1x=float(data["a1_offset_x"]),
         a1y=float(data["a1_offset_y"]),
@@ -140,15 +147,23 @@ class WorkspaceCanvas(QWidget):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.fillRect(self.rect(), QColor(self._t["bg_surface"]))
-        if not self._plates:
-            p.setPen(QColor(self._t["text_dim"]))
-            p.setFont(QFont("sans-serif", 11))
-            p.drawText(self.rect(), Qt.AlignCenter, "No workspace loaded.")
-        else:
-            self._paint_workspace(p)
-        p.end()
+        try:
+            p.setRenderHint(QPainter.Antialiasing)
+            p.fillRect(self.rect(), QColor(self._t["bg_surface"]))
+            if not self._plates:
+                p.setPen(QColor(self._t["text_dim"]))
+                p.setFont(QFont("sans-serif", 11))
+                p.drawText(self.rect(), Qt.AlignCenter, "No workspace loaded.")
+            else:
+                # Live-editing may briefly produce syntactically valid but
+                # semantically incomplete YAML (e.g. a plate with no origin
+                # yet); skip this frame rather than crash the whole app.
+                try:
+                    self._paint_workspace(p)
+                except (TypeError, KeyError, ValueError, AttributeError, ZeroDivisionError):
+                    pass
+        finally:
+            p.end()
 
     def _paint_workspace(self, p: QPainter) -> None:
         t   = self._t
@@ -163,11 +178,17 @@ class WorkspaceCanvas(QWidget):
             entries.append((plate, spec))
 
         def plate_extents(plate: dict, spec: _PlateSpec) -> tuple[float, float, float, float]:
-            ox_ = plate["origin"].get("x", 0.0)
-            oy_ = plate["origin"].get("y", 0.0)
+            # origin is the centre of the plate's footprint; rotation swaps
+            # which footprint dimension is half-width vs half-height but the
+            # centre point itself never moves.
+            origin = plate.get("origin") or {}
+            ox_ = origin.get("x") or 0.0
+            oy_ = origin.get("y") or 0.0
             if plate.get("orientation") == "rotated_90":
-                return ox_ - spec.height, ox_, oy_, oy_ + spec.width
-            return ox_, ox_ + spec.width, oy_, oy_ + spec.height
+                hw, hh = spec.height / 2, spec.width / 2
+            else:
+                hw, hh = spec.width / 2, spec.height / 2
+            return ox_ - hw, ox_ + hw, oy_ - hh, oy_ + hh
 
         extents = [plate_extents(pl, sp) for pl, sp in entries]
         min_x = min(e[0] for e in extents) - 15
@@ -201,24 +222,29 @@ class WorkspaceCanvas(QWidget):
 
         for i, (plate, spec) in enumerate(entries):
             pid         = plate.get("id", f"plate{i + 1}")
-            ox          = plate["origin"].get("x", 0.0)
-            oy          = plate["origin"].get("y", 0.0)
+            origin      = plate.get("origin") or {}
+            ox          = origin.get("x") or 0.0
+            oy          = origin.get("y") or 0.0
             rotated     = plate.get("orientation") == "rotated_90"
             color       = QColor(_PALETTE[i % len(_PALETTE)])
 
             def _well_gxy(pdx: float, pdy: float) -> tuple[float, float]:
-                # Transform plate-local (pdx, pdy) to gantry XY, matching backend _apply_orientation.
+                # Transform plate-local (pdx, pdy) to gantry XY, matching backend
+                # _apply_orientation: origin is the footprint centre, so local
+                # coords are re-centred before rotating around it.
+                cdx = pdx - spec.width / 2
+                cdy = pdy - spec.height / 2
                 if rotated:
-                    return ox - pdy, oy + pdx
-                return ox + pdx, oy + pdy
+                    return ox - cdy, oy + cdx
+                return ox + cdx, oy + cdy
 
             # Plate rectangle corners
             if rotated:
-                sx1, sy1 = to_px(ox - spec.height, oy + spec.width)
-                sx2, sy2 = to_px(ox,               oy)
+                hw, hh = spec.height / 2, spec.width / 2
             else:
-                sx1, sy1 = to_px(ox,               oy + spec.height)
-                sx2, sy2 = to_px(ox + spec.width,  oy)
+                hw, hh = spec.width / 2, spec.height / 2
+            sx1, sy1 = to_px(ox - hw, oy + hh)
+            sx2, sy2 = to_px(ox + hw, oy - hh)
             rect = QRectF(sx1, sy1, sx2 - sx1, sy2 - sy1)
 
             fill = QColor(color); fill.setAlphaF(0.12)
@@ -236,8 +262,8 @@ class WorkspaceCanvas(QWidget):
                 for col in range(spec.cols):
                     wlabel = f"{rl}{col + 1}"
                     gx, gy = _well_gxy(
-                        spec.a1x + col * spec.spacing,
-                        spec.a1y + row * spec.spacing,
+                        spec.a1x + col * spec.spacing_x,
+                        spec.a1y + row * spec.spacing_y,
                     )
                     wx, wy = to_px(gx, gy)
                     is_cal = (pid == cal_plate_id and wlabel == cal_well)

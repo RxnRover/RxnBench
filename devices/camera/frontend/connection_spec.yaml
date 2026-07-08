@@ -1,0 +1,30 @@
+# Manifest for the rxn-bench-mydevice SiLA feature (see ../backend).
+# Run from software/frontend/:
+#   python scripts/gen_connections.py \
+#     ../../devices/mydevice/frontend/connection_spec.yaml \
+#     --out ../../devices/mydevice/frontend/generated_connection.py
+#
+# TODO: rename mydevice/MyDevice throughout this file and the generated
+# output. Protobuf stubs come from the backend manifest: add your device to
+# _DEVICES in software/backend/scripts/gen_proto.py, then run `make gen-proto`
+# (from software/backend) to produce proto/<name>_pb2.py next to this file.
+
+meta:
+  package: sila2.edu.iastate.ames.rxnbench.mydevice.v1
+  service: MyDevice
+  class_name: MyDeviceConnectionBase
+  proto_module: rxn_bench_ui.devices.device_template.proto.my_device_pb2
+
+streams:
+  - rpc: Subscribe_Measurement
+    decode_type: Subscribe_Measurement_Responses
+    signal: measurement_updated
+    signal_args: [float]
+    emit: ["r.Measurement.value"]
+
+commands:
+  - method: perform_action
+    rpc: PerformAction
+    params: PerformAction_Parameters
+    args:
+      - {name: parameter, field: parameter, type: float}

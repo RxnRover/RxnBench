@@ -17,15 +17,16 @@ _CONFIG_FILE = Path.home() / ".rxn_bench" / "machine.yaml"
 
 @dataclass
 class MachineConfig:
-    """Per-machine axis limits and Moonraker connection config. Fields map 1:1 to machine.yaml keys."""
+    """Per-machine Moonraker connection config.
 
-    clearance_z: float = 50.0
-    x_min: float = 0.0
-    x_max: float = 350.0
-    y_min: float = 0.0
-    y_max: float = 350.0
-    z_min: float = 0.0
-    z_max: float = 340.0
+    Axis limits are not here: they come from the motion client's own
+    get_axis_limits() at server startup (Klipper's configured travel range,
+    or the mock's fixed simulated bed), with manual homing and its saved
+    state always taking precedence once calibrated. Keeping a second,
+    separately maintained copy of the same numbers here was a real source of
+    drift - only moonraker_fallback_host is a genuinely separate setting.
+    """
+
     moonraker_fallback_host: str = "192.168.10.2"
 
     @classmethod
@@ -37,13 +38,6 @@ class MachineConfig:
         try:
             data = yaml.safe_load(_CONFIG_FILE.read_text()) or {}
             cfg = cls(
-                clearance_z=float(data.get("clearance_z", cls.clearance_z)),
-                x_min=float(data.get("x_min", cls.x_min)),
-                x_max=float(data.get("x_max", cls.x_max)),
-                y_min=float(data.get("y_min", cls.y_min)),
-                y_max=float(data.get("y_max", cls.y_max)),
-                z_min=float(data.get("z_min", cls.z_min)),
-                z_max=float(data.get("z_max", cls.z_max)),
                 moonraker_fallback_host=str(
                     data.get("moonraker_fallback_host", cls.moonraker_fallback_host)
                 ),

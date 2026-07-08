@@ -16,7 +16,6 @@ def save(
     x_max: float,
     y_min: float,
     y_max: float,
-    clearance_z: float,
     toolhead_name: str,
     is_calibrated: bool = True,
 ) -> None:
@@ -27,7 +26,6 @@ def save(
         x_max: Calibrated right X limit in mm.
         y_min: Calibrated front Y limit in mm.
         y_max: Calibrated back Y limit in mm.
-        clearance_z: Safe travel altitude in mm.
         toolhead_name: Name of the active toolhead at save time.
         is_calibrated: Whether the limits were measured in this session (always True on save).
     """
@@ -37,7 +35,6 @@ def save(
         "x_max": x_max,
         "y_min": y_min,
         "y_max": y_max,
-        "clearance_z": clearance_z,
         "toolhead_name": toolhead_name,
         "clean_shutdown": True,
         "is_calibrated": is_calibrated,

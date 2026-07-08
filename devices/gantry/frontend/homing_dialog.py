@@ -163,8 +163,9 @@ class HomingDialog(QDialog):
         for btn in (
             self._jog_x_pos, self._jog_x_neg, self._jog_y_pos, self._jog_y_neg,
             self._jog_z_pos, self._jog_z_neg,
-            self._confirm_xmin, self._confirm_xmax, self._confirm_ymin,
-            self._confirm_ymax, self._confirm_zref, self._finish_btn,
+            self._confirm_xmin, self._confirm_xmax,
+            self._confirm_ymin, self._confirm_ymax,
+            self._confirm_zref, self._finish_btn,
         ):
             if btn:
                 btn.setEnabled(not active)

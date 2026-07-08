@@ -224,6 +224,7 @@ class RxnBenchClient:
         self,
         well: str,
         stabilize: float = 0.0,
+        override_unvalidated: bool = False,
     ) -> Generator[None, None, None]:
         """Move to a well, engage the tool, run the body, then disengage.
 
@@ -238,6 +239,9 @@ class RxnBenchClient:
         Args:
             well:      Well label, e.g. ``"plate1/A3"``.
             stabilize: Seconds to wait after engaging before the body runs.
+            override_unvalidated: Proceed even if the active toolhead's geometry
+                is unvalidated (placeholder tip offsets). Only for mock/dev use -
+                on real hardware, measure the toolhead instead.
         """
         if not hasattr(self, "gantry"):
             raise RuntimeError(
@@ -246,7 +250,7 @@ class RxnBenchClient:
             )
         self.check_pause_stop()
         self._current_well = well
-        self.gantry.move_to_well(well)
+        self.gantry.move_to_well(well, override_unvalidated=override_unvalidated)
         self.gantry.engage_tool()
         if stabilize:
             time.sleep(stabilize)

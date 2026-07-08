@@ -2,7 +2,6 @@
 import pytest
 
 import rxn_bench_gantry.homing_state as homing_state
-from rxn_bench_gantry.errors import MotionLimitError
 from rxn_bench_gantry.homing_manager import _HOMING_SAFE_MID, HomingManager
 
 from tests.fakes import FakeMotionClient
@@ -17,7 +16,6 @@ def client():
 def mgr(client):
     return HomingManager(
         client,
-        clearance_z=50.0,
         x_min=0.0, x_max=300.0,
         y_min=0.0, y_max=300.0,
         z_min=0.0, z_max=250.0,
@@ -49,7 +47,7 @@ def test_home_auto_marks_machine_calibrated(mgr):
     mgr.save(toolhead_name="")  # does not raise once calibrated
 
 
-def test_start_manual_homing_centers_carriage_and_resets_accumulators(mgr, client):
+def test_start_manual_homing_centers_carriage(mgr, client):
     mgr.start_manual_homing()
     assert mgr.homing_active
     assert client.calls[-1] == (
@@ -68,45 +66,49 @@ def test_start_manual_homing_invalidates_saved_state(mgr, client):
     assert homing_state.load() is None
 
 
-def test_confirm_x_min_zeroes_x_min_and_resets_accumulator(mgr, client):
+def test_confirm_x_min_zeroes_x_min_and_the_real_position(mgr, client):
     mgr.start_manual_homing()
-    mgr.homing_jog_update(dx=20.0, dy=0.0, dz=0.0)
+    client.jog(dx=20.0)  # real move, e.g. via controller.jog() during homing
     mgr.confirm_x_min()
     assert mgr.x_min == 0.0
-    with pytest.raises(MotionLimitError):
-        mgr.confirm_x_max()  # accumulator was reset by confirm_x_min
+    assert client.get_position()["x"] == 0.0
 
 
-def test_confirm_x_max_requires_at_least_1mm_of_travel(mgr):
+def test_confirm_x_min_does_not_touch_x_max(mgr):
+    # x_max is a fixed machine constant now - only the origin is re-established.
     mgr.start_manual_homing()
-    with pytest.raises(MotionLimitError, match="at least 1 mm"):
-        mgr.confirm_x_max()
+    mgr.confirm_x_min()
+    assert mgr.x_max == 300.0
 
 
-def test_confirm_x_max_records_accumulated_travel(mgr):
-    mgr.start_manual_homing()
-    mgr.homing_jog_update(dx=120.0, dy=0.0, dz=0.0)
-    mgr.confirm_x_max()
-    assert mgr.x_max == 120.0
-
-
-def test_confirm_y_min_zeroes_y_min(mgr, client):
+def test_confirm_y_min_zeroes_y_min_and_the_real_position(mgr, client):
     mgr.start_manual_homing()
     mgr.confirm_y_min()
     assert mgr.y_min == 0.0
+    assert client.get_position()["y"] == 0.0
 
 
-def test_confirm_y_max_requires_at_least_1mm_of_travel(mgr):
+def test_confirm_y_min_does_not_touch_y_max(mgr):
     mgr.start_manual_homing()
-    with pytest.raises(MotionLimitError, match="at least 1 mm"):
-        mgr.confirm_y_max()
+    mgr.confirm_y_min()
+    assert mgr.y_max == 300.0
 
 
-def test_confirm_y_max_records_accumulated_travel(mgr):
+def test_confirm_x_max_declares_x_max_without_touching_x_min(mgr, client):
+    # Operator's choice per session - pick whichever X corner is convenient.
     mgr.start_manual_homing()
-    mgr.homing_jog_update(dx=0.0, dy=88.0, dz=0.0)
+    mgr.confirm_x_max()
+    assert ("set_kinematic_position", {"x": 300.0, "y": None, "z": None}) in client.calls
+    assert mgr.x_min == 0.0  # the fixed bed-width constant is untouched
+    assert mgr.x_max == 300.0
+
+
+def test_confirm_y_max_declares_y_max_without_touching_y_min(mgr, client):
+    mgr.start_manual_homing()
     mgr.confirm_y_max()
-    assert mgr.y_max == 88.0
+    assert ("set_kinematic_position", {"x": None, "y": 300.0, "z": None}) in client.calls
+    assert mgr.y_min == 0.0
+    assert mgr.y_max == 300.0
 
 
 def test_confirm_z_reference_zeroes_kinematic_z(mgr, client):
@@ -115,20 +117,14 @@ def test_confirm_z_reference_zeroes_kinematic_z(mgr, client):
     assert ("set_kinematic_position", {"x": None, "y": None, "z": 0}) in client.calls
 
 
-def test_homing_jog_update_recenters_kinematic_position_per_call(mgr, client):
+def test_jogging_during_manual_homing_is_a_single_real_move(mgr, client):
+    """No shadow accumulator, no per-jog kinematic relabeling - just the real move."""
     mgr.start_manual_homing()
-    mgr.homing_jog_update(dx=10.0, dy=0.0, dz=0.0)
-    assert client.calls[-1] == (
-        "set_kinematic_position", {"x": _HOMING_SAFE_MID - 10.0, "y": None, "z": None},
-    )
-
-    mgr.homing_jog_update(dx=15.0, dy=0.0, dz=0.0)
-    assert client.calls[-1] == (
-        "set_kinematic_position", {"x": _HOMING_SAFE_MID - 15.0, "y": None, "z": None},
-    )
-    # Accumulator sums across calls even though the kinematic reset does not.
-    mgr.confirm_x_max()
-    assert mgr.x_max == 25.0
+    calls_before = len(client.calls)
+    client.jog(dx=10.0)
+    assert len(client.calls) == calls_before + 1
+    assert client.calls[-1] == ("jog", {"dx": 10.0, "dy": 0.0, "dz": 0.0, "speed": None})
+    assert client.get_position()["x"] == pytest.approx(_HOMING_SAFE_MID + 10.0)
 
 
 def test_finish_homing_ends_homing_and_marks_calibrated(mgr):

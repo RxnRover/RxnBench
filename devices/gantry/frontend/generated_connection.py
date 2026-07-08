@@ -99,47 +99,64 @@ class GantryConnectionBase(_FeatureConnection):
         raise NotImplementedError("_handle_action must be implemented in subclass")
 
     # --- Commands ---
-    def jog(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> None:
+    def jog(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0, token: str = "") -> None:
         _p = _pb.Jog_Parameters()
         _p.dx.value = dx
         _p.dy.value = dy
         _p.dz.value = dz
+        _p.token.value = token
         self._fire(self._rpc("Jog"), _p.SerializeToString())
 
-    def move_to(self, x: float, y: float, z: float) -> None:
+    def move_to(self, x: float, y: float, z: float, token: str = "") -> None:
         _p = _pb.MoveTo_Parameters()
         _p.x.value = x
         _p.y.value = y
         _p.z.value = z
+        _p.token.value = token
         self._fire(self._rpc("MoveTo"), _p.SerializeToString())
 
-    def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
+    def move_to_well(self, label: str, override_unvalidated: bool = False, token: str = "") -> None:
         _p = _pb.MoveToWell_Parameters()
         _p.label.value = label
         _p.override_unvalidated.value = override_unvalidated
+        _p.token.value = token
         self._fire(self._rpc("MoveToWell"), _p.SerializeToString())
 
-    def set_toolhead(self, name: str) -> None:
+    def set_toolhead(self, name: str, token: str = "") -> None:
         _p = _pb.SetToolhead_Parameters()
         _p.name.value = name
+        _p.token.value = token
         self._fire(self._rpc("SetToolhead"), _p.SerializeToString())
 
-    def set_workspace(self, name: str) -> None:
+    def set_workspace(self, name: str, token: str = "") -> None:
         _p = _pb.SetWorkspace_Parameters()
         _p.name.value = name
+        _p.token.value = token
         self._fire(self._rpc("SetWorkspace"), _p.SerializeToString())
+
+    def confirm_toolhead_mounted(self, token: str = "") -> None:
+        _p = _pb.ConfirmToolheadMounted_Parameters()
+        _p.token.value = token
+        self._fire(self._rpc("ConfirmToolheadMounted"), _p.SerializeToString())
+
+    def clear_toolhead_mounted(self, token: str = "") -> None:
+        _p = _pb.ClearToolheadMounted_Parameters()
+        _p.token.value = token
+        self._fire(self._rpc("ClearToolheadMounted"), _p.SerializeToString())
+
+    def calibrate_toolhead_tip_z(self, measured_z: float, token: str = "") -> None:
+        _p = _pb.CalibrateToolheadTipZ_Parameters()
+        _p.measured_z.value = measured_z
+        _p.token.value = token
+        self._fire(self._rpc("CalibrateToolheadTipZ"), _p.SerializeToString())
+
+    def save_and_park(self, token: str = "") -> None:
+        _p = _pb.SaveAndPark_Parameters()
+        _p.token.value = token
+        self._fire(self._rpc("SaveAndPark"), _p.SerializeToString())
 
     def clear_toolhead(self) -> None:
         self._fire(self._rpc("ClearToolhead"))
-
-    def confirm_toolhead_mounted(self) -> None:
-        self._fire(self._rpc("ConfirmToolheadMounted"))
-
-    def clear_toolhead_mounted(self) -> None:
-        self._fire(self._rpc("ClearToolheadMounted"))
-
-    def save_and_park(self) -> None:
-        self._fire(self._rpc("SaveAndPark"))
 
     def start_manual_homing(self) -> None:
         self._fire(self._rpc("StartManualHoming"))
@@ -170,4 +187,7 @@ class GantryConnectionBase(_FeatureConnection):
 
     def stop_experiment(self) -> None:
         self._fire(self._rpc("StopExperiment"))
+
+    def force_release_experiment_lock(self) -> None:
+        self._fire(self._rpc("ForceReleaseExperimentLock"))
 

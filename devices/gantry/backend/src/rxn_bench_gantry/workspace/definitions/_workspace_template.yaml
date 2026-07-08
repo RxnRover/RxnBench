@@ -8,17 +8,26 @@ calibration_reference_well: plate1/A1
 
 plates:
   - id: plate1                     # unique id used in well labels, e.g. "plate1/A3"
-    plate_type: 96_well_standard   # must match a file in labware/ 
+    plate_type: 96_well_standard   # must match a file in labware/
     origin:
-      x: 50.0    # mm, plate corner in gantry X
-      y: 30.0    # mm, plate corner in gantry Y
+      x: 113.88  # mm, plate footprint reference point in gantry X (see origin_mode)
+      y: 72.74   # mm, plate footprint reference point in gantry Y (see origin_mode)
       z: 15.0    # mm, top of deck surface where plate rests
     orientation: standard          # standard | rotated_90
+    origin_mode: center            # center (default, rotates in place) | corner (origin = A1 corner, rotates around it)
 
   - id: plate2
     plate_type: 24_well_standard
     origin:
-      x: 200.0
-      y: 30.0
+      x: 263.88
+      y: 72.74
+      z: 15.0
+    orientation: standard
+
+  - id: plate3
+    plate_type: 15_well_sample_holder
+    origin:
+      x: 263.95
+      y: 192.74
       z: 15.0
     orientation: standard

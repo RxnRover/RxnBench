@@ -117,6 +117,8 @@ _DEVICES: dict[str, _DeviceSpec] = {
             ("ConfirmToolheadMounted", (_TOKEN,), ()),
             ("ClearToolheadMounted",   (_TOKEN,), ()),
             ("ListToolheads",          (), (("Toolheads", "SString"),)),
+            ("CalibrateToolheadTip",   (("measured_x", "Real"), ("measured_y", "Real"), ("wells", "SString"), _TOKEN), (("Result", "SString"),)),
+            ("CalibrateToolheadTipZ",  (("measured_z", "Real"), _TOKEN), ()),
 
             ("SetWorkspace",      (("name", "SString"), _TOKEN), ()),
             ("LoadWorkspaceYaml", (("content", "SString"), _TOKEN), ()),
@@ -126,6 +128,7 @@ _DEVICES: dict[str, _DeviceSpec] = {
 
             ("AcquireExperimentLock", (), (("Token", "SString"),)),
             ("ReleaseExperimentLock", (_TOKEN,), ()),
+            ("ForceReleaseExperimentLock", (), ()),
             ("PauseExperiment",       (), ()),
             ("ResumeExperiment",      (), ()),
             ("StopExperiment",        (), ()),

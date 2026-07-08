@@ -5,7 +5,6 @@ from rxn_bench_gantry.homing_state import (
     invalidate as _invalidate_state,
 )
 from rxn_bench_gantry.interfaces import MotionClientProtocol
-from rxn_bench_gantry.errors import MotionLimitError
 
 _HOMING_SAFE_MID = 175.0
 
@@ -16,7 +15,6 @@ class HomingManager:
     def __init__(
         self,
         client: MotionClientProtocol,
-        clearance_z: float = 50.0,
         x_min: float = 0.0,
         x_max: float = 350.0,
         y_min: float = 0.0,
@@ -24,20 +22,28 @@ class HomingManager:
         z_min: float = 0.0,
         z_max: float = 340.0,
     ) -> None:
-        """Initialise with default axis limits; call :meth:`restore` to load persisted values.
+        """Initialise with the machine's fixed axis limits; call :meth:`restore` for the origin.
+
+        x_min/x_max/y_min/y_max are the machine's known, fixed bed size -
+        manual homing only ever re-establishes where the carriage currently
+        is relative to that fixed frame, since there are no X/Y endstops to
+        trust; the bed's physical extent doesn't change between sessions and
+        is never re-measured. The operator can start from *any* of the 4
+        corners each session (confirm_x_min or confirm_x_max, confirm_y_min
+        or confirm_y_max - whichever matches where they happen to be) rather
+        than a fixed per-machine assumption, so only one X confirm and one Y
+        confirm are ever needed regardless of which corner is convenient.
 
         Args:
             client: Low-level motion client used during auto-homing and kinematic resets.
-            clearance_z: Default safe travel altitude in mm.
-            x_min: Initial left axis limit in mm.
-            x_max: Initial right axis limit in mm.
-            y_min: Initial front axis limit in mm.
-            y_max: Initial back axis limit in mm.
-            z_min: Initial lower Z limit in mm.
-            z_max: Initial upper Z limit in mm.
+            x_min: Left axis limit in mm.
+            x_max: Right axis limit in mm (fixed bed width).
+            y_min: Front axis limit in mm.
+            y_max: Back axis limit in mm (fixed bed height).
+            z_min: Lower Z limit in mm.
+            z_max: Upper Z limit in mm.
         """
         self._client = client
-        self._clearance_z = clearance_z
         self._x_min = x_min
         self._x_max = x_max
         self._y_min = y_min
@@ -45,7 +51,6 @@ class HomingManager:
         self._z_min = z_min
         self._z_max = z_max
         self._homing_active: bool = False
-        self._homing_accum: dict[str, float] = {"x": 0.0, "y": 0.0, "z": 0.0}
         self._has_saved_state: bool = False
         self._is_calibrated: bool = False
 
@@ -74,10 +79,6 @@ class HomingManager:
         return self._z_max
 
     @property
-    def clearance_z(self) -> float:
-        return self._clearance_z
-
-    @property
     def homing_active(self) -> bool:
         return self._homing_active
 
@@ -98,59 +99,61 @@ class HomingManager:
         self._is_calibrated = True
 
     def start_manual_homing(self) -> None:
-        """Begin manual limit calibration, invalidate saved state, and reset jog accumulators."""
+        """Begin manual limit calibration and invalidate saved state.
+
+        Declares the current (physically arbitrary) position as the firmware's
+        safe mid-point exactly once, so Klipper accepts jogs in either
+        direction before either corner is known. Nothing re-declares position
+        after this: every subsequent jog is a single real relative move, and
+        the firmware's own tracked position is trusted from here on - it is
+        never faked again, so the displayed position stays accurate throughout
+        calibration and each jog click costs one motion command instead of two.
+        """
         _invalidate_state()
         self._has_saved_state = False
         self._homing_active = True
-        self._homing_accum = {"x": 0.0, "y": 0.0, "z": 0.0}
         self._client.set_kinematic_position(
             x=_HOMING_SAFE_MID, y=_HOMING_SAFE_MID, z=_HOMING_SAFE_MID
         )
 
     def confirm_x_min(self) -> None:
-        """Declare the current X position as X=0 and reset the X accumulator."""
-        self._client.set_kinematic_position(x=_HOMING_SAFE_MID)
-        self._x_min = 0.0
-        self._homing_accum["x"] = 0.0
+        """Declare the current real X position as X=0 (left physical limit).
+
+        x_max is never re-measured here: the bed's physical width is a fixed
+        machine constant, so only where the carriage currently sits relative
+        to it needs re-establishing each session. Use this (instead of
+        confirm_x_max) when you're physically at the left edge; either one
+        alone is sufficient to fix the X axis for this session.
+        """
+        self._client.set_kinematic_position(x=self._x_min)
 
     def confirm_x_max(self) -> None:
-        """Record accumulated X travel as x_max.
+        """Declare the current real X position as X=x_max (right physical limit).
 
-        Raises:
-            MotionLimitError: If less than 1 mm of X travel has been accumulated.
+        Same idea as confirm_x_min, mirrored: use this when it's more
+        convenient to start from the right edge instead. Only one of the two
+        needs to be clicked per session, whichever corner you're actually at.
         """
-        travel = abs(self._homing_accum["x"])
-        if travel < 1.0:
-            raise MotionLimitError(
-                "Confirm X+ requires at least 1 mm of travel from X− first."
-            )
-        self._x_max = travel
-        self._homing_accum["x"] = 0.0
+        self._client.set_kinematic_position(x=self._x_max)
 
     def confirm_y_min(self) -> None:
-        """Declare the current Y position as Y=0 and reset the Y accumulator."""
-        self._client.set_kinematic_position(y=_HOMING_SAFE_MID)
-        self._y_min = 0.0
-        self._homing_accum["y"] = 0.0
+        """Declare the current real Y position as Y=0 (front physical limit).
+
+        y_max is never re-measured here, for the same reason as x_max above.
+        Use this when you're physically at the front edge.
+        """
+        self._client.set_kinematic_position(y=self._y_min)
 
     def confirm_y_max(self) -> None:
-        """Record accumulated Y travel as y_max.
+        """Declare the current real Y position as Y=y_max (back physical limit).
 
-        Raises:
-            MotionLimitError: If less than 1 mm of Y travel has been accumulated.
+        Mirrors confirm_y_min - use whichever matches where you are.
         """
-        travel = abs(self._homing_accum["y"])
-        if travel < 1.0:
-            raise MotionLimitError(
-                "Confirm Y+ requires at least 1 mm of travel from Y− first."
-            )
-        self._y_max = travel
-        self._homing_accum["y"] = 0.0
+        self._client.set_kinematic_position(y=self._y_max)
 
     def confirm_z_reference(self) -> None:
         """Declare the current Z position as Z=0 (working reference surface)."""
         self._client.set_kinematic_position(z=0)
-        self._homing_accum["z"] = 0.0
 
     def finish_homing(self) -> None:
         """End manual homing mode and mark the machine as calibrated."""
@@ -164,20 +167,6 @@ class HomingManager:
             z: Height in mm to assign to the current carriage position.
         """
         self._client.set_kinematic_position(z=z)
-
-    def homing_jog_update(self, dx: float, dy: float, dz: float) -> None:
-        resets: dict[str, float] = {}
-        if dx != 0.0:
-            resets["x"] = _HOMING_SAFE_MID - dx
-            self._homing_accum["x"] += dx
-        if dy != 0.0:
-            resets["y"] = _HOMING_SAFE_MID - dy
-            self._homing_accum["y"] += dy
-        if dz != 0.0:
-            resets["z"] = _HOMING_SAFE_MID - dz
-            self._homing_accum["z"] += dz
-        if resets:
-            self._client.set_kinematic_position(**resets)
 
     def save(self, toolhead_name: str) -> None:
         """Persist the current calibrated limits to disk.
@@ -198,7 +187,6 @@ class HomingManager:
             x_max=self._x_max,
             y_min=self._y_min,
             y_max=self._y_max,
-            clearance_z=self._clearance_z,
             toolhead_name=toolhead_name,
             is_calibrated=True,
         )
@@ -217,7 +205,6 @@ class HomingManager:
         self._x_max = state.get("x_max", self._x_max)
         self._y_min = state.get("y_min", self._y_min)
         self._y_max = state.get("y_max", self._y_max)
-        self._clearance_z = state.get("clearance_z", self._clearance_z)
         self._has_saved_state = True
         self._is_calibrated = False
         return state.get("toolhead_name", "")

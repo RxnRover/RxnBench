@@ -165,3 +165,64 @@ geometry:
         mgr.set_toolhead("measured_probe")
     assert mgr.toolhead.geometry_validated is True
     assert not caplog.records
+
+
+# ---------------------------------------------------------------------------
+# Calibration timestamp
+# ---------------------------------------------------------------------------
+
+def test_new_toolhead_has_no_calibration_timestamp():
+    mgr = ToolheadManager()
+    mgr.set_toolhead("ph_probe")
+    assert mgr.toolhead.calibrated_at == ""
+
+
+def test_set_tip_offset_stamps_calibrated_at():
+    mgr = ToolheadManager()
+    mgr.set_toolhead("ph_probe")
+    mgr.set_tip_offset(1.0, 2.0)
+    assert mgr.toolhead.calibrated_at != ""
+
+
+def test_set_tip_offset_z_stamps_calibrated_at():
+    mgr = ToolheadManager()
+    mgr.set_toolhead("ph_probe")
+    mgr.set_tip_offset_z(3.0)
+    assert mgr.toolhead.calibrated_at != ""
+
+
+def test_calibrated_at_persists_across_toolhead_switch_and_restore(tmp_path, monkeypatch):
+    import rxn_bench_gantry.toolhead_config as toolhead_config
+
+    for name in ("probe_a", "probe_b"):
+        d = tmp_path / name
+        d.mkdir()
+        (d / f"{name}_toolhead.yaml").write_text(f"""
+name: {name}
+display_name: {name.title()}
+geometry:
+  footprint_x: 10.0
+  footprint_y: 10.0
+  offset_x: 0.0
+  offset_y: 0.0
+  tip_offset_z: 5.0
+  z_engage: 1.0
+""")
+    monkeypatch.setattr(toolhead_config, "_TOOLHEADS_DIR", tmp_path)
+
+    mgr = ToolheadManager()
+    mgr.set_toolhead("probe_a")
+    mgr.set_tip_offset(1.0, 2.0)
+    stamped = mgr.toolhead.calibrated_at
+    assert stamped != ""
+
+    mgr.set_toolhead("probe_b")
+    assert mgr.toolhead.calibrated_at == ""  # different head, no calibration of its own
+
+    mgr.set_toolhead("probe_a")  # switch back
+    assert mgr.toolhead.calibrated_at == stamped
+
+    # A fresh manager (simulating a server restart) restores it from disk too.
+    mgr2 = ToolheadManager()
+    mgr2.set_toolhead("probe_a")
+    assert mgr2.toolhead.calibrated_at == stamped

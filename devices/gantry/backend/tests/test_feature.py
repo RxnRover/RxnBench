@@ -24,6 +24,7 @@ class _FakeController:
         self.workspace_yaml = ""
         self.labware_yaml = "96_well_standard:\n  rows: 8\n"
         self.mounted_toolheads: list[str] = []
+        self.toolhead = None  # set to a stub with the ToolheadGeometry-shaped fields to test the "active" branch
 
     def get_position(self) -> dict[str, float]:
         return {"x": 0.0, "y": 0.0, "z": 0.0}
@@ -36,10 +37,14 @@ class _FakeController:
         if self.raise_on_move_to:
             raise self.raise_on_move_to
 
-    def move_to_well(self, label: str, override_unvalidated: bool = False) -> None:
+    def move_to_well(self, label: str, override_unvalidated: bool = False) -> dict[str, float]:
         self.move_to_well_calls.append((label, override_unvalidated))
         if self.raise_on_move_to:
             raise self.raise_on_move_to
+        return {
+            "expected_well_x": 1.0, "expected_well_y": 2.0,
+            "actual_x": 1.5, "actual_y": 2.5,
+        }
 
     def jog(self, dx=0.0, dy=0.0, dz=0.0, speed=None) -> None:
         pass
@@ -48,7 +53,13 @@ class _FakeController:
         return self.toolheads
 
     def get_toolhead(self):
-        return None
+        return self.toolhead
+
+    def get_toolhead_name(self) -> str:
+        return self.toolhead.name if self.toolhead else ""
+
+    def get_toolhead_display_name(self) -> str:
+        return self.toolhead.display_name if self.toolhead else ""
 
     def get_mounted_toolheads(self) -> list[str]:
         return self.mounted_toolheads
@@ -130,6 +141,28 @@ def test_move_to_well_defaults_override_unvalidated_to_false():
     feature = Gantry(controller=ctrl)
     asyncio.run(feature.move_to_well("plate1/A3"))
     assert ctrl.move_to_well_calls == [("plate1/A3", False)]
+
+
+def test_move_to_well_logs_expected_and_actual_position():
+    """_run() merges a dict return value into the log entry.
+
+    Lets every well move's session log line show the well's expected nominal
+    position alongside the gantry's actual position, so a hand-computed
+    geometry mismatch is visible without needing the calibration wizard.
+    """
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    logged = []
+    feature._log.log = lambda event, **kw: logged.append((event, kw))
+    asyncio.run(feature.move_to_well("plate1/A3"))
+    assert logged == [(
+        "move_to_well",
+        {
+            "ok": True, "well": "plate1/A3",
+            "expected_well_x": 1.0, "expected_well_y": 2.0,
+            "actual_x": 1.5, "actual_y": 2.5,
+        },
+    )]
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +326,27 @@ def test_pause_and_stop_remain_available_without_token():
     assert asyncio.run(feature.get_experiment_state()) == "stop_requested"
 
 
+def test_force_release_recovers_a_stranded_lock():
+    """A killed script takes its token to the grave; force-release is the
+    tokenless recovery so the bench doesn't need a server restart."""
+    ctrl = _FakeController()
+    feature = Gantry(controller=ctrl)
+    asyncio.run(feature.acquire_experiment_lock())
+    asyncio.run(feature.stop_experiment())          # the state the user got stuck in
+    asyncio.run(feature.force_release_experiment_lock())
+    assert asyncio.run(feature.get_experiment_state()) == "idle"
+    # Bench is fully usable again: manual motion and a fresh lock both work.
+    asyncio.run(feature.move_to(1.0, 2.0, 3.0))
+    token = asyncio.run(feature.acquire_experiment_lock())
+    assert token
+
+
+def test_force_release_is_noop_while_idle():
+    feature = Gantry(controller=_FakeController())
+    asyncio.run(feature.force_release_experiment_lock())
+    assert asyncio.run(feature.get_experiment_state()) == "idle"
+
+
 # ---------------------------------------------------------------------------
 # Workspace YAML source of truth + labware
 # ---------------------------------------------------------------------------
@@ -329,3 +383,48 @@ def test_toolhead_info_streams_per_head_mount_state():
     feature = Gantry(controller=ctrl)
     info = asyncio.run(_first(feature.toolhead_info()))
     assert info.mounted_toolheads == "ph_probe|pipette"
+
+
+class _FakeToolheadGeometry:
+    """Minimal ToolheadGeometry-shaped stub for exercising toolhead_info's active branch."""
+
+    def __init__(self, calibrated_at: str = ""):
+        self.name = "ph_probe"
+        self.display_name = "Atlas Scientific pH Probe"
+        self.footprint_x = 44.0
+        self.footprint_y = 25.0
+        self.offset_x = 0.0
+        self.offset_y = 0.0
+        self.tip_offset_z = 0.0
+        self.z_engage = 25.0
+        self.tip_x = 1.0
+        self.tip_y = 2.0
+        self.calibrated_at = calibrated_at
+
+
+def test_toolhead_info_streams_calibrated_at_for_active_head():
+    """Without this field, the UI has no way to show when a toolhead was last
+    calibrated - it's blank in the config and only known via the persisted
+    calibration state the controller applies onto the active toolhead."""
+    ctrl = _FakeController()
+    ctrl.toolhead = _FakeToolheadGeometry(calibrated_at="2026-07-08T17:06:54")
+    feature = Gantry(controller=ctrl)
+    info = asyncio.run(_first(feature.toolhead_info()))
+    assert info.active is True
+    assert info.calibrated_at == "2026-07-08T17:06:54"
+
+
+def test_toolhead_info_calibrated_at_blank_when_never_calibrated():
+    ctrl = _FakeController()
+    ctrl.toolhead = _FakeToolheadGeometry(calibrated_at="")
+    feature = Gantry(controller=ctrl)
+    info = asyncio.run(_first(feature.toolhead_info()))
+    assert info.calibrated_at == ""
+
+
+def test_toolhead_info_calibrated_at_blank_when_no_active_toolhead():
+    ctrl = _FakeController()  # ctrl.toolhead stays None
+    feature = Gantry(controller=ctrl)
+    info = asyncio.run(_first(feature.toolhead_info()))
+    assert info.active is False
+    assert info.calibrated_at == ""

@@ -4,6 +4,7 @@ Covers the generator's output structure on a synthetic spec, plus a golden
 check that every device's checked-in generated_connection.py matches its
 connection_spec.yaml (the pytest twin of `make check-connections`).
 """
+import re
 import sys
 from pathlib import Path
 
@@ -97,3 +98,44 @@ def test_checked_in_generated_connection_matches_spec(device):
     assert actual == expected, (
         f"{device}: generated_connection.py is stale - run `make gen-connections`"
     )
+
+
+@pytest.mark.parametrize(
+    "device", sorted(
+        p.parents[1].name
+        for p in (_REPO_ROOT / "devices").glob("*/frontend/connection_spec.yaml")
+        if (p.parents[1] / "proto").glob("*.proto")
+    ),
+)
+def test_spec_args_cover_required_proto_fields(device):
+    """Every SiLA-required field on a command's Parameters message (per the
+    .proto - e.g. `token` on lock-gated commands) must appear as a spec arg,
+    or the generated connection will silently omit it on the wire and the
+    SiLA server will reject the call with "Missing field" (regression: gantry
+    LoadWorkspaceYaml/SetWorkspace/etc. omitted `token`, see CHANGELOG).
+    """
+    frontend = _REPO_ROOT / "devices" / device / "frontend"
+    spec = yaml.safe_load((frontend / "connection_spec.yaml").read_text())
+    proto_files = list((frontend / "proto").glob("*.proto"))
+    proto_text = "\n".join(p.read_text() for p in proto_files)
+
+    # message Foo_Parameters { Real x = 1; SString token = 2; }
+    message_fields: dict[str, set[str]] = {}
+    for match in re.finditer(r"message\s+(\w+_Parameters)\s*\{([^}]*)\}", proto_text):
+        fields = {
+            field_name
+            for _, field_name in re.findall(r"(\w+)\s+(\w+)\s*=\s*\d+\s*;", match.group(2))
+        }
+        message_fields[match.group(1)] = fields
+
+    for cmd in spec.get("commands", []):
+        params = cmd.get("params")
+        if not params or params not in message_fields:
+            continue
+        spec_fields = {arg["field"] for arg in cmd.get("args", [])}
+        missing = message_fields[params] - spec_fields
+        assert not missing, (
+            f"{device}: command '{cmd['method']}' ({params}) is missing spec args "
+            f"for proto fields {missing} - the generated connection won't send them "
+            "and the SiLA server will reject the call with a 'Missing field' error"
+        )

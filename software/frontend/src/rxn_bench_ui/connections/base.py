@@ -93,8 +93,14 @@ class _FeatureConnection(QObject):
         # args tuple evaluated immediately - captures current _gen value.
         threading.Thread(target=self._on_connected, args=(self._gen,), daemon=True).start()
 
-    def disconnect(self) -> None:
-        """Cancel all streams and close the channel."""
+    def close(self) -> None:
+        """Cancel all streams and close the channel.
+
+        Named ``close`` rather than ``disconnect``: PySide6 reserves
+        ``disconnect`` on QObject for signal/slot disconnection, so a Python
+        override of that name is silently ignored and calls fall through to
+        the C++ implementation (``TypeError: not enough arguments``).
+        """
         self._stop.set()
         if self._channel:
             self._channel.close()

@@ -5,10 +5,12 @@ sensor_type: ph
 geometry:
   footprint_x: 44       # mm
   footprint_y: 25       # mm
-  offset_x: 0           # mm
-  offset_y: -35         # mm
+  offset_x: 0           # mm, kept at 0 - do not hand-guess this; measure via the calibration
+  offset_y: 0           # wizard instead, which folds the *entire* correction into tip_x/tip_y
+                        # below and saves it locally (~/.rxn_bench/toolhead_calibration.json),
+                        # not into this checked-in file.
   tip_x: 0              # mm
-  tip_y: -25            # mm
-  tip_offset_z: 110     # mm, below carriage mount
+  tip_y: 0              # mm
+  tip_offset_z: 0 #110     # mm, below carriage mount
   z_engage: 25          # mm, depth into well
   geometry_validated: false  # tip_x/tip_y are placeholders, not yet measured

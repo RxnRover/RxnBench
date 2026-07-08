@@ -2,6 +2,7 @@
 import logging
 from pathlib import Path
 
+from rxn_bench_gantry import toolhead_calibration_state
 from rxn_bench_gantry.toolhead_config import ToolheadConfig, ToolheadGeometry
 
 _TOOLHEADS_DIR = Path(__file__).parent / "toolheads"
@@ -66,12 +67,56 @@ class ToolheadManager:
         self._name = cfg.name
         self._display_name = cfg.display_name
         self._sensor_type = cfg.sensor_type
+        override = toolhead_calibration_state.load(cfg.name)
+        if override is not None:
+            if "tip_x" in override and "tip_y" in override:
+                self._toolhead.tip_x = override["tip_x"]
+                self._toolhead.tip_y = override["tip_y"]
+                self._toolhead.geometry_validated = True
+            if "tip_offset_z" in override:
+                self._toolhead.tip_offset_z = override["tip_offset_z"]
+            self._toolhead.calibrated_at = override.get("calibrated_at", "")
         if not cfg.geometry.geometry_validated:
             _log.warning(
                 "Toolhead %r has unvalidated (placeholder) geometry - workspace/well "
                 "moves will be refused until it is measured, unless explicitly overridden.",
                 name,
             )
+
+    def set_tip_offset(self, tip_x: float, tip_y: float) -> None:
+        """Record a measured tip offset for the active toolhead and persist it.
+
+        Marks the active toolhead's geometry as validated and saves the offset
+        to disk so it survives restarts and toolhead switches, independent of
+        the bundled (placeholder) YAML config.
+
+        Args:
+            tip_x: Measured fine X offset in mm.
+            tip_y: Measured fine Y offset in mm.
+
+        Raises:
+            RuntimeError: If no toolhead is active.
+        """
+        if self._toolhead is None:
+            raise RuntimeError("No active toolhead to calibrate.")
+        self._toolhead.tip_x = tip_x
+        self._toolhead.tip_y = tip_y
+        self._toolhead.geometry_validated = True
+        self._toolhead.calibrated_at = toolhead_calibration_state.save(self._name, tip_x=tip_x, tip_y=tip_y)
+
+    def set_tip_offset_z(self, tip_offset_z: float) -> None:
+        """Record a measured Z tip offset for the active toolhead and persist it.
+
+        Args:
+            tip_offset_z: Measured distance in mm the tip hangs below the carriage's Z=0 reference.
+
+        Raises:
+            RuntimeError: If no toolhead is active.
+        """
+        if self._toolhead is None:
+            raise RuntimeError("No active toolhead to calibrate.")
+        self._toolhead.tip_offset_z = tip_offset_z
+        self._toolhead.calibrated_at = toolhead_calibration_state.save(self._name, tip_offset_z=tip_offset_z)
 
     def clear_toolhead(self) -> None:
         """Physically remove the active toolhead: deactivate it and drop its mount record."""
