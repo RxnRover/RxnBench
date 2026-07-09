@@ -17,17 +17,19 @@ import yaml
 from PySide6.QtCore import QFile, Qt, QThread, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QDialog, QDoubleSpinBox, QLabel, QPushButton,
+    QCheckBox, QDialog, QDoubleSpinBox, QLabel, QPushButton,
     QStackedWidget, QVBoxLayout,
 )
 from PySide6.QtUiTools import QUiLoader
 
 from .connection import GantryConnection
+from .workspace_loader import resolve_reference_plate_height
 
 _UI_DIR    = Path(__file__).parent / "ui"
 _ASSET_DIR = Path(__file__).parent / "assets"
 
 _WELL_LABEL_RE = re.compile(r'^([A-Za-z])(\d+)$')
+_PAPER_THICKNESS_MM = 0.1  # standard printer paper, rough estimate
 
 
 def _corner_wells_for(workspace_yaml: str, labware: dict) -> list[str]:
@@ -85,9 +87,14 @@ def _corner_wells_for(workspace_yaml: str, labware: dict) -> list[str]:
 
 
 class _CornerWellsWorker(QThread):
-    """Runs _corner_wells_for() off the GUI thread (fetch_workspace_yaml/fetch_labware block)."""
+    """Runs _corner_wells_for() off the GUI thread (fetch_workspace_yaml/fetch_labware block).
 
-    done = Signal(list)  # list[str] of "plate_id/well_label", e.g. 4 corner wells; [] if unresolvable
+    Also resolves the reference plate's top-surface height from the same
+    fetched workspace/labware data, for the Z-touch page's optional
+    hover-over-reference-plate calibration technique - no separate round-trip.
+    """
+
+    done = Signal(list, object)  # (4 "plate_id/well_label" corners; [] if unresolvable), (plate_id, height_mm) or None
 
     def __init__(self, client: GantryConnection) -> None:
         super().__init__()
@@ -96,7 +103,10 @@ class _CornerWellsWorker(QThread):
     def run(self) -> None:
         raw = self._client.fetch_workspace_yaml()
         labware = self._client.fetch_labware() if raw else {}
-        self.done.emit(_corner_wells_for(raw, labware))
+        self.done.emit(
+            _corner_wells_for(raw, labware),
+            resolve_reference_plate_height(raw, labware),
+        )
 
 class _CalibrateWorker(QThread):
     """Runs the blocking calibrate_toolhead_tip() call off the GUI thread."""
@@ -221,12 +231,18 @@ class ToolheadCalibrationDialog(QDialog):
         self._calibration_done = False
 
         # page 3 (Z touch)
+        self._z_touch_body   = content.findChild(QLabel,       "z_touch_body")
         self._z_current_lbl  = content.findChild(QLabel,       "z_current_lbl")
         self._z_jog_pos      = content.findChild(QPushButton,  "z_jog_pos_btn")
         self._z_jog_neg      = content.findChild(QPushButton,  "z_jog_neg_btn")
         self._z_jog_step     = content.findChild(QDoubleSpinBox, "z_jog_step_spin")
         self._abort_z_btn    = content.findChild(QPushButton,  "abort_z_btn")
         self._confirm_z_btn  = content.findChild(QPushButton,  "confirm_z_touch_btn")
+        self._z_hover_info_lbl  = content.findChild(QLabel,    "z_hover_info_lbl")
+        self._hover_reference_chk = content.findChild(QCheckBox, "hover_reference_chk")
+        self._paper_shim_chk   = content.findChild(QCheckBox,  "paper_shim_chk")
+        self._z_ref_height     = 0.0   # reference plate's top surface height, if resolved
+        self._z_ref_plate_id: str | None = None
 
         self._load_corner_diagram()
         if self._th_lbl:
@@ -247,7 +263,7 @@ class ToolheadCalibrationDialog(QDialog):
         self._corner_wells_worker.done.connect(self._on_corner_wells_loaded)
         self._corner_wells_worker.start()
 
-    def _on_corner_wells_loaded(self, corner_wells: list[str]) -> None:
+    def _on_corner_wells_loaded(self, corner_wells: list[str], ref_height: object) -> None:
         """Show the calibration reference well and cache the 4 corner wells to visit.
 
         Without showing the well name, an operator had no way to verify they
@@ -256,15 +272,36 @@ class ToolheadCalibrationDialog(QDialog):
         match where they are produces nonsensical tip offsets.
         """
         self._corner_wells = corner_wells
-        if not self._ref_lbl:
-            return
-        if corner_wells:
-            self._ref_lbl.setText(
-                f"Reference well: {corner_wells[0]} - Start will move through "
-                f"{len(corner_wells)} corner well(s) automatically"
-            )
+        if self._ref_lbl:
+            if corner_wells:
+                self._ref_lbl.setText(
+                    f"Reference well: {corner_wells[0]} - Start will move through "
+                    f"{len(corner_wells)} corner well(s) automatically"
+                )
+            else:
+                self._ref_lbl.setText("Reference well: unknown - no workspace loaded or no reference well configured")
+
+        if ref_height is not None:
+            plate_id, height = ref_height
+            self._z_ref_plate_id = plate_id
+            self._z_ref_height = height
+            if self._hover_reference_chk:
+                self._hover_reference_chk.setEnabled(True)
+                self._hover_reference_chk.setToolTip(
+                    f"Uses {plate_id!r}'s configured top surface height ({height:.1f}mm above the deck)."
+                )
+            if self._z_hover_info_lbl:
+                self._z_hover_info_lbl.setText(
+                    f"Reference plate {plate_id!r} top surface: {height:.1f}mm above the deck."
+                )
         else:
-            self._ref_lbl.setText("Reference well: unknown - no workspace loaded or no reference well configured")
+            self._z_ref_plate_id = None
+            self._z_ref_height = 0.0
+            if self._hover_reference_chk:
+                self._hover_reference_chk.setEnabled(False)
+                self._hover_reference_chk.setChecked(False)
+            if self._z_hover_info_lbl:
+                self._z_hover_info_lbl.setText("")
 
 
     def _load_corner_diagram(self) -> None:
@@ -320,6 +357,26 @@ class ToolheadCalibrationDialog(QDialog):
         if self._z_jog_neg:   self._z_jog_neg.clicked.connect(lambda: self._jog(dz=-z_step()))
         if self._abort_z_btn: self._abort_z_btn.clicked.connect(self.reject)
         if self._confirm_z_btn: self._confirm_z_btn.clicked.connect(self._accept_z_calibration)
+        if self._hover_reference_chk:
+            self._hover_reference_chk.toggled.connect(self._update_z_touch_instructions)
+
+    def _update_z_touch_instructions(self) -> None:
+        """Swap the touch-vs-hover instruction text to match the selected mode."""
+        if not self._z_touch_body:
+            return
+        if self._hover_reference_chk and self._hover_reference_chk.isChecked():
+            self._z_touch_body.setText(
+                f"Jog the tip down to hover just above {self._z_ref_plate_id!r}'s top surface "
+                f"({self._z_ref_height:.1f}mm above the deck) - do not touch it, then confirm. "
+                "The current carriage Z, minus that known height, becomes this toolhead's "
+                "measured tip_offset_z."
+            )
+        else:
+            self._z_touch_body.setText(
+                "Jog the tip straight down until it just touches the deck / Z=0 reference "
+                "surface, then confirm. The current carriage Z becomes this toolhead's "
+                "measured tip_offset_z."
+            )
 
     def _jog(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> None:
         """Jog, then block Confirm until a position sample newer than this jog arrives.
@@ -505,10 +562,24 @@ class ToolheadCalibrationDialog(QDialog):
             self._accept_btn.setText("Continue to Z Calibration →")
 
     def _accept_z_calibration(self) -> None:
-        """Send the current carriage Z (tip touching the reference surface) and close."""
+        """Compute and send this toolhead's tip_offset_z, then close.
+
+        Touch mode (default): the tip is physically at the deck's Z=0, so
+        the current carriage Z *is* tip_offset_z directly - unchanged from
+        before. Hover mode: the tip is instead at the reference plate's known
+        top-surface height H (not physically touched), so tip_offset_z is
+        derived as current_Z - H. Either way, a checked paper shim means the
+        tip is actually shim-thickness *above* the touched/hovered surface,
+        so that thickness is added back in before subtracting.
+        """
         if not self._position_settled:
             return
-        self._client.calibrate_toolhead_tip_z(self._cur_z)
+        surface_height = 0.0
+        if self._hover_reference_chk and self._hover_reference_chk.isChecked():
+            surface_height = self._z_ref_height
+        if self._paper_shim_chk and self._paper_shim_chk.isChecked():
+            surface_height += _PAPER_THICKNESS_MM
+        self._client.calibrate_toolhead_tip_z(self._cur_z - surface_height)
         self.accept()
 
     def _on_position(self, x: float, y: float, z: float) -> None:

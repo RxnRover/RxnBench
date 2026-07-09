@@ -1,7 +1,10 @@
-"""Tests for plate_xy_extent and resolve_well_gxy - the pure geometry helpers
-shared by the top-down WorkspaceCanvas and the new X/Z, Y/Z DeckSideViewCanvas.
+"""Tests for plate_xy_extent, resolve_well_gxy, and resolve_reference_plate_height -
+the pure geometry helpers shared by the top-down WorkspaceCanvas, the X/Z, Y/Z
+DeckSideViewCanvas, and the homing/toolhead-calibration dialogs' optional
+non-contact Z-reference technique.
 """
 import importlib
+import textwrap
 
 import pytest
 
@@ -12,6 +15,7 @@ workspace_loader = importlib.import_module("rxn_bench_ui.devices.gantry.workspac
 
 plate_xy_extent = workspace_loader.plate_xy_extent
 resolve_well_gxy = workspace_loader.resolve_well_gxy
+resolve_reference_plate_height = workspace_loader.resolve_reference_plate_height
 
 _SPEC = workspace_loader._PlateSpec(
     rows=8, cols=12, spacing_x=9.0, spacing_y=9.0, diam=6.94,
@@ -79,3 +83,74 @@ def test_resolve_well_gxy_invalid_label_returns_none():
     plate = {"origin": {"x": 50.0, "y": 30.0}}
     assert resolve_well_gxy(plate, _SPEC, "not-a-well") is None
     assert resolve_well_gxy(plate, _SPEC, "") is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_reference_plate_height
+# ---------------------------------------------------------------------------
+
+_WORKSPACE_YAML = textwrap.dedent("""\
+    name: test_bench
+    calibration_reference_well: plate1/A1
+    plates:
+      - id: plate1
+        plate_type: 96_well_standard
+        origin: {x: 100.0, y: 100.0, z: 15.0}
+        orientation: standard
+""")
+_LABWARE = {"96_well_standard": {"plate_height_mm": 39.0}}
+
+
+def test_resolve_reference_plate_height_happy_path():
+    result = resolve_reference_plate_height(_WORKSPACE_YAML, _LABWARE)
+    assert result == ("plate1", pytest.approx(15.0 + 39.0))
+
+
+def test_resolve_reference_plate_height_no_workspace():
+    assert resolve_reference_plate_height("", _LABWARE) is None
+
+
+def test_resolve_reference_plate_height_no_reference_well_configured():
+    yaml_text = textwrap.dedent("""\
+        name: test_bench
+        calibration_reference_well: ""
+        plates:
+          - id: plate1
+            plate_type: 96_well_standard
+            origin: {x: 100.0, y: 100.0, z: 15.0}
+    """)
+    assert resolve_reference_plate_height(yaml_text, _LABWARE) is None
+
+
+def test_resolve_reference_plate_height_unknown_plate_id():
+    yaml_text = textwrap.dedent("""\
+        name: test_bench
+        calibration_reference_well: nonexistent/A1
+        plates:
+          - id: plate1
+            plate_type: 96_well_standard
+            origin: {x: 100.0, y: 100.0, z: 15.0}
+    """)
+    assert resolve_reference_plate_height(yaml_text, _LABWARE) is None
+
+
+def test_resolve_reference_plate_height_missing_plate_height_in_labware():
+    assert resolve_reference_plate_height(_WORKSPACE_YAML, {"96_well_standard": {}}) is None
+    assert resolve_reference_plate_height(_WORKSPACE_YAML, {}) is None
+
+
+def test_resolve_reference_plate_height_defaults_missing_origin_z_to_zero():
+    yaml_text = textwrap.dedent("""\
+        name: test_bench
+        calibration_reference_well: plate1/A1
+        plates:
+          - id: plate1
+            plate_type: 96_well_standard
+            origin: {x: 100.0, y: 100.0}
+    """)
+    result = resolve_reference_plate_height(yaml_text, _LABWARE)
+    assert result == ("plate1", pytest.approx(39.0))
+
+
+def test_resolve_reference_plate_height_malformed_yaml_returns_none():
+    assert resolve_reference_plate_height("not: valid: yaml: [", _LABWARE) is None

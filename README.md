@@ -1,6 +1,6 @@
 # Rxn Bench - DIY Automated Chemistry Bench
 
-<img src="docs/images/rxn-bench_logo.png" alt="Rxn Bench logo" width="200"/>
+![Rxn Bench logo](docs/images/resized/logo.png)
 
 ## Overview
 
@@ -17,6 +17,8 @@ Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D
 See [docs/usage.md](docs/usage.md) for commands to install dependencies and start the backend servers (real or mocked) and the frontend UI.
 
 ## Implementation and design
+
+![Rxn Bench high-level system block diagram: operator UI talks to the Raspberry Pi's SILA server, which drives the Sovol SV08 MCU (XYZ motion + liquid handler arm), an onboard camera, and the EZO pH circuit/probe](docs/images/resized/system-block-diagram.jpg)
 
 See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the current architecture, package layout, and active gaps.
 
@@ -61,7 +63,43 @@ See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the current archite
 
 ## Gallery
 
-<!-- TODO: add photos of the finished, assembled bench once it's built (see docs/images/the-making-of/ for in-progress build photos). -->
+### Assembled bench
+
+| Assembled, pipette over a well plate | Running on the bench next to the operator laptop |
+| --- | --- |
+| ![Assembled Rxn Bench with the pipette toolhead positioned over a well plate](docs/images/resized/assembled-bench-1.jpg) | ![Rxn Bench running on the lab bench next to the operator laptop running the frontend UI](docs/images/resized/assembled-bench-2.jpg) |
+
+### pH probe toolhead
+
+CAD design next to the assembled 3D-printed housing around the Atlas Scientific EZO pH circuit and probe.
+
+| CAD design | Assembled |
+| --- | --- |
+| ![CAD render of the pH probe toolhead, exploded to show the EZO pH circuit board inside](docs/images/resized/ph-toolhead-cad.jpg) | ![Assembled 3D-printed pH probe toolhead housing](docs/images/resized/ph-toolhead-assembled.jpg) |
+
+### Toolhead docking mount
+
+The gantry docks toolheads via a 3D-printed linear-rail mount, in the spirit of the tool-changer designs linked below.
+
+| CAD design | Assembled |
+| --- | --- |
+| ![CAD render of the toolhead docking mount with linear rail bearings](docs/images/resized/docking-mount-cad.jpg) | ![Assembled 3D-printed toolhead docking mount](docs/images/resized/docking-mount-assembled.jpg) |
+
+### Rxn Bench UI
+
+#### Main interface
+
+![Rxn Bench UI main screen showing the Gantry widget, pH Sensor widget, and Experiment Runner widget](docs/images/resized/ui-main.jpg)
+
+#### Sensor and control widgets
+
+| Gantry | pH Probe | Experiment Runner |
+| --- | --- | --- |
+| ![Gantry view](docs/images/resized/ui-gantry.jpg) | ![pH Probe view](docs/images/resized/ui-ph-probe.jpg) | ![Experiment Runner view](docs/images/resized/ui-experiment-runner.jpg) |
+
+#### Adding a device
+
+![Add Device view](docs/images/resized/ui-add-device.jpg)
 
 ## References and helpful material
 
@@ -77,6 +115,7 @@ See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the current archite
 - [Pipette Clip Tip](https://www.thermofisher.com/us/en/home/life-science/lab-plasticware-supplies/pipettes-pipette-tips/pipette-tips/products/cliptip-pipette-system.html)
 
 **Related open-source lab automation projects**
+- [Rxn Rover](https://rxnrover.github.io/) - Ames National Lab Automation Platform
 - [Science Jubilee](https://science-jubilee.readthedocs.io/) - open-source tool-changing lab robot with pipette, camera, and sensor tools
 - [Jubilee: An Extensible Machine for Multi-tool Fabrication (paper)](https://www.researchgate.net/publication/341697828_Jubilee_An_Extensible_Machine_for_Multi-tool_Fabrication)
 - [Automated Liquid Handler from a 3D Printer - Journal of Chemical Education](https://pubs.acs.org/doi/10.1021/acs.jchemed.3c00855)

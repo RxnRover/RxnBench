@@ -150,6 +150,11 @@ class GantryConnectionBase(_FeatureConnection):
         _p.token.value = token
         self._fire(self._rpc("CalibrateToolheadTipZ"), _p.SerializeToString())
 
+    def set_z(self, z: float) -> None:
+        _p = _pb.SetZ_Parameters()
+        _p.z.value = z
+        self._fire(self._rpc("SetZ"), _p.SerializeToString())
+
     def save_and_park(self, token: str = "") -> None:
         _p = _pb.SaveAndPark_Parameters()
         _p.token.value = token

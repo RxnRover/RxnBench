@@ -155,6 +155,49 @@ def resolve_well_gxy(plate: dict, spec: _PlateSpec, well_label: str) -> tuple[fl
     return ox_ + cdx, oy_ + cdy
 
 
+def resolve_reference_plate_height(workspace_yaml: str, labware: dict) -> tuple[str, float] | None:
+    """Resolve the workspace's calibration_reference_well into (plate_id, top_surface_height_mm).
+
+    Used by the homing and toolhead-calibration dialogs to offer a
+    non-contact Z-reference technique: hover the tip at this known height
+    (optionally with a paper shim) instead of touching the deck or a
+    toolhead's tip touching it directly. Top surface height is
+    ``origin_z + plate_height_mm`` - the same quantity WorkspaceManager.
+    resolve_well() docks well-targeted moves at server-side.
+
+    Args:
+        workspace_yaml: Raw YAML of the active workspace (as returned by
+            GetWorkspaceYaml), or "" if none is loaded.
+        labware: ``{plate_type: geometry dict}`` as returned by fetch_labware().
+
+    Returns:
+        (plate_id, height_mm), or None if there's no workspace, no
+        calibration_reference_well configured, or the referenced plate/type
+        can't be resolved - callers should fall back to the original
+        touch-the-deck approach (height 0) in that case.
+    """
+    if not workspace_yaml:
+        return None
+    try:
+        data = yaml.safe_load(workspace_yaml) or {}
+        ref_well = (data.get("calibration_reference_well") or "").strip()
+        if not ref_well or "/" not in ref_well:
+            return None
+        plate_id, _well_label = (p.strip() for p in ref_well.split("/", 1))
+        plates = data.get("plates", []) or []
+        plate = next((p for p in plates if p.get("id") == plate_id), None)
+        if plate is None:
+            return None
+        geom = labware.get(plate.get("plate_type")) or {}
+        plate_height_mm = geom.get("plate_height_mm")
+        if plate_height_mm is None:
+            return None
+        origin_z = (plate.get("origin") or {}).get("z") or 0.0
+        return plate_id, origin_z + float(plate_height_mm)
+    except Exception:
+        return None
+
+
 def plate_spec_from_labware(data: dict) -> _PlateSpec:
     """Convert one server-side labware geometry dict into a canvas _PlateSpec.
 

@@ -3,21 +3,42 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QFile, Qt
+from PySide6.QtCore import QFile, QThread, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QDialog, QDoubleSpinBox, QLabel, QPushButton,
+    QCheckBox, QDialog, QDoubleSpinBox, QLabel, QPushButton,
     QStackedWidget, QVBoxLayout,
 )
 from PySide6.QtUiTools import QUiLoader
 
 from .connection import GantryConnection
+from .workspace_loader import resolve_reference_plate_height
 
 _UI_DIR    = Path(__file__).parent / "ui"
 _ASSET_DIR = Path(__file__).parent / "assets"
 
 _PAGE_ASK    = 0
 _PAGE_MANUAL = 1
+
+_PAPER_THICKNESS_MM = 0.1  # standard printer paper, rough estimate
+
+
+class _ReferenceHeightWorker(QThread):
+    """Resolves the workspace's reference-plate top height off the GUI thread.
+
+    fetch_workspace_yaml()/fetch_labware() block on a gRPC round-trip each.
+    """
+
+    done = Signal(object)  # (plate_id, height_mm) tuple, or None if unavailable
+
+    def __init__(self, client: GantryConnection) -> None:
+        super().__init__()
+        self._client = client
+
+    def run(self) -> None:
+        raw = self._client.fetch_workspace_yaml()
+        labware = self._client.fetch_labware() if raw else {}
+        self.done.emit(resolve_reference_plate_height(raw, labware))
 
 
 class HomingDialog(QDialog):
@@ -32,6 +53,9 @@ class HomingDialog(QDialog):
         super().__init__(parent)
         self._client = client
         self._t      = t
+        self._z_ref_height   = 0.0   # mm above the deck; 0.0 = touch the deck directly
+        self._z_ref_plate_id: str | None = None
+        self._height_worker: _ReferenceHeightWorker | None = None
 
         loader = QUiLoader()
         f = QFile(str(_UI_DIR / "homing_dialog.ui"))
@@ -76,6 +100,8 @@ class HomingDialog(QDialog):
         self._confirm_ymin   = content.findChild(QPushButton, "confirm_y_min_btn")
         self._confirm_ymax   = content.findChild(QPushButton, "confirm_y_max_btn")
         self._confirm_zref   = content.findChild(QPushButton, "confirm_z_ref_btn")
+        self._z_ref_info_lbl = content.findChild(QLabel, "z_ref_info_lbl")
+        self._paper_shim_chk = content.findChild(QCheckBox, "paper_shim_chk")
         self._back_btn       = content.findChild(QPushButton, "back_to_ask_btn")
         self._finish_btn     = content.findChild(QPushButton, "finish_homing_btn")
         self._xz_img         = content.findChild(QLabel, "diagram_xz_lbl")
@@ -149,7 +175,7 @@ class HomingDialog(QDialog):
         if self._confirm_xmax: self._confirm_xmax.clicked.connect(_confirm(self._client.confirm_x_max,       self._confirm_xmax))
         if self._confirm_ymin: self._confirm_ymin.clicked.connect(_confirm(self._client.confirm_y_min,       self._confirm_ymin))
         if self._confirm_ymax: self._confirm_ymax.clicked.connect(_confirm(self._client.confirm_y_max,       self._confirm_ymax))
-        if self._confirm_zref: self._confirm_zref.clicked.connect(_confirm(self._client.confirm_z_reference, self._confirm_zref))
+        if self._confirm_zref: self._confirm_zref.clicked.connect(_confirm(self._confirm_z_reference, self._confirm_zref))
 
         # Navigation
         if self._back_btn:   self._back_btn.clicked.connect(
@@ -180,6 +206,48 @@ class HomingDialog(QDialog):
     def _start_manual(self) -> None:
         self._client.start_manual_homing()
         self._stack.setCurrentIndex(_PAGE_MANUAL)
+        self._height_worker = _ReferenceHeightWorker(self._client)
+        self._height_worker.done.connect(self._on_reference_height_loaded)
+        self._height_worker.start()
+
+    def _on_reference_height_loaded(self, result: object) -> None:
+        """Show a hover-over-labware option if the workspace's reference plate is known.
+
+        Falls back to the original touch-the-deck instruction (height 0)
+        when no workspace is loaded, or its reference well/plate can't be
+        resolved - there's nothing else to hover over in that case.
+        """
+        if result is None:
+            self._z_ref_plate_id = None
+            self._z_ref_height = 0.0
+            if self._z_ref_info_lbl:
+                self._z_ref_info_lbl.setText(
+                    "No workspace loaded - jog down and touch the deck directly, then confirm."
+                )
+            return
+        plate_id, height = result
+        self._z_ref_plate_id = plate_id
+        self._z_ref_height = height
+        if self._z_ref_info_lbl:
+            self._z_ref_info_lbl.setText(
+                f"Hover the tip just above {plate_id!r}'s top surface "
+                f"({height:.1f}mm above the deck) rather than touching it, then confirm. "
+                "Touching the deck directly (declaring 0) still works too."
+            )
+
+    def _confirm_z_reference(self) -> None:
+        """Declare the current Z as the resolved reference height (deck, or a hovered-over plate).
+
+        set_z(height) generalizes the deck-only confirm_z_reference() to any
+        known height - 0 (deck) when no workspace/reference plate is
+        resolved, or the reference plate's top surface otherwise. A checked
+        paper-shim checkbox adds its thickness, since the tip is then that
+        much above the surface rather than exactly at it.
+        """
+        height = self._z_ref_height
+        if self._paper_shim_chk and self._paper_shim_chk.isChecked():
+            height += _PAPER_THICKNESS_MM
+        self._client.set_z(height)
 
     def _finish(self) -> None:
         self._client.finish_homing()

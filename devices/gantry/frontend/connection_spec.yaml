@@ -129,6 +129,14 @@ commands:
       - {name: measured_z, field: measured_z, type: float}
       - {name: token, field: token, type: str, default: '""'}
 
+  # No token: set_z is a homing-adjacent command, always rejected while an
+  # experiment holds the lock, same as confirm_z_reference/confirm_x_min/etc.
+  - method: set_z
+    rpc: SetZ
+    params: SetZ_Parameters
+    args:
+      - {name: z, field: z, type: float}
+
   - method: save_and_park
     rpc: SaveAndPark
     params: SaveAndPark_Parameters

@@ -233,6 +233,18 @@
            </widget>
           </item>
           <item row="2" column="0" colspan="3">
+           <widget class="QLabel" name="z_ref_info_lbl">
+            <property name="text"><string>No workspace loaded - jog down and touch the deck directly, then confirm.</string></property>
+            <property name="wordWrap"><bool>true</bool></property>
+           </widget>
+          </item>
+          <item row="3" column="0" colspan="3">
+           <widget class="QCheckBox" name="paper_shim_chk">
+            <property name="text"><string>Using a paper shim between the tip and the surface (~0.1mm)</string></property>
+            <property name="toolTip"><string>Slide a sheet of standard printer paper between the tip and the reference surface, jog down until it just drags, then confirm - the known paper thickness is subtracted automatically. Safer than touching directly: contact is felt by hand, not driven by the motor.</string></property>
+           </widget>
+          </item>
+          <item row="4" column="0" colspan="3">
            <widget class="QPushButton" name="confirm_z_ref_btn">
             <property name="text"><string>Z Reference</string></property>
            </widget>
