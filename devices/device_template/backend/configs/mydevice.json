@@ -1,14 +1,14 @@
 {
   "sila_server": {
     "hostname": "0.0.0.0",
-    "port": 50053,
+    "port": 50099,
     "tls": false,
     "require_client_auth": false,
     "root_certificates": null,
     "certificate_chain": null,
     "private_key": null,
     "options": {},
-    "uuid": "c100b376-f1f2-4c63-986d-448e0fdf0f57",
+    "uuid": "e84897da-4f6c-4991-bd7a-709f03e7d73e",
     "name": "My Device",
     "type": "LabAutomation",
     "description": "TODO: describe your device.",

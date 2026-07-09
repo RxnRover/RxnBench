@@ -26,6 +26,8 @@ scripts/install_service.sh ph
 
 Re-running `scripts/install_service.sh <gantry|ph>` later refreshes just that service's venv and restarts it, without touching the other service.
 
+For a fresh Raspberry Pi with no internet access, see [deployment.md](deployment.md) - it covers building an offline install bundle and bringing up both services with a single `install_offline.sh` command.
+
 ## Start the backend servers
 
 The gantry (`rxn-bench-gantry`, port 50051) and pH sensor (`rxn-bench-ph`, port 50052) run as independent SiLA2 servers, normally on the Raspberry Pi.
