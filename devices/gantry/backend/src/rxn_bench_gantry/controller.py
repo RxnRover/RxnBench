@@ -444,7 +444,9 @@ class GantryController:
             RuntimeError: If no workspace is loaded.
             KeyError: If the plate ID is not found in the current workspace.
             ValueError: If the well label format is invalid.
-            MotionLimitError: If the resolved position exceeds axis limits.
+            MotionLimitError: If the resolved position exceeds axis limits,
+                or the active toolhead's engagement depth (z_engage) exceeds
+                this well's depth and would collide with its bottom.
             ToolheadNotMountedError: If the active toolhead has not been
                 confirmed physically mounted.
             UnvalidatedGeometryError: If the active toolhead's geometry is
@@ -463,14 +465,30 @@ class GantryController:
                 "geometry. Well-targeted moves are refused until it is measured; "
                 "pass override_unvalidated=True to proceed anyway."
             )
-        x, y, _z = self._workspace_mgr.resolve_well(label)
-        self.move_to(x=x, y=y)
+        # z is the well's *opening* (plate top surface), not its bottom - see
+        # resolve_well. Docking there (instead of leaving Z at whatever the
+        # travel clearance height happened to be) is what makes engage_tool's
+        # z_engage a physically meaningful descent into the well, regardless
+        # of how tall the clearance height needed to be for other labware
+        # sharing the deck.
+        x, y, z = self._workspace_mgr.resolve_well(label)
+        if th is not None:
+            well_depth = self._workspace_mgr.get_well_depth(label)
+            if th.z_engage > well_depth:
+                raise MotionLimitError(
+                    f"Toolhead {self._toolhead_mgr.name!r}'s engagement depth "
+                    f"(z_engage={th.z_engage:.1f}mm) exceeds well {label!r}'s "
+                    f"depth ({well_depth:.1f}mm) - would collide with the well bottom."
+                )
+        self.move_to(x=x, y=y, z=z)
         actual = self._engine.get_position()
         return {
             "expected_well_x": x,
             "expected_well_y": y,
+            "expected_well_z": z,
             "actual_x": actual["x"],
             "actual_y": actual["y"],
+            "actual_z": actual["z"],
         }
 
     def list_workspaces(self) -> list[str]:

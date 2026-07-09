@@ -266,12 +266,14 @@ def test_move_to_well_reports_expected_and_actual_position(ctrl):
     # the well's expected nominal position - this is the log data used to
     # spot a mismatch between hand-computed geometry and real hardware.
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
-    nominal_x, nominal_y, _z = ctrl._workspace_mgr.resolve_well("plate1/A1")
+    nominal_x, nominal_y, nominal_z = ctrl._workspace_mgr.resolve_well("plate1/A1")
     result = ctrl.move_to_well("plate1/A1")
     assert result["expected_well_x"] == pytest.approx(nominal_x)
     assert result["expected_well_y"] == pytest.approx(nominal_y)
+    assert result["expected_well_z"] == pytest.approx(nominal_z)
     assert result["actual_x"] == pytest.approx(nominal_x)
     assert result["actual_y"] == pytest.approx(nominal_y)
+    assert result["actual_z"] == pytest.approx(nominal_z)
 
 
 def test_move_to_well_actual_position_includes_toolhead_offset(ctrl):
@@ -279,12 +281,74 @@ def test_move_to_well_actual_position_includes_toolhead_offset(ctrl):
     ctrl.set_toolhead("ph_probe")  # offset_x=offset_y=0 by default now - measured via calibration
     ctrl._toolhead_mgr.toolhead.offset_y = -35.0  # simulate a measured mount offset
     ctrl.set_toolhead_mounted(True)
-    nominal_x, nominal_y, _z = ctrl._workspace_mgr.resolve_well("plate1/A1")
+    nominal_x, nominal_y, nominal_z = ctrl._workspace_mgr.resolve_well("plate1/A1")
     result = ctrl.move_to_well("plate1/A1", override_unvalidated=True)
     assert result["expected_well_x"] == pytest.approx(nominal_x)
     assert result["expected_well_y"] == pytest.approx(nominal_y)
     assert result["actual_x"] == pytest.approx(nominal_x)
     assert result["actual_y"] == pytest.approx(nominal_y - 35.0)
+    # z is not touched by toolhead XY offset - the carriage still docks at
+    # the well's opening height.
+    assert result["actual_z"] == pytest.approx(nominal_z)
+
+
+def test_move_to_well_docks_at_plate_top_not_clearance_height(ctrl, client):
+    # Before this, move_to_well left Z at the generic clearance height, which
+    # made engage_tool's fixed z_engage descent physically meaningless once
+    # clearance height became workspace-dependent (Phase 1) - a plate shared
+    # with a taller container would raise clearance well above this plate's
+    # own top surface, and z_engage would then stop short of the well.
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.move_to_well("plate1/A1")
+    lower_call = [c for name, c in client.calls if name == "move"][-1]
+    assert lower_call["z"] == pytest.approx(15.0 + 39.0)  # origin_z + plate_height_mm
+
+
+# ---------------------------------------------------------------------------
+# Engagement-depth safety: toolhead z_engage vs. the target well's own depth
+# ---------------------------------------------------------------------------
+
+def test_move_to_well_rejects_z_engage_deeper_than_well(ctrl):
+    # 24_well_standard's well_depth_mm=17.4; ph_probe's z_engage=25 would
+    # punch through the bottom of this shallower well.
+    ctrl.load_workspace_from_yaml(textwrap.dedent("""\
+        name: shallow_bench
+        calibration_reference_well: plate1/A1
+        plates:
+          - id: plate1
+            plate_type: 24_well_standard
+            origin: {x: 100.0, y: 100.0, z: 15.0}
+            orientation: standard
+    """))
+    ctrl.set_toolhead("ph_probe")
+    ctrl.set_toolhead_mounted(True)
+    with pytest.raises(MotionLimitError, match="collide with the well bottom"):
+        ctrl.move_to_well("plate1/A1", override_unvalidated=True)
+
+
+def test_move_to_well_allows_z_engage_within_well_depth(ctrl, client):
+    # 96_well_standard's well_depth_mm=36 comfortably covers ph_probe's
+    # z_engage=25.
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.set_toolhead("ph_probe")
+    ctrl.set_toolhead_mounted(True)
+    ctrl.move_to_well("plate1/A1", override_unvalidated=True)
+    assert any(name == "move" for name, _ in client.calls)
+
+
+def test_move_to_well_skips_engagement_check_without_toolhead(ctrl):
+    # Bare carriage has no z_engage to check against - only a mounted
+    # toolhead's own configured engagement depth is meaningful here.
+    ctrl.load_workspace_from_yaml(textwrap.dedent("""\
+        name: shallow_bench
+        calibration_reference_well: plate1/A1
+        plates:
+          - id: plate1
+            plate_type: 24_well_standard
+            origin: {x: 100.0, y: 100.0, z: 15.0}
+            orientation: standard
+    """))
+    ctrl.move_to_well("plate1/A1")  # no toolhead active -> not refused
 
 
 # ---------------------------------------------------------------------------

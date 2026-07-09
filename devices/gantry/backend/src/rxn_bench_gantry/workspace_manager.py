@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from rxn_bench_gantry.plate_geometry import PlateGeometry
-from rxn_bench_gantry.workspace_config import Orientation, OriginMode, WorkspaceConfig
+from rxn_bench_gantry.workspace_config import Orientation, OriginMode, PlacedPlate, WorkspaceConfig
 
 _log = logging.getLogger(__name__)
 _STATE_FILE = Path.home() / ".rxn_bench" / "workspace.yaml"
@@ -80,26 +80,25 @@ class WorkspaceManager:
             _log.warning("Could not restore workspace state: %s", exc)
 
     def resolve_well(self, label: str) -> tuple[float, float, float]:
-        """Resolve a well label to absolute gantry XYZ coordinates.
+        """Resolve a well label to the absolute gantry XYZ of that well's opening.
 
         Args:
             label: Well label of the form ``'plate_id/well_label'`` (e.g. ``'plate1/A3'``),
                 or just ``'well_label'`` to use the first plate in the workspace.
 
         Returns:
-            Tuple of ``(x, y, z)`` in mm in the gantry coordinate frame.
+            Tuple of ``(x, y, z)`` in mm in the gantry coordinate frame. ``z``
+            is the plate's *top surface* (``origin_z + plate_height_mm``) -
+            the well's opening, not its bottom - since that is the physically
+            meaningful height to dock at before any tool-specific engagement
+            depth is applied on top of it.
 
         Raises:
             RuntimeError: If no workspace is loaded.
             KeyError: If the plate ID is not found in the current workspace.
             ValueError: If the well label format or row/column index is invalid.
         """
-        if self._config is None:
-            raise RuntimeError("No workspace loaded. Call load() or load_from_yaml() first.")
-
-        plate_id, well_label = self._parse_label(label)
-        plate = self._config.get_plate(plate_id)
-        geom = self._load_geometry(plate.plate_type)
+        plate, geom, well_label = self._resolve_plate(label)
 
         plate_dx, plate_dy = geom.well_position(well_label)
         if plate.origin_mode is OriginMode.CENTER:
@@ -116,8 +115,34 @@ class WorkspaceManager:
         return (
             plate.origin_x + gantry_dx,
             plate.origin_y + gantry_dy,
-            plate.origin_z,
+            plate.origin_z + geom.plate_height_mm,
         )
+
+    def get_well_depth(self, label: str) -> float:
+        """Return the specific well's depth in mm (top surface to well bottom).
+
+        Used to bounds-check a toolhead's configured engagement depth
+        (``z_engage``) against the well it is about to be sent into, so a
+        toolhead calibrated for a deep-well plate doesn't punch through the
+        bottom of a shallower one.
+
+        Args:
+            label: Well label, same format as :meth:`resolve_well`.
+
+        Raises:
+            RuntimeError: If no workspace is loaded.
+            KeyError: If the plate ID is not found in the current workspace.
+        """
+        _plate, geom, _well_label = self._resolve_plate(label)
+        return geom.well_depth_mm
+
+    def _resolve_plate(self, label: str) -> tuple[PlacedPlate, PlateGeometry, str]:
+        if self._config is None:
+            raise RuntimeError("No workspace loaded. Call load() or load_from_yaml() first.")
+        plate_id, well_label = self._parse_label(label)
+        plate = self._config.get_plate(plate_id)
+        geom = self._load_geometry(plate.plate_type)
+        return plate, geom, well_label
 
     def _parse_label(self, label: str) -> tuple[str, str]:
         if "/" in label:
