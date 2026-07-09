@@ -76,3 +76,23 @@ def test_missing_required_field_raises():
     data = {k: v for k, v in _SERVER_96_WELL.items() if k != "rows"}
     with pytest.raises(KeyError):
         workspace_loader.plate_spec_from_labware(data)
+
+
+def test_plate_spec_maps_plate_height_when_present():
+    data = {**_SERVER_96_WELL, "plate_height_mm": 39.0}
+    spec = workspace_loader.plate_spec_from_labware(data)
+    assert spec.plate_height_mm == pytest.approx(39.0)
+    assert spec.well_depth_mm == pytest.approx(10.67)  # from _SERVER_96_WELL
+
+
+def test_plate_spec_defaults_plate_height_when_missing():
+    # _SERVER_96_WELL predates plate_height_mm - exercises the fallback path
+    # a real (older) server response would hit.
+    spec = workspace_loader.plate_spec_from_labware(_SERVER_96_WELL)
+    assert spec.plate_height_mm == pytest.approx(workspace_loader._FALLBACK_SPEC.plate_height_mm)
+
+
+def test_plate_spec_defaults_well_depth_when_missing():
+    data = {k: v for k, v in _SERVER_96_WELL.items() if k != "well_depth_mm"}
+    spec = workspace_loader.plate_spec_from_labware(data)
+    assert spec.well_depth_mm == pytest.approx(workspace_loader._FALLBACK_SPEC.well_depth_mm)

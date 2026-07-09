@@ -15,7 +15,7 @@ from PySide6.QtUiTools import QUiLoader
 
 from ...discovery import DiscoveredServer
 from .connection import GantryConnection
-from .workspace_loader import WorkspaceCanvas, WorkspaceLoaderWidget
+from .workspace_loader import DeckViewPanel, WorkspaceLoaderWidget
 
 _UI_DIR = Path(__file__).parent / "ui"
 
@@ -41,7 +41,7 @@ class _LivePanel(QWidget):
 
         self._action_lbl = QLabel("Standby")
         self._well_lbl   = QLabel("-")
-        self._canvas     = WorkspaceCanvas(t)
+        self._canvas     = DeckViewPanel(t)
         self._details_chk = QCheckBox("Show more details")
         self._details_chk.setToolTip(
             "Show the deck's axis-limit boundary and corner coordinates on the canvas"
@@ -100,8 +100,8 @@ class _LivePanel(QWidget):
             plate_id, well = "", ""
         self._canvas.set_active_well(plate_id, well)
 
-    def set_position(self, x: float, y: float) -> None:
-        self._canvas.set_current_position(x, y)
+    def set_position(self, x: float, y: float, z: float) -> None:
+        self._canvas.set_current_position(x, y, z)
 
     def set_plate_specs(self, labware: dict) -> None:
         self._canvas.set_plate_specs(labware)
@@ -109,9 +109,12 @@ class _LivePanel(QWidget):
     def set_limits(
         self,
         x_min: float, x_max: float, y_min: float, y_max: float,
-        z_min: float = 0.0, z_max: float = 0.0,
+        z_min: float, z_max: float, safe_clearance_z: float,
     ) -> None:
-        self._canvas.set_limits(x_min, x_max, y_min, y_max, z_min, z_max)
+        self._canvas.set_limits(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
+
+    def set_toolhead_z_engage(self, value: float | None) -> None:
+        self._canvas.set_toolhead_z_engage(value)
 
     def load_workspace(self, ws: dict) -> None:
         self._canvas.load(ws)
@@ -396,9 +399,9 @@ class GantryWidget(QWidget):
         if self._y_lbl: self._y_lbl.setText(f"Y:   {y:8.2f}")
         if self._z_lbl: self._z_lbl.setText(f"Z:   {z:8.2f}")
 
-    def _on_position_live(self, x: float, y: float, _z: float) -> None:
+    def _on_position_live(self, x: float, y: float, z: float) -> None:
         if self._live_panel:
-            self._live_panel.set_position(x, y)
+            self._live_panel.set_position(x, y, z)
 
     def _on_workspace_changed(self, ws: dict) -> None:
         if self._live_panel:
@@ -434,6 +437,8 @@ class GantryWidget(QWidget):
     def _on_toolhead(self, info) -> None:
         self._last_th_info = info
         self._refresh_slots()
+        if self._live_panel:
+            self._live_panel.set_toolhead_z_engage(info.z_engage if info.active else None)
 
     def _on_labware(self, labware: dict) -> None:
         """Server-sourced plate geometry: forward to both deck canvases."""
@@ -444,9 +449,9 @@ class GantryWidget(QWidget):
 
     def _on_limits(
         self, x_min: float, x_max: float, y_min: float, y_max: float,
-        z_min: float, z_max: float,
+        z_min: float, z_max: float, safe_clearance_z: float,
     ) -> None:
-        """Server-sourced axis limits: forward to the Live tab's canvas.
+        """Server-sourced axis limits + safe clearance height: forward to the Live tab's canvas.
 
         The Configuration tab's canvas connects to limits_updated directly
         (see WorkspaceLoaderWidget.__init__) since it owns its own client
@@ -454,7 +459,7 @@ class GantryWidget(QWidget):
         instance.
         """
         if self._live_panel:
-            self._live_panel.set_limits(x_min, x_max, y_min, y_max, z_min, z_max)
+            self._live_panel.set_limits(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
 
     def _slot_widgets(self):
         """Yield (combo, display_lbl, mounted_lbl, active_lbl, last_cal_lbl, per-slot buttons) per slot."""

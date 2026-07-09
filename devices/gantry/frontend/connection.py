@@ -46,9 +46,17 @@ class GantryConnection(GantryConnectionBase):
     here.  Wire/command boilerplate is in GantryConnectionBase (generated).
     """
 
-    limits_updated    = Signal(float, float, float, float, float, float)
+    limits_updated    = Signal(float, float, float, float, float, float, float)
     labware_updated   = Signal(object)     # dict: plate_type -> geometry dict, server-sourced
     workspace_op_done = Signal(bool, str)  # (ok, message) after apply/load workspace ops
+
+    def __init__(self) -> None:
+        super().__init__()
+        # (active, name) of the toolhead last seen when limits were fetched -
+        # switching/clearing a toolhead changes tip_offset_z, which feeds into
+        # the server's safe-clearance-height calc, so a real switch (not just
+        # a routine ToolheadInfo stream tick with the same head) re-fetches it.
+        self._last_toolhead_for_limits: tuple[bool, str] | None = None
 
     # --- Custom stream handlers ---
 
@@ -72,6 +80,10 @@ class GantryConnection(GantryConnectionBase):
             ),
             calibrated_at    = th.calibrated_at.value,
         ))
+        key = (th.active.value, th.name.value)
+        if key != self._last_toolhead_for_limits:
+            self._last_toolhead_for_limits = key
+            self._refresh_limits()
 
     def _handle_action(self, resp: Any) -> None:
         action = resp.CurrentAction.value
@@ -83,12 +95,24 @@ class GantryConnection(GantryConnectionBase):
 
     def _after_connected(self, gen: int) -> None:
         if self._gen == gen:
-            limits = self.fetch_limits()
-            if limits is not None:
-                self.limits_updated.emit(*limits)
+            self._refresh_limits()
             labware = self.fetch_labware()
             if labware:
                 self.labware_updated.emit(labware)
+
+    def _refresh_limits(self) -> None:
+        """Fetch axis limits + safe clearance height and emit limits_updated.
+
+        Called after connect, after a workspace op succeeds, and whenever the
+        active toolhead changes - all three can change the server's computed
+        safe-clearance-height (tallest loaded plate, active tip hang-down),
+        so a stale single connect-time fetch would show a stale line on the
+        side-view canvases. Safe to call from a background thread (it blocks
+        on a gRPC round-trip) - every caller already runs off the GUI thread.
+        """
+        limits = self.fetch_limits()
+        if limits is not None:
+            self.limits_updated.emit(*limits)
 
     # --- Workspace operations (non-blocking, report via workspace_op_done) ---
 
@@ -111,6 +135,7 @@ class GantryConnection(GantryConnectionBase):
             try:
                 self._channel.unary_unary(self._rpc(rpc))(payload, timeout=6.0)
                 self.workspace_op_done.emit(True, ok_msg)
+                self._refresh_limits()  # new/changed labware can change safe clearance height
             except Exception as e:
                 self.workspace_op_done.emit(False, _format_error(rpc, e))
         threading.Thread(target=_do, daemon=True).start()
@@ -200,14 +225,19 @@ class GantryConnection(GantryConnectionBase):
             self.error_occurred.emit(_format_error("CalibrateToolheadTip", e))
             return None
 
-    def fetch_limits(self) -> tuple[float, float, float, float, float, float] | None:
-        """Fetch axis limits as (x_min, x_max, y_min, y_max, z_min, z_max). Returns None on failure."""
+    def fetch_limits(self) -> tuple[float, float, float, float, float, float, float] | None:
+        """Fetch axis limits + safe clearance height.
+
+        Returns:
+            (x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z), or
+            None on failure.
+        """
         try:
             raw   = self._channel.unary_unary(self._rpc("GetLimits"))(b"", timeout=5.0)
             resp  = _mp.GetLimits_Responses.FromString(bytes(raw))
             parts = [float(v) for v in resp.Limits.value.split("|")]
-            if len(parts) == 6:
-                return (parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
+            if len(parts) == 7:
+                return tuple(parts)  # type: ignore[return-value]
         except Exception:
             pass
         return None

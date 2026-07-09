@@ -400,10 +400,25 @@ class GantryController:
         """Return ``[(name, display_name), …]`` for every installed toolhead config."""
         return ToolheadManager.list_toolheads()
 
+    def get_safe_clearance_z(self) -> float:
+        """Return the current safe clearance-travel height in mm.
+
+        Exposed so frontend visualizations (e.g. the X/Z and Y/Z side views)
+        can show the real, currently-computed value instead of an
+        independently-maintained copy of this formula - which would risk
+        drifting from the actual value every motion command already uses.
+        """
+        return self._safe_clearance_z
+
     def get_limits(self) -> str:
-        """Return calibrated axis limits as a pipe-delimited string: ``x_min|x_max|y_min|y_max|z_min|z_max``."""
+        """Return calibrated axis limits + current safe clearance height as a
+        pipe-delimited string: ``x_min|x_max|y_min|y_max|z_min|z_max|safe_clearance_z``.
+        """
         h = self._homing_mgr
-        return f"{h.x_min}|{h.x_max}|{h.y_min}|{h.y_max}|{h.z_min}|{h.z_max}"
+        return (
+            f"{h.x_min}|{h.x_max}|{h.y_min}|{h.y_max}|{h.z_min}|{h.z_max}|"
+            f"{self._safe_clearance_z}"
+        )
 
     def set_workspace(self, name: str) -> None:
         """Load a workspace config by name from the bundled definitions directory.

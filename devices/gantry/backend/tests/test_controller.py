@@ -48,9 +48,17 @@ def ctrl(client):
 def test_get_limits_format(ctrl):
     limits_str = ctrl.get_limits()
     parts = limits_str.split("|")
-    assert len(parts) == 6
-    x_min, x_max, y_min, y_max, z_min, z_max = [float(p) for p in parts]
+    assert len(parts) == 7
+    x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z = [float(p) for p in parts]
     assert (x_min, x_max, y_min, y_max, z_min, z_max) == (0.0, 300.0, 0.0, 300.0, 0.0, 250.0)
+    assert safe_clearance_z == pytest.approx(50.0)  # _BARE_CLEARANCE_Z_MM, no workspace loaded
+
+
+def test_get_safe_clearance_z_matches_get_limits_trailing_field(ctrl):
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    trailing = float(ctrl.get_limits().split("|")[-1])
+    assert ctrl.get_safe_clearance_z() == pytest.approx(trailing)
+    assert trailing == pytest.approx(59.0)  # matches test_safe_clearance_uses_workspace_labware_height
 
 
 def test_move_to_within_bounds(ctrl):

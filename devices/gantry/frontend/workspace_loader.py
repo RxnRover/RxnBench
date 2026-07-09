@@ -7,6 +7,7 @@ definitions instead of being hardcoded here.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -16,8 +17,8 @@ from PySide6.QtCore import QFile, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
-    QCheckBox, QFileDialog, QInputDialog, QLabel, QPlainTextEdit,
-    QPushButton, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
+    QPlainTextEdit, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 if TYPE_CHECKING:
@@ -37,6 +38,8 @@ class _PlateSpec:
     a1y: float           # mm, A1 centre from plate corner Y
     width: float         # mm, overall plate footprint
     height: float        # mm, overall plate footprint
+    plate_height_mm: float = 14.0  # mm, deck to plate top surface (side views)
+    well_depth_mm: float   = 10.67  # mm, plate top surface to well bottom (side views)
 
 
 # Used only until the server's labware definitions arrive (or if the fetch
@@ -92,6 +95,66 @@ def _compute_bounds(
     return min_x, max_x, min_y, max_y
 
 
+_WELL_LABEL_RE = re.compile(r'^([A-Za-z])(\d+)$')
+
+
+def plate_xy_extent(plate: dict, spec: _PlateSpec) -> tuple[float, float, float, float]:
+    """Return a placed plate's (x0, x1, y0, y1) footprint extent in mm.
+
+    Shared by the top-down canvas (its own bounds) and the side-view
+    canvases (their horizontal-axis bounds), so both project the exact same
+    footprint math.
+
+    Args:
+        plate: One entry from a workspace YAML's ``plates`` list.
+        spec: That plate's geometry, as returned by plate_spec_from_labware.
+    """
+    # origin is the centre of the plate's footprint; rotation swaps which
+    # footprint dimension is half-width vs half-height but the centre point
+    # itself never moves.
+    origin = plate.get("origin") or {}
+    ox_ = origin.get("x") or 0.0
+    oy_ = origin.get("y") or 0.0
+    if plate.get("orientation") == "rotated_90":
+        hw, hh = spec.height / 2, spec.width / 2
+    else:
+        hw, hh = spec.width / 2, spec.height / 2
+    return ox_ - hw, ox_ + hw, oy_ - hh, oy_ + hh
+
+
+def resolve_well_gxy(plate: dict, spec: _PlateSpec, well_label: str) -> tuple[float, float] | None:
+    """Compute a well's absolute gantry (x, y) in mm from its plate placement + geometry.
+
+    Mirrors WorkspaceManager.resolve_well's XY math client-side (rotation
+    pivoting around the footprint centre, same as the per-well dot grid this
+    canvas already draws), so a highlighted-well marker on the side-view
+    canvases lands at the same spot the top-down canvas draws that well's dot.
+
+    Args:
+        plate: One entry from a workspace YAML's ``plates`` list.
+        spec: That plate's geometry, as returned by plate_spec_from_labware.
+        well_label: Well label, e.g. ``'A1'``.
+
+    Returns:
+        (x, y) in mm, or None if well_label doesn't parse as letter+number.
+    """
+    m = _WELL_LABEL_RE.match(well_label.strip())
+    if not m:
+        return None
+    row = ord(m.group(1).upper()) - ord('A')
+    col = int(m.group(2)) - 1
+    origin = plate.get("origin") or {}
+    ox_ = origin.get("x") or 0.0
+    oy_ = origin.get("y") or 0.0
+    pdx = spec.a1x + col * spec.spacing_x
+    pdy = spec.a1y + row * spec.spacing_y
+    cdx = pdx - spec.width / 2
+    cdy = pdy - spec.height / 2
+    if plate.get("orientation") == "rotated_90":
+        return ox_ - cdy, oy_ + cdx
+    return ox_ + cdx, oy_ + cdy
+
+
 def plate_spec_from_labware(data: dict) -> _PlateSpec:
     """Convert one server-side labware geometry dict into a canvas _PlateSpec.
 
@@ -115,6 +178,8 @@ def plate_spec_from_labware(data: dict) -> _PlateSpec:
         a1y=float(data["a1_offset_y"]),
         width=float(data.get("width_mm", _FALLBACK_SPEC.width)),
         height=float(data.get("height_mm", _FALLBACK_SPEC.height)),
+        plate_height_mm=float(data.get("plate_height_mm", _FALLBACK_SPEC.plate_height_mm)),
+        well_depth_mm=float(data.get("well_depth_mm", _FALLBACK_SPEC.well_depth_mm)),
     )
 
 
@@ -193,8 +258,8 @@ class WorkspaceCanvas(QWidget):
             x_min, x_max, y_min, y_max: Axis limits in mm, as reported by the
                 server's GetLimits command.
             z_min, z_max: Accepted but unused - only X/Y are drawn on this
-                2-D canvas. Kept so GantryConnection.limits_updated's 6-value
-                signal can be connected to this method directly.
+                2-D canvas. Kept so callers (DeckViewPanel) can pass the same
+                6 positional args they'd give any other WorkspaceCanvas.
         """
         self._limits = (x_min, x_max, y_min, y_max)
         self.update()
@@ -241,20 +306,7 @@ class WorkspaceCanvas(QWidget):
             spec = self._plate_specs.get(plate.get("plate_type", ""), _FALLBACK_SPEC)
             entries.append((plate, spec))
 
-        def plate_extents(plate: dict, spec: _PlateSpec) -> tuple[float, float, float, float]:
-            # origin is the centre of the plate's footprint; rotation swaps
-            # which footprint dimension is half-width vs half-height but the
-            # centre point itself never moves.
-            origin = plate.get("origin") or {}
-            ox_ = origin.get("x") or 0.0
-            oy_ = origin.get("y") or 0.0
-            if plate.get("orientation") == "rotated_90":
-                hw, hh = spec.height / 2, spec.width / 2
-            else:
-                hw, hh = spec.width / 2, spec.height / 2
-            return ox_ - hw, ox_ + hw, oy_ - hh, oy_ + hh
-
-        extents = [plate_extents(pl, sp) for pl, sp in entries]
+        extents = [plate_xy_extent(pl, sp) for pl, sp in entries]
         min_x, max_x, min_y, max_y = _compute_bounds(extents, self._limits, self._show_details)
 
         span_x = max_x - min_x or 1
@@ -488,6 +540,379 @@ class WorkspaceCanvas(QWidget):
         )
 
 
+class DeckSideViewCanvas(QWidget):
+    """Renders a to-scale X/Z or Y/Z side elevation of a workspace.
+
+    Shows what the top-down WorkspaceCanvas cannot: each plate's height
+    above the deck, its well depth, the server's current safe clearance
+    (travel) height, and - for the active well, if known - the toolhead's
+    configured engagement depth. Fed the same plate/limits/position data as
+    WorkspaceCanvas; see DeckViewPanel, which owns one of each and keeps
+    them all current regardless of which is currently visible.
+    """
+
+    def __init__(self, t: dict, axis: str, parent: QWidget | None = None) -> None:
+        """
+        Args:
+            t: Theme dict.
+            axis: ``'x'`` for an X/Z side view, ``'y'`` for a Y/Z side view -
+                selects which horizontal axis of the workspace is projected.
+        """
+        super().__init__(parent)
+        self._t     = t
+        self._axis  = axis
+        self._plates: list[dict] = []
+        self._plate_specs: dict[str, _PlateSpec] = {}
+        self._active_well = ("", "")
+        self._current_pos: tuple[float, float, float] | None = None  # gantry x, y, z mm
+        # x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z
+        self._limits: tuple[float, float, float, float, float, float, float] | None = None
+        self._toolhead_z_engage: float | None = None
+        self._show_details = False
+        self.setMinimumSize(300, 200)
+
+    def set_plate_specs(self, labware: dict) -> None:
+        specs: dict[str, _PlateSpec] = {}
+        for name, data in labware.items():
+            try:
+                specs[name] = plate_spec_from_labware(data)
+            except (KeyError, TypeError, ValueError):
+                continue
+        self._plate_specs = specs
+        self.update()
+
+    def load(self, workspace: dict) -> None:
+        self._plates = workspace.get("plates", [])
+        self.update()
+
+    def clear(self) -> None:
+        self._plates = []
+        self._active_well = ("", "")
+        self._current_pos = None
+        self.update()
+
+    def set_active_well(self, plate_id: str, well_label: str) -> None:
+        self._active_well = (plate_id, well_label)
+        self.update()
+
+    def set_current_position(self, x: float, y: float, z: float) -> None:
+        self._current_pos = (x, y, z)
+        self.update()
+
+    def set_limits(
+        self,
+        x_min: float, x_max: float, y_min: float, y_max: float,
+        z_min: float, z_max: float, safe_clearance_z: float,
+    ) -> None:
+        self._limits = (x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
+        self.update()
+
+    def set_toolhead_z_engage(self, value: float | None) -> None:
+        """Set the active toolhead's engagement depth, or None if no toolhead is active."""
+        self._toolhead_z_engage = value
+        self.update()
+
+    def set_show_details(self, show: bool) -> None:
+        """Toggle including the full deck axis extent in the horizontal bounds.
+
+        Same idea as WorkspaceCanvas.set_show_details: off by default so the
+        view fits tightly around the loaded plates, matching the top-down
+        canvas's default look exactly.
+        """
+        self._show_details = show
+        self.update()
+
+    def set_theme(self, t: dict) -> None:
+        self._t = t
+        self.update()
+
+    def _h_extent(self, plate: dict, spec: _PlateSpec) -> tuple[float, float]:
+        x0, x1, y0, y1 = plate_xy_extent(plate, spec)
+        return (x0, x1) if self._axis == "x" else (y0, y1)
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        try:
+            p.setRenderHint(QPainter.Antialiasing)
+            p.fillRect(self.rect(), QColor(self._t["bg_surface"]))
+            if not self._plates and self._limits is None:
+                p.setPen(QColor(self._t["text_dim"]))
+                p.setFont(QFont("sans-serif", 11))
+                p.drawText(self.rect(), Qt.AlignCenter, "No workspace loaded.")
+            else:
+                try:
+                    self._paint_side(p)
+                except (TypeError, KeyError, ValueError, AttributeError, ZeroDivisionError):
+                    pass
+        finally:
+            p.end()
+
+    def _paint_side(self, p: QPainter) -> None:
+        t   = self._t
+        W   = self.width()
+        H   = self.height()
+        PAD = 40
+        pad_mm = 15.0
+
+        entries: list[tuple[dict, _PlateSpec]] = [
+            (plate, self._plate_specs.get(plate.get("plate_type", ""), _FALLBACK_SPEC))
+            for plate in self._plates
+        ]
+        h_spans = [self._h_extent(pl, sp) for pl, sp in entries]
+        plate_tops = [
+            (plate.get("origin") or {}).get("z", 0.0) + sp.plate_height_mm
+            for plate, sp in entries
+        ]
+
+        x_min = x_max = y_min = y_max = z_min = z_max = safe_z = None
+        if self._limits is not None:
+            x_min, x_max, y_min, y_max, z_min, z_max, safe_z = self._limits
+        axis_limit = (x_min, x_max) if self._axis == "x" else (y_min, y_max)
+
+        # Tight-fit to the loaded plates by default - same as the top-down
+        # canvas's _compute_bounds - and only union in the full deck extent
+        # when show_details is on. Unconditionally including the whole deck
+        # (hundreds of mm) around a handful of plates clustered in one corner
+        # was the actual cause of most of the wasted canvas space; no amount
+        # of scale-formula tweaking fixes bounds that are needlessly wide.
+        if h_spans:
+            hmin = min(s[0] for s in h_spans) - pad_mm
+            hmax = max(s[1] for s in h_spans) + pad_mm
+        else:
+            hmin = hmax = 0.0
+        if self._show_details and axis_limit[0] is not None:
+            if h_spans:
+                hmin, hmax = min(hmin, axis_limit[0]), max(hmax, axis_limit[1])
+            else:
+                hmin, hmax = axis_limit
+
+        # z_max (the machine's hard travel ceiling, e.g. 340mm) is deliberately
+        # excluded here - it dwarfs any real plate height or safe-travel value
+        # (typically well under 150mm), so including it turned most of the
+        # canvas into dead space above the one line anyone actually cares
+        # about. Fit tightly to the real content instead, same as the top
+        # view fits tightly to plates by default.
+        current_z = self._current_pos[2] if self._current_pos is not None else None
+        z_lo = z_min if z_min is not None else 0.0
+        z_hi_candidates = [z for z in (safe_z, current_z, *plate_tops) if z is not None]
+        z_hi = (max(z_hi_candidates) if z_hi_candidates else 50.0) + pad_mm
+
+        span_h = hmax - hmin or 1
+        span_z = z_hi - z_lo or 1
+        avail_w = W - 2 * PAD
+        avail_h = H - 2 * PAD
+        # Exact same technique as the top-down canvas: one shared,
+        # aspect-preserving scale. Tight bounds (above) are what actually
+        # make this fill the canvas well, not a fancier scale formula.
+        scale = min(avail_w / span_h, avail_h / span_z)
+
+        rend_w = span_h * scale
+        rend_h = span_z * scale
+        ox_off = PAD + (avail_w - rend_w) / 2
+        oy_off = PAD + (avail_h - rend_h) / 2
+
+        def to_px(h_mm: float, z_mm: float) -> tuple[float, float]:
+            return (
+                ox_off + (h_mm - hmin) * scale,
+                oy_off + rend_h - (z_mm - z_lo) * scale,
+            )
+
+        # Deck floor (Z=0)
+        floor_col = QColor(t["text_dim"])
+        p.setPen(QPen(floor_col, 1.5))
+        fx0, fy0 = to_px(hmin, 0.0)
+        fx1, _fy1 = to_px(hmax, 0.0)
+        p.drawLine(int(fx0), int(fy0), int(fx1), int(fy0))
+        p.setFont(QFont("sans-serif", 8))
+        p.drawText(QRectF(fx0, fy0 - 16, 140, 14), Qt.AlignLeft, "deck (Z=0)")
+
+        # Safe clearance-travel height
+        if safe_z is not None:
+            col = QColor(t.get("accent", "#3b82f6"))
+            p.setPen(QPen(col, 1.5, Qt.DashLine))
+            sx0, sy0 = to_px(hmin, safe_z)
+            sx1, _sy1 = to_px(hmax, safe_z)
+            p.drawLine(int(sx0), int(sy0), int(sx1), int(sy0))
+            p.setPen(col)
+            p.drawText(
+                QRectF(sx1 - 170, sy0 - 16, 170, 14), Qt.AlignRight,
+                f"safe travel: {safe_z:.1f} mm",
+            )
+
+        cal_plate_id, cal_well = self._active_well
+
+        for i, ((plate, spec), (h0, h1)) in enumerate(zip(entries, h_spans)):
+            pid    = plate.get("id", f"plate{i + 1}")
+            origin_z = (plate.get("origin") or {}).get("z") or 0.0
+            top_z  = origin_z + spec.plate_height_mm
+            bottom_z = top_z - spec.well_depth_mm
+            color  = QColor(_PALETTE[i % len(_PALETTE)])
+
+            px0, py0 = to_px(h0, top_z)
+            px1, py1 = to_px(h1, origin_z)
+            rect = QRectF(px0, py0, px1 - px0, py1 - py0)
+            fill = QColor(color); fill.setAlphaF(0.15)
+            p.fillRect(rect, fill)
+            p.setPen(QPen(color, 1.5))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(rect)
+
+            # Well-bottom line, within this plate's own footprint
+            wb_x0, wb_y = to_px(h0, bottom_z)
+            wb_x1, _ = to_px(h1, bottom_z)
+            p.setPen(QPen(color.darker(120), 1.2, Qt.DashLine))
+            p.drawLine(int(wb_x0), int(wb_y), int(wb_x1), int(wb_y))
+
+            label_w = rect.width() - 8
+            if label_w > 5:
+                p.setPen(QColor(t["text"]))
+                p.setFont(QFont("sans-serif", 8, QFont.Bold))
+                p.drawText(QRectF(px0 + 4, py0 + 2, label_w, 14), Qt.AlignLeft, pid)
+
+            # Active-well guide: precise horizontal position + engagement depth
+            if pid == cal_plate_id:
+                gxy = resolve_well_gxy(plate, spec, cal_well)
+                if gxy is not None:
+                    h_pos = gxy[0] if self._axis == "x" else gxy[1]
+                    ac = QColor(t.get("dot_ok", "#22c55e"))
+                    p.setPen(QPen(ac, 1.5, Qt.DashLine))
+                    gx0, gy0 = to_px(h_pos, top_z)
+                    _gx1, gy1 = to_px(h_pos, bottom_z)
+                    p.drawLine(int(gx0), int(gy0), int(gx0), int(gy1))
+                    if self._toolhead_z_engage is not None:
+                        engage_z = top_z - self._toolhead_z_engage
+                        ex, ey = to_px(h_pos, engage_z)
+                        p.setPen(QPen(ac, 2.0))
+                        p.drawLine(int(ex - 6), int(ey), int(ex + 6), int(ey))
+                        p.setFont(QFont("sans-serif", 8))
+                        p.drawText(
+                            QRectF(ex + 8, ey - 7, 120, 14), Qt.AlignLeft,
+                            f"engage {self._toolhead_z_engage:.1f} mm",
+                        )
+
+        # Current gantry position marker
+        if self._current_pos is not None:
+            gx, gy, gz = self._current_pos
+            h_pos = gx if self._axis == "x" else gy
+            cx, cy = to_px(h_pos, gz)
+            arm = 10
+            cross_col = QColor(t.get("dot_warn", "#f59e0b"))
+            p.setPen(QPen(cross_col, 2.0))
+            p.drawLine(int(cx - arm), int(cy), int(cx + arm), int(cy))
+            p.drawLine(int(cx), int(cy - arm), int(cx), int(cy + arm))
+            p.setBrush(QBrush(cross_col))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(QRectF(cx - 3, cy - 3, 6, 6))
+
+        # Axis labels (bottom-left) + scale bar (bottom-right)
+        axis_letter = "X" if self._axis == "x" else "Y"
+        p.setPen(QColor(t["text_dim"]))
+        p.setFont(QFont("sans-serif", 8))
+        p.drawText(QRectF(ox_off, oy_off + rend_h + 4, 60, 14), Qt.AlignLeft, f"{axis_letter} →")
+        p.drawText(QRectF(ox_off - 34, oy_off - 4, 30, 14), Qt.AlignRight, "Z ↑")
+        WorkspaceCanvas._draw_scale_bar(p, scale, ox_off + rend_w, oy_off + rend_h, t)
+
+
+class DeckViewPanel(QWidget):
+    """Top (X/Y) / Side (X/Z) / Side (Y/Z) view switcher over one shared canvas area.
+
+    Owns one WorkspaceCanvas and two DeckSideViewCanvas instances and fans
+    every update out to all three, so switching views never shows stale
+    data - only the selector's current index changes what's actually
+    visible. Exposes the same public API as WorkspaceCanvas (plus the new
+    Z-aware setters) so call sites that used to hold a bare WorkspaceCanvas
+    can swap in a DeckViewPanel unchanged.
+    """
+
+    def __init__(self, t: dict, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._t = t
+
+        self._top = WorkspaceCanvas(t)
+        self._xz  = DeckSideViewCanvas(t, axis="x")
+        self._yz  = DeckSideViewCanvas(t, axis="y")
+
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self._top)
+        self._stack.addWidget(self._xz)
+        self._stack.addWidget(self._yz)
+
+        self._view_lbl = QLabel("View:")
+        self._selector = QComboBox()
+        self._selector.addItems(["Top (X/Y)", "Side (X/Z)", "Side (Y/Z)"])
+        self._selector.currentIndexChanged.connect(self._stack.setCurrentIndex)
+
+        sel_row = QHBoxLayout()
+        sel_row.setContentsMargins(0, 0, 0, 0)
+        sel_row.addWidget(self._view_lbl)
+        sel_row.addWidget(self._selector)
+        sel_row.addStretch(1)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        lay.addLayout(sel_row)
+        lay.addWidget(self._stack, 1)
+
+        self._apply_style()
+
+    def _apply_style(self) -> None:
+        t = self._t
+        self.setStyleSheet(
+            f"QComboBox {{ background: {t['bg']}; color: {t['text']};"
+            f" border: 1px solid {t['border']}; border-radius: 4px; padding: 2px 6px; }}"
+            f"QLabel {{ color: {t['text_muted']}; background: transparent; }}"
+        )
+
+    # --- Fan-out API: forward every update to all 3 canvases ---
+
+    def set_plate_specs(self, labware: dict) -> None:
+        for c in (self._top, self._xz, self._yz):
+            c.set_plate_specs(labware)
+
+    def load(self, workspace: dict) -> None:
+        for c in (self._top, self._xz, self._yz):
+            c.load(workspace)
+
+    def clear(self) -> None:
+        for c in (self._top, self._xz, self._yz):
+            c.clear()
+
+    def set_active_well(self, plate_id: str, well_label: str) -> None:
+        for c in (self._top, self._xz, self._yz):
+            c.set_active_well(plate_id, well_label)
+
+    def set_current_position(self, x: float, y: float, z: float) -> None:
+        self._top.set_current_position(x, y)
+        self._xz.set_current_position(x, y, z)
+        self._yz.set_current_position(x, y, z)
+
+    def set_limits(
+        self,
+        x_min: float, x_max: float, y_min: float, y_max: float,
+        z_min: float, z_max: float, safe_clearance_z: float,
+    ) -> None:
+        self._top.set_limits(x_min, x_max, y_min, y_max, z_min, z_max)
+        self._xz.set_limits(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
+        self._yz.set_limits(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
+
+    def set_show_details(self, show: bool) -> None:
+        """Toggle the deck-boundary overlay - tight-fit to plates by default on all 3 views."""
+        for c in (self._top, self._xz, self._yz):
+            c.set_show_details(show)
+
+    def set_toolhead_z_engage(self, value: float | None) -> None:
+        """Set the active toolhead's engagement depth for the side views' operation-depth marker."""
+        self._xz.set_toolhead_z_engage(value)
+        self._yz.set_toolhead_z_engage(value)
+
+    def set_theme(self, t: dict) -> None:
+        self._t = t
+        for c in (self._top, self._xz, self._yz):
+            c.set_theme(t)
+        self._apply_style()
+
+
 class WorkspaceLoaderWidget(QWidget):
     """Workspace loader panel - edit/import YAML, send to server, preview canvas."""
 
@@ -532,7 +957,7 @@ class WorkspaceLoaderWidget(QWidget):
 
         # Insert canvas into canvas_container
         container = self._ui.findChild(QWidget, "canvas_container")
-        self._canvas = WorkspaceCanvas(t, container)
+        self._canvas = DeckViewPanel(t, container)
         container.layout().addWidget(self._canvas)
 
         self._apply_style()

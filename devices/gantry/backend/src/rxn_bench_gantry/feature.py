@@ -370,7 +370,9 @@ class Gantry(sila.Feature):
 
     @sila.UnobservableCommand()
     async def get_limits(self) -> str:
-        """Return calibrated axis limits as a pipe-delimited string: 'x_min|x_max|y_min|y_max|z_min|z_max'."""
+        """Return calibrated axis limits + current safe clearance height as a
+        pipe-delimited string: 'x_min|x_max|y_min|y_max|z_min|z_max|safe_clearance_z'.
+        """
         return await asyncio.to_thread(self._controller.get_limits)
 
     # ------------------------------------------------------------------
