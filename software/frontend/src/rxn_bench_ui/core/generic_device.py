@@ -318,9 +318,9 @@ class _ObservableCmdRunner(QThread):
     """
     Drives a SiLA ObservableCommand: initiate (get a CommandExecutionUUID),
     poll <Cmd>_Info for status/progress until finished, then fetch
-    <Cmd>_Result. See SiLAFramework.proto / docs/ai/FUTURE_IDEAS.md §1 for the
-    wire pattern this implements - verified against a real running server
-    exercising unitelabs-cdk's own ObservableCommandTest feature.
+    <Cmd>_Result. See SiLAFramework.proto for the wire pattern this
+    implements - verified against a real running server exercising
+    unitelabs-cdk's own ObservableCommandTest feature.
     """
     status = Signal(str)
     result = Signal(str)
@@ -871,9 +871,7 @@ class _FeatureSection(QWidget):
     def set_unavailable(self, reason: str) -> None:
         self._status_lbl.setText("definition unavailable")
         note = QLabel(f"Feature introspection not supported by this server.\n{reason}")
-        note.setStyleSheet(f"color: {t}; font-size: 9pt;".replace(
-            "{t}", self._t["text_dim"]
-        ))
+        note.setStyleSheet(f"color: {self._t['text_dim']}; font-size: 9pt;")
         note.setWordWrap(True)
         self._content_layout.addWidget(note)
 

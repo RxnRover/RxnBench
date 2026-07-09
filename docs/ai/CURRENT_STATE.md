@@ -257,7 +257,7 @@ Main responsibilities:
 | Frontend device plugin architecture | Done |
 | Gantry frontend widget | Done |
 | pH frontend widget | Done |
-| Generic FDL-driven device inspector (`GenericDeviceWidget`) | Done, including dynamic FDL→protobuf construction, structured/list params, observable commands, typed input widgets — see `FUTURE_IDEAS.md` §1 |
+| Generic FDL-driven device inspector (`GenericDeviceWidget`) | Done, including dynamic FDL→protobuf construction, structured/list params, observable commands, typed input widgets |
 | Frontend pH connection | Done — uses generated protobuf stubs (`proto/ph_sensor_pb2.py`); the hand-rolled varint helpers are gone (from pH *and* the device template) |
 | Shared frontend connection base | Done |
 | Per-device generated connection layer | Done |
@@ -353,23 +353,23 @@ These are the active issues worth tracking now.
 Near-term, in priority order:
 
 1. **Workflow runner in `rxn_bench_client` — not a YAML DSL, a thin structural layer over plain Python scripts.** Experiment scripts stay arbitrary Python (loops, conditionals, numpy/pandas, adaptive logic) — that expressiveness is worth keeping, not replacing. What's missing is a lightweight decorator/context-manager per step that gives a `WorkflowRunner` enough structure to: retry/resume from the failed step instead of rerunning the whole script, know which devices a step touches before running it (so a future scheduler can avoid device contention), and record a structured per-step audit trail alongside the existing JSONL session logs. Design constraint: each step must carry an idempotency/side-effect flag, and resume-from-failed-step must default to requiring human confirmation before re-running or skipping a step — physical actions (dispensed liquid, a probe already lowered into a well) can't be rolled back the way a database transaction can. Pure Python, no new service or database; lives inside the existing client package. (MADSci itself does the analogous thing — YAML workflows plus an escape-hatch `ExperimentApplication` Python class — because pure declarative workflows aren't enough either.)
-2. **Prove the pattern with a real third device** (camera is already parked as the next device in `FUTURE_IDEAS.md` §5). Bar to clear: adding it touches only a new `devices/camera/{backend,frontend}` folder — nothing in `core/` or `device_registry.py`. If that's not true, fix the abstraction before adding a 4th/5th device.
+2. **Prove the pattern with a real third device** (camera is already parked as the next device — see §10). Bar to clear: adding it touches only a new `devices/camera/{backend,frontend}` folder — nothing in `core/` or `device_registry.py`. If that's not true, fix the abstraction before adding a 4th/5th device.
 
-Done, as of 2026-07-01: all four gaps in the generic FDL-driven device widget (dynamic protobuf message construction, structured/list parameter support, observable-command support, typed input widgets with validation) — see `FUTURE_IDEAS.md` §1 for what was built and how it was verified.
+Done, as of 2026-07-01: all four gaps in the generic FDL-driven device widget (dynamic protobuf message construction, structured/list parameter support, observable-command support, typed input widgets with validation).
 
-Deferred until a concrete trigger (not speculative work — see `FUTURE_IDEAS.md` for design notes on several of these):
+Deferred until a concrete trigger (not speculative work):
 
 | Capability | Build when... |
 |---|---|
 | Resource/labware/inventory tracking | Juggling enough reagents/labware that a human can't track it by eye |
 | Multi-bench discovery + TLS | A second physical bench/room actually exists (today's mDNS discovery is local-subnet only) |
-| Autonomous experiment loop (`FUTURE_IDEAS.md` §2-4) | Unattended overnight runs are actually wanted, not just multi-instrument human-supervised control |
+| Autonomous experiment loop | Unattended overnight runs are actually wanted, not just multi-instrument human-supervised control |
 
 ---
 
 ## 10. Deferred Ideas
 
-The following ideas are intentionally moved out of the active architecture plan and into `FUTURE_IDEAS.md`:
+The following ideas are intentionally deferred, out of the active architecture plan:
 
 - AI-assisted device onboarding
 - runtime `OnboardingFeature`

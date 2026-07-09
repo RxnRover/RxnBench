@@ -56,7 +56,7 @@ def _spawn_call_lines(s: dict) -> list[str]:
             handler_expr = f"lambda r: self.{s['signal']}.emit({', '.join(emits)})"
 
     lines = [
-        f"        self._spawn_stream(",
+        "        self._spawn_stream(",
         f"            gen, self._rpc(\"{rpc}\"),",
         f"            {handler_expr},",
     ]
@@ -104,7 +104,7 @@ def _command_lines(cmd: dict) -> list[str]:
 # Top-level generator
 # ---------------------------------------------------------------------------
 
-def generate(spec: dict, spec_path: str, out_path: str | None = None) -> str:
+def generate(spec: dict, spec_path: str) -> str:
     meta     = spec["meta"]
     pkg      = meta["package"]
     svc      = meta["service"]
@@ -112,10 +112,7 @@ def generate(spec: dict, spec_path: str, out_path: str | None = None) -> str:
     pb2_mod  = meta.get("proto_module")   # None → no compiled stubs, no _pb import
     streams  = spec.get("streams", [])
     commands = spec.get("commands", [])
-    spec_name = Path(spec_path).name
-    # Default output: generated_connection.py alongside the spec
-    spec_dir = Path(spec_path).parent
-    out_name = out_path or str(spec_dir / "generated_connection.py")
+    custom_handlers = [s["handler"] for s in streams if "handler" in s]
 
     out: list[str] = []
 
@@ -131,8 +128,10 @@ def generate(spec: dict, spec_path: str, out_path: str | None = None) -> str:
         "",
         "from __future__ import annotations",
         "",
-        "from typing import Any",
-        "",
+    ]
+    if custom_handlers:
+        out += ["from typing import Any", ""]
+    out += [
         "from PySide6.QtCore import Signal",
         "",
         "from rxn_bench_ui.connections.base import _FeatureConnection",
@@ -193,7 +192,6 @@ def generate(spec: dict, spec_path: str, out_path: str | None = None) -> str:
     # ------------------------------------------------------------------
     # Abstract stubs for custom stream handlers
     # ------------------------------------------------------------------
-    custom_handlers = [s["handler"] for s in streams if "handler" in s]
     if custom_handlers:
         out.append("    # --- Custom stream handlers - implement in subclass ---")
         for h in custom_handlers:
@@ -233,7 +231,7 @@ def main() -> None:
     with open(spec_path) as f:
         spec = yaml.safe_load(f)
 
-    code = generate(spec, args.spec, out_path=args.out)
+    code = generate(spec, args.spec)
 
     # Default output: generated_connection.py alongside the spec
     resolved_out = Path(args.out) if args.out else Path(args.spec).parent / "generated_connection.py"

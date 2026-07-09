@@ -39,7 +39,6 @@ import socket
 import time
 from typing import Any, Generator, Type
 
-import yaml as _yaml
 from sila2.client import SilaClient
 
 

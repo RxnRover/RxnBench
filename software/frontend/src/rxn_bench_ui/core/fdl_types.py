@@ -11,8 +11,8 @@ _collect_values()/_encode_param() heuristics did.
 
 Wire shapes are grounded in SiLAFramework.proto (ships with unitelabs-cdk /
 sila2) and verified empirically: dumping and inspecting FDL and wire traffic
-from a running mock gantry/pH server (see docs/ai/CURRENT_STATE.md §9,
-FUTURE_IDEAS.md §1 for how this was checked). In particular:
+from a running mock gantry/pH server (see docs/ai/CURRENT_STATE.md §9 for
+how this was checked). In particular:
 
 - Every SiLA Basic type is wire-represented as its own one-field wrapper
   message (e.g. Real{double value=1}, String{string value=1}), confirmed by

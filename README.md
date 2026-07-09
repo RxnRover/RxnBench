@@ -4,11 +4,11 @@
 
 ## Overview
 
-Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform, with a pipette toolhead for liquid handling and an Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor; a separate operator machine runs a PySide6 frontend that talks to those servers over gRPC/SiLA, and experiment scripts drive the bench through a Python client package.
+Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform, with a Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor; a separate operator machine runs a frontend application [Rxn Bench](TODO: Eventually include repo link) that talks to those servers over gRPC/SiLA, and experiment scripts drive the bench through a Python client [Rxn Bench Client](TODO: Eventually include repo link).
 
 ## Requirements
 
-- A Sovol SV08 3D printer (or similar Klipper-based motion platform) and a Raspberry Pi 5 to control it
+- A Sovol SV08 3D printer (or similar Klipper-based motion platform) and a computer device __i.e Raspberry Pi 5__ to control it
 - Python 3.10+ and [`uv`](https://docs.astral.sh/uv/) on both the Pi (backend) and the operator machine (frontend)
 - Atlas Scientific EZO pH kit and 3D-printed mounts (see Component List below) for pH sensing hardware
 
@@ -18,71 +18,69 @@ See [docs/usage.md](docs/usage.md) for commands to install dependencies and star
 
 ## Implementation and design
 
-![Rxn Bench high-level system block diagram: operator UI talks to the Raspberry Pi's SILA server, which drives the Sovol SV08 MCU (XYZ motion + liquid handler arm), an onboard camera, and the EZO pH circuit/probe](docs/images/resized/system-block-diagram.jpg)
-
-See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the current architecture, package layout, and active gaps.
+![Rxn Bench high-level system block diagram: operator UI talks to the Raspberry Pi's SILA server, which drives the Sovol SV08 MCU (XYZ motion), an onboard camera, and the EZO pH circuit/probe](docs/images/resized/system-block-diagram.jpg)
 
 ### Component List
 
-**Motion Platform**
+#### Motion Platform
 
-| Name | Link | Purpose |
-| ---- | ---- | ------- |
+| Name            | Link                                                                                                                                                                         | Purpose                                                |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | SV08 3D Printer | [MatterHackers](https://www.matterhackers.com/store/l/sovol-sv08-enclosed-pre-assembled-3d-printer/sk/MQ7MC2AK?rcode=PMAX_GENPOP3DP&gad_source=1&gad_campaignid=20506454105) | XYZ motion platform base for liquid handler automation |
-| Raspberry Pi 5 | [PiShop](https://www.pishop.us/product/raspberry-pi-5-8gb/?src=raspberrypi) | Main controller for coordinating motion and sensors |
+| Raspberry Pi 5  | [PiShop](https://www.pishop.us/product/raspberry-pi-5-8gb/?src=raspberrypi)                                                                                                  | Main controller for coordinating motion and sensors    |
 
-**pH Sensor**
+#### pH Sensor
 
-| Name | Link | Purpose |
-| ---- | ---- | ------- |
-| Atlas Scientific EZO Micro pH Kit | [Atlas Scientific](https://atlas-scientific.com/kits/micro-ph-kit/)| Complete kit for pH measurement |
-| Atlas Scientific EZO pH Circuit | [Atlas Scientific](https://atlas-scientific.com/embedded-solutions/ezo-ph-circuit/) | Embedded pH signal processing circuit |
-| pH Isolation Board | [Atlas Scientific](https://atlas-scientific.com/carrier-boards/electrically-isolated-ezo-carrier-board-gen-2/) | Electrically isolates pH circuit to prevent noise/interference |
-| Half-Cell pH Isolation Board | [Atlas Scientific](https://atlas-scientific.com/carrier-boards/half-cell/) | Carrier board for half-cell pH probe configurations |
-| Spear Tip pH Probe | [Atlas Scientific](https://atlas-scientific.com/probes/spear-tip-ph-probe/) | Soil/spear-tip combination electrode; male SMA connector, mates directly to isolation carrier board |
+| Name                              | Link                                                                                                           | Purpose                                                                                             |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Atlas Scientific EZO Micro pH Kit | [Atlas Scientific](https://atlas-scientific.com/kits/micro-ph-kit/)                                            | Complete kit for pH measurement                                                                     |
+| Atlas Scientific EZO pH Circuit   | [Atlas Scientific](https://atlas-scientific.com/embedded-solutions/ezo-ph-circuit/)                            | Embedded pH signal processing circuit                                                               |
+| pH Isolation Board                | [Atlas Scientific](https://atlas-scientific.com/carrier-boards/electrically-isolated-ezo-carrier-board-gen-2/) | Electrically isolates pH circuit to prevent noise/interference                                      |
+| Half-Cell pH Isolation Board      | [Atlas Scientific](https://atlas-scientific.com/carrier-boards/half-cell/)                                     | Carrier board for half-cell pH probe configurations                                                 |
+| Spear Tip pH Probe                | [Atlas Scientific](https://atlas-scientific.com/probes/spear-tip-ph-probe/)                                    | Soil/spear-tip combination electrode; male SMA connector, mates directly to isolation carrier board |
 
-**Liquid Handler**
+#### Liquid Handler
 
-| Name | Link | Purpose |
-| ---- | ---- | ------- |
-| Pipette Cone Assembly   | [PipetteSupplies](https://www.pipettesupplies.com/product/e1-clip-tip-tip-cone-assembly-single-channel-1250-l-t/) | Actual liquid displacement mechanism |
-| Stepper Linear Actuator | [Haydon Kerk Pittman](https://www.haydonkerkpittman.com/products/linear-actuators/can-stack-stepper)              | Pushes the pipette plunger to aspirate/dispense liquid         |
+| Name                    | Link                                                                                                              | Purpose                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Pipette Cone Assembly   | [PipetteSupplies](https://www.pipettesupplies.com/product/e1-clip-tip-tip-cone-assembly-single-channel-1250-l-t/) | Actual liquid displacement mechanism                   |
+| Stepper Linear Actuator | [Haydon Kerk Pittman](https://www.haydonkerkpittman.com/products/linear-actuators/can-stack-stepper)              | Pushes the pipette plunger to aspirate/dispense liquid |
 
-**Extra Peripherals**
+#### Extra Peripherals
 
-| Name | Link | Purpose |
-| ---- | ---- | ------- |
+| Name                              | Link                                                                       | Purpose                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | SMA Male-to-Female Extender Cable | [Atlas Scientific](https://atlas-scientific.com/accessories/sma-extender/) | Extends the probe cable reach from the carrier board to the mounted probe |
-| | |
- 
-**Other components/items**
+|                                   |                                                                            |
 
-| Name | Link | Purpose |
-| ---- | ---- | ------- |
+#### Other components/items
+
+| Name         | Link                                       | Purpose                                             |
+| ------------ | ------------------------------------------ | --------------------------------------------------- |
 | Bambu Lab A1 | [BambuLabs](https://bambulab.com/en-us/a1) | Unmodified used to 3D print platforms, plates, etc. |
 
 ## Gallery
 
 ### Assembled bench
 
-| Assembled, pipette over a well plate | Running on the bench next to the operator laptop |
-| --- | --- |
+| Assembled, pipette over a well plate                                                                                     | Running on the bench next to the operator laptop                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | ![Assembled Rxn Bench with the pipette toolhead positioned over a well plate](docs/images/resized/assembled-bench-1.jpg) | ![Rxn Bench running on the lab bench next to the operator laptop running the frontend UI](docs/images/resized/assembled-bench-2.jpg) |
 
 ### pH probe toolhead
 
 CAD design next to the assembled 3D-printed housing around the Atlas Scientific EZO pH circuit and probe.
 
-| CAD design | Assembled |
-| --- | --- |
+| CAD design                                                                                                                        | Assembled                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | ![CAD render of the pH probe toolhead, exploded to show the EZO pH circuit board inside](docs/images/resized/ph-toolhead-cad.jpg) | ![Assembled 3D-printed pH probe toolhead housing](docs/images/resized/ph-toolhead-assembled.jpg) |
 
 ### Toolhead docking mount
 
-The gantry docks toolheads via a 3D-printed linear-rail mount, in the spirit of the tool-changer designs linked below.
+The gantry docks multiple toolheads via a 3D-printed mount with linear-rails, in the spirit of the tool-changer designs linked below.
 
-| CAD design | Assembled |
-| --- | --- |
+| CAD design                                                                                                       | Assembled                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | ![CAD render of the toolhead docking mount with linear rail bearings](docs/images/resized/docking-mount-cad.jpg) | ![Assembled 3D-printed toolhead docking mount](docs/images/resized/docking-mount-assembled.jpg) |
 
 ### Rxn Bench UI
@@ -93,8 +91,8 @@ The gantry docks toolheads via a 3D-printed linear-rail mount, in the spirit of 
 
 #### Sensor and control widgets
 
-| Gantry | pH Probe | Experiment Runner |
-| --- | --- | --- |
+| Gantry                                            | pH Probe                                              | Experiment Runner                                                       |
+| ------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------- |
 | ![Gantry view](docs/images/resized/ui-gantry.jpg) | ![pH Probe view](docs/images/resized/ui-ph-probe.jpg) | ![Experiment Runner view](docs/images/resized/ui-experiment-runner.jpg) |
 
 #### Adding a device
@@ -103,7 +101,8 @@ The gantry docks toolheads via a 3D-printed linear-rail mount, in the spirit of 
 
 ## References and helpful material
 
-**Core**
+### Core
+
 - [How to convert a 3D printer to a personal automated liquid handler for life science workflows](https://www.sciencedirect.com/science/article/pii/S2472630324001213#bib0043)
 - [SILA Standard](https://sila-standard.com/standards/)
 - [SILA Standard GitLab](https://gitlab.com/SiLA2)
@@ -114,7 +113,8 @@ The gantry docks toolheads via a 3D-printed linear-rail mount, in the spirit of 
 - [Moonraker](https://moonraker.readthedocs.io/en/latest/)
 - [Pipette Clip Tip](https://www.thermofisher.com/us/en/home/life-science/lab-plasticware-supplies/pipettes-pipette-tips/pipette-tips/products/cliptip-pipette-system.html)
 
-**Related open-source lab automation projects**
+### Related open-source lab automation projects
+
 - [Rxn Rover](https://rxnrover.github.io/) - Ames National Lab Automation Platform
 - [Science Jubilee](https://science-jubilee.readthedocs.io/) - open-source tool-changing lab robot with pipette, camera, and sensor tools
 - [Jubilee: An Extensible Machine for Multi-tool Fabrication (paper)](https://www.researchgate.net/publication/341697828_Jubilee_An_Extensible_Machine_for_Multi-tool_Fabrication)
@@ -124,17 +124,24 @@ The gantry docks toolheads via a 3D-printed linear-rail mount, in the spirit of 
 - [EvoBot: Open-Source Modular Liquid Handling Robot](https://www.mdpi.com/2076-3417/10/3/814)
 - [Open-source personal pipetting robots (Nature Communications)](https://www.nature.com/articles/s41467-022-30643-7)
 
-
 ## Authors and Contributors
 
-John Brittain
+### Co-authors
 
-Felisha Kuo
+__John Brittain__* - Software development, system design, hardware design, fabrication, integration, and project lead for the Rxn Bench platform.
 
-Zachery Crandall
+__Felisha Kuo__* - Experimental setup, laboratory workflow development, hardware fabrication, testing, and project lead for the chemistry-side integration.
 
-Lun An
+__David Lee__ - Laboratory expertise, practical setup support, equipment ordering, and experimental workflow insight.
 
-David Lee
+__Lun An__ - Chemistry supervision, project planning, experimental guidance, chemistry expertise, and technical review.
 
-Long Qi
+__Long Qi__ - Project sponsorship, overall direction, supervision, planning, and organizational guidance.
+
+__Zachery Crandall__ - Engineering and software supervision, project planning, technical guidance, and formal review.
+
+*These authors contributed equally to the work.
+
+### Acknowledgements
+
+This work was supported by the [SuLI internship program](https://science.osti.gov/wdts/suli) at [Ames National Laboratory](https://www.ameslab.gov/). The authors thank the program organizers and mentors for providing the opportunity, resources, and guidance that made this project possible.

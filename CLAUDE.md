@@ -2,7 +2,7 @@
 
 Read [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the current architecture snapshot, package layout, active gaps, and stable design decisions before making changes.
 
-Deferred/long-term ideas that should not influence current work live in [docs/ai/FUTURE_IDEAS.md](docs/ai/FUTURE_IDEAS.md).
+Deferred/long-term ideas that should not influence current work are listed in [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) §10.
 
 ## Hard rules
 
