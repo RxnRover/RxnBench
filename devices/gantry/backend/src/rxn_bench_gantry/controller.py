@@ -446,7 +446,12 @@ class GantryController:
         Args:
             label: Well label, e.g. ``'A3'``, ``'H12'``, or ``'plate1/A3'``.
             override_unvalidated: If True, proceed even when the active toolhead's
-                geometry is unvalidated (placeholder). Defaults to refusing.
+                geometry is unvalidated (placeholder), and skip the engagement-depth
+                safety check below. Defaults to refusing. Also used by the toolhead
+                calibration wizard, which visits corner wells purely to position the
+                tip - it never calls engage_tool - so a toolhead's configured
+                z_engage exceeding that well's depth is not actually a collision risk
+                there, only for the normal move_to_well-then-engage_tool workflow.
 
         Returns:
             Dict with the well's expected (nominal, pre-toolhead-offset)
@@ -460,8 +465,9 @@ class GantryController:
             KeyError: If the plate ID is not found in the current workspace.
             ValueError: If the well label format is invalid.
             MotionLimitError: If the resolved position exceeds axis limits,
-                or the active toolhead's engagement depth (z_engage) exceeds
-                this well's depth and would collide with its bottom.
+                or (when override_unvalidated is False) the active toolhead's
+                engagement depth (z_engage) exceeds this well's depth and
+                would collide with its bottom.
             ToolheadNotMountedError: If the active toolhead has not been
                 confirmed physically mounted.
             UnvalidatedGeometryError: If the active toolhead's geometry is
@@ -487,7 +493,7 @@ class GantryController:
         # of how tall the clearance height needed to be for other labware
         # sharing the deck.
         x, y, z = self._workspace_mgr.resolve_well(label)
-        if th is not None:
+        if th is not None and not override_unvalidated:
             well_depth = self._workspace_mgr.get_well_depth(label)
             if th.z_engage > well_depth:
                 raise MotionLimitError(

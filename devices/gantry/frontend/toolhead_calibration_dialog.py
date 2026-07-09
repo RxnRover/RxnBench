@@ -365,7 +365,16 @@ class ToolheadCalibrationDialog(QDialog):
         move_to_well() already resolves the well's exact position server-side,
         correctly handling rotation/origin_mode the same way it does for any
         other well - so unlike an earlier version of this dialog, there's no
-        rotation math to get wrong here.
+        rotation math to get wrong here. It also docks Z at that well's actual
+        opening (the plate's top surface) rather than a generic clearance
+        height, so the tip already sits at/near the well by the time this
+        move completes - jogging here is fine centring, not a big descent.
+        override_unvalidated=True is required for two independent reasons:
+        this toolhead's tip offsets aren't measured yet (the whole point of
+        this wizard), and its *configured* z_engage may exceed this
+        particular calibration plate's well depth - harmless here since this
+        wizard only ever positions at the opening and never calls
+        engage_tool, but move_to_well can't tell the two reasons apart.
         """
         well = self._corner_wells[i]
         self._set_corner_controls_enabled(False)

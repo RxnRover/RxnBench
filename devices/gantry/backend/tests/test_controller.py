@@ -318,7 +318,9 @@ def test_move_to_well_docks_at_plate_top_not_clearance_height(ctrl, client):
 
 def test_move_to_well_rejects_z_engage_deeper_than_well(ctrl):
     # 24_well_standard's well_depth_mm=17.4; ph_probe's z_engage=25 would
-    # punch through the bottom of this shallower well.
+    # punch through the bottom of this shallower well. geometry_validated is
+    # forced True to isolate this check from the separate unvalidated-geometry
+    # gate (ph_probe ships with geometry_validated: false).
     ctrl.load_workspace_from_yaml(textwrap.dedent("""\
         name: shallow_bench
         calibration_reference_well: plate1/A1
@@ -329,9 +331,10 @@ def test_move_to_well_rejects_z_engage_deeper_than_well(ctrl):
             orientation: standard
     """))
     ctrl.set_toolhead("ph_probe")
+    ctrl._toolhead_mgr.toolhead.geometry_validated = True
     ctrl.set_toolhead_mounted(True)
     with pytest.raises(MotionLimitError, match="collide with the well bottom"):
-        ctrl.move_to_well("plate1/A1", override_unvalidated=True)
+        ctrl.move_to_well("plate1/A1")
 
 
 def test_move_to_well_allows_z_engage_within_well_depth(ctrl, client):
@@ -339,6 +342,29 @@ def test_move_to_well_allows_z_engage_within_well_depth(ctrl, client):
     # z_engage=25.
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
     ctrl.set_toolhead("ph_probe")
+    ctrl._toolhead_mgr.toolhead.geometry_validated = True
+    ctrl.set_toolhead_mounted(True)
+    ctrl.move_to_well("plate1/A1")
+    assert any(name == "move" for name, _ in client.calls)
+
+
+def test_move_to_well_override_unvalidated_also_skips_engagement_check(ctrl, client):
+    # The toolhead calibration wizard relies on this: corner-well visits are
+    # pure positioning moves (it never calls engage_tool), so an unmeasured
+    # toolhead's *configured* z_engage exceeding a shallower calibration
+    # plate's depth isn't actually a collision risk there - only for the
+    # normal move_to_well-then-engage_tool workflow, which doesn't pass
+    # override_unvalidated on real hardware.
+    ctrl.load_workspace_from_yaml(textwrap.dedent("""\
+        name: shallow_bench
+        calibration_reference_well: plate1/A1
+        plates:
+          - id: plate1
+            plate_type: 24_well_standard
+            origin: {x: 100.0, y: 100.0, z: 15.0}
+            orientation: standard
+    """))
+    ctrl.set_toolhead("ph_probe")  # z_engage=25 > 24-well's well_depth_mm=17.4
     ctrl.set_toolhead_mounted(True)
     ctrl.move_to_well("plate1/A1", override_unvalidated=True)
     assert any(name == "move" for name, _ in client.calls)
