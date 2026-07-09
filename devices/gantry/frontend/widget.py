@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QFile, QThread, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton,
+    QCheckBox, QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton,
     QTabWidget, QVBoxLayout, QWidget,
 )
 from PySide6.QtUiTools import QUiLoader
@@ -42,6 +42,11 @@ class _LivePanel(QWidget):
         self._action_lbl = QLabel("Standby")
         self._well_lbl   = QLabel("-")
         self._canvas     = WorkspaceCanvas(t)
+        self._details_chk = QCheckBox("Show more details")
+        self._details_chk.setToolTip(
+            "Show the deck's axis-limit boundary and corner coordinates on the canvas"
+        )
+        self._details_chk.toggled.connect(self._canvas.set_show_details)
 
         # Status strip
         strip = QWidget()
@@ -60,6 +65,7 @@ class _LivePanel(QWidget):
         strip_lay.addWidget(self._action_lbl, 2)
         strip_lay.addWidget(well_head)
         strip_lay.addWidget(self._well_lbl, 1)
+        strip_lay.addWidget(self._details_chk)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -99,6 +105,13 @@ class _LivePanel(QWidget):
 
     def set_plate_specs(self, labware: dict) -> None:
         self._canvas.set_plate_specs(labware)
+
+    def set_limits(
+        self,
+        x_min: float, x_max: float, y_min: float, y_max: float,
+        z_min: float = 0.0, z_max: float = 0.0,
+    ) -> None:
+        self._canvas.set_limits(x_min, x_max, y_min, y_max, z_min, z_max)
 
     def load_workspace(self, ws: dict) -> None:
         self._canvas.load(ws)
@@ -280,6 +293,7 @@ class GantryWidget(QWidget):
         c.workspace_yaml_changed.connect(self._on_workspace_yaml_changed)
         c.experiment_active_changed.connect(self._on_experiment_active)
         c.labware_updated.connect(self._on_labware)
+        c.limits_updated.connect(self._on_limits)
 
     def _wire_controls(self) -> None:
         if self._home_btn:
@@ -427,6 +441,20 @@ class GantryWidget(QWidget):
             self._live_panel.set_plate_specs(labware)
         if hasattr(self, "_workspace_widget"):
             self._workspace_widget._canvas.set_plate_specs(labware)
+
+    def _on_limits(
+        self, x_min: float, x_max: float, y_min: float, y_max: float,
+        z_min: float, z_max: float,
+    ) -> None:
+        """Server-sourced axis limits: forward to the Live tab's canvas.
+
+        The Configuration tab's canvas connects to limits_updated directly
+        (see WorkspaceLoaderWidget.__init__) since it owns its own client
+        reference; this handler only covers the Live tab's separate canvas
+        instance.
+        """
+        if self._live_panel:
+            self._live_panel.set_limits(x_min, x_max, y_min, y_max, z_min, z_max)
 
     def _slot_widgets(self):
         """Yield (combo, display_lbl, mounted_lbl, active_lbl, last_cal_lbl, per-slot buttons) per slot."""

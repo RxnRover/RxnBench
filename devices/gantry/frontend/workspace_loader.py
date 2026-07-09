@@ -16,7 +16,7 @@ from PySide6.QtCore import QFile, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
-    QFileDialog, QInputDialog, QLabel, QPlainTextEdit,
+    QCheckBox, QFileDialog, QInputDialog, QLabel, QPlainTextEdit,
     QPushButton, QVBoxLayout, QWidget,
 )
 
@@ -50,6 +50,46 @@ _PALETTE = [
     "#3b82f6", "#10b981", "#f59e0b",
     "#8b5cf6", "#ef4444", "#06b6d4",
 ]
+
+
+def _compute_bounds(
+    plate_extents: list[tuple[float, float, float, float]],
+    limits: tuple[float, float, float, float] | None,
+    show_details: bool,
+    pad: float = 15.0,
+) -> tuple[float, float, float, float]:
+    """Compute the mm view bounds (min_x, max_x, min_y, max_y) for the canvas.
+
+    Normally the view fits tightly around the loaded plates. When
+    show_details is on and axis limits are known, the deck's full bed is
+    folded into the bounds too (via union, so plates that overhang a
+    mis-measured deck are still fully visible) - or used on its own when no
+    plates are loaded yet, so the empty deck grid can still be previewed.
+
+    Args:
+        plate_extents: Each plate's (x0, x1, y0, y1) footprint in mm.
+        limits: Deck axis limits as (x_min, x_max, y_min, y_max), or None if
+            not yet known.
+        show_details: Whether the "show more details" overlay is active.
+        pad: Margin in mm added around plate-derived bounds.
+    """
+    if plate_extents:
+        min_x = min(e[0] for e in plate_extents) - pad
+        min_y = min(e[2] for e in plate_extents) - pad
+        max_x = max(e[1] for e in plate_extents) + pad
+        max_y = max(e[3] for e in plate_extents) + pad
+    else:
+        min_x = min_y = max_x = max_y = 0.0
+
+    if show_details and limits is not None:
+        lx_min, lx_max, ly_min, ly_max = limits
+        if plate_extents:
+            min_x, min_y = min(min_x, lx_min), min(min_y, ly_min)
+            max_x, max_y = max(max_x, lx_max), max(max_y, ly_max)
+        else:
+            min_x, max_x, min_y, max_y = lx_min, lx_max, ly_min, ly_max
+
+    return min_x, max_x, min_y, max_y
 
 
 def plate_spec_from_labware(data: dict) -> _PlateSpec:
@@ -89,6 +129,8 @@ class WorkspaceCanvas(QWidget):
         self._cal_ref     = ""
         self._active_well = ("", "")   # (plate_id, well_label) to highlight
         self._current_pos: tuple[float, float] | None = None  # gantry XY mm
+        self._limits: tuple[float, float, float, float] | None = None  # x_min, x_max, y_min, y_max
+        self._show_details = False
         self.setMinimumSize(300, 200)
 
     def set_plate_specs(self, labware: dict) -> None:
@@ -140,6 +182,28 @@ class WorkspaceCanvas(QWidget):
         self._current_pos = (x, y)
         self.update()
 
+    def set_limits(
+        self,
+        x_min: float, x_max: float, y_min: float, y_max: float,
+        z_min: float = 0.0, z_max: float = 0.0,
+    ) -> None:
+        """Store the deck's axis limits and repaint.
+
+        Args:
+            x_min, x_max, y_min, y_max: Axis limits in mm, as reported by the
+                server's GetLimits command.
+            z_min, z_max: Accepted but unused - only X/Y are drawn on this
+                2-D canvas. Kept so GantryConnection.limits_updated's 6-value
+                signal can be connected to this method directly.
+        """
+        self._limits = (x_min, x_max, y_min, y_max)
+        self.update()
+
+    def set_show_details(self, show: bool) -> None:
+        """Toggle the deck-boundary/corner-coordinate overlay and repaint."""
+        self._show_details = show
+        self.update()
+
     def set_theme(self, t: dict) -> None:
         """Replace the active theme dict and repaint the canvas."""
         self._t = t
@@ -150,7 +214,7 @@ class WorkspaceCanvas(QWidget):
         try:
             p.setRenderHint(QPainter.Antialiasing)
             p.fillRect(self.rect(), QColor(self._t["bg_surface"]))
-            if not self._plates:
+            if not self._plates and not (self._show_details and self._limits):
                 p.setPen(QColor(self._t["text_dim"]))
                 p.setFont(QFont("sans-serif", 11))
                 p.drawText(self.rect(), Qt.AlignCenter, "No workspace loaded.")
@@ -191,10 +255,7 @@ class WorkspaceCanvas(QWidget):
             return ox_ - hw, ox_ + hw, oy_ - hh, oy_ + hh
 
         extents = [plate_extents(pl, sp) for pl, sp in entries]
-        min_x = min(e[0] for e in extents) - 15
-        min_y = min(e[2] for e in extents) - 15
-        max_x = max(e[1] for e in extents) + 15
-        max_y = max(e[3] for e in extents) + 15
+        min_x, max_x, min_y, max_y = _compute_bounds(extents, self._limits, self._show_details)
 
         span_x = max_x - min_x or 1
         span_y = max_y - min_y or 1
@@ -316,6 +377,10 @@ class WorkspaceCanvas(QWidget):
                     pid,
                 )
 
+        # Deck boundary + corner coordinates ("show more details" overlay)
+        if self._show_details and self._limits:
+            self._draw_deck_boundary(p, to_px, *self._limits, t)
+
         # Current gantry position crosshair
         if self._current_pos is not None:
             cx, cy = to_px(self._current_pos[0], self._current_pos[1])
@@ -361,6 +426,40 @@ class WorkspaceCanvas(QWidget):
         p.setPen(col)
         p.drawText(QRectF(ax + arm + 2, ay - 6, 12, 12), "X")
         p.drawText(QRectF(ax - 8, ay - arm - 10, 12, 12), "Y")
+
+    @staticmethod
+    def _draw_deck_boundary(
+        p: QPainter, to_px, x_min: float, x_max: float, y_min: float, y_max: float, t: dict,
+    ) -> None:
+        col = QColor(t.get("accent", "#3b82f6"))
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(col, 1.5, Qt.DashLine))
+        sx1, sy1 = to_px(x_min, y_max)  # screen top-left
+        sx2, sy2 = to_px(x_max, y_min)  # screen bottom-right
+        p.drawRect(QRectF(sx1, sy1, sx2 - sx1, sy2 - sy1))
+
+        label_w, label_h = 90, 16
+        p.setFont(QFont("sans-serif", 8, QFont.Bold))
+        # Each corner's label is anchored just inside the boundary (toward
+        # the rectangle's centre) so it stays on-canvas regardless of which
+        # of the 4 corners it is, even when the deck fills nearly the whole
+        # widget.
+        corners = [
+            (x_min, y_min, sx1, sy2, +1, -1),  # bottom-left: inward = right, up
+            (x_max, y_min, sx2, sy2, -1, -1),  # bottom-right: inward = left, up
+            (x_min, y_max, sx1, sy1, +1, +1),  # top-left: inward = right, down
+            (x_max, y_max, sx2, sy1, -1, +1),  # top-right: inward = left, down
+        ]
+        for mx, my, px_, py_, sdx, sdy in corners:
+            p.setBrush(QBrush(col))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(QRectF(px_ - 3, py_ - 3, 6, 6))
+
+            bx = px_ + (4 if sdx > 0 else -4 - label_w)
+            by = py_ + (4 if sdy > 0 else -4 - label_h)
+            align = Qt.AlignLeft if sdx > 0 else Qt.AlignRight
+            p.setPen(QColor(t["text_muted"]))
+            p.drawText(QRectF(bx, by, label_w, label_h), Qt.AlignVCenter | align, f"({mx:.0f}, {my:.0f})")
 
     @staticmethod
     def _draw_scale_bar(p: QPainter, scale: float, rx: float, ry: float, t: dict) -> None:
@@ -425,6 +524,7 @@ class WorkspaceLoaderWidget(QWidget):
         self._load_btn:     QPushButton    = self._ui.findChild(QPushButton,   "load_btn")
         self._clear_btn:    QPushButton    = self._ui.findChild(QPushButton,   "clear_btn")
         self._apply_btn:    QPushButton    = self._ui.findChild(QPushButton,   "apply_btn")
+        self._details_chk:  QCheckBox      = self._ui.findChild(QCheckBox,    "show_details_chk")
         self._yaml_edit:    QPlainTextEdit = self._ui.findChild(QPlainTextEdit,"yaml_edit")
         self._file_lbl:     QLabel         = self._ui.findChild(QLabel,        "file_lbl")
         self._line_lbl:     QLabel         = self._ui.findChild(QLabel,        "line_count_lbl")
@@ -444,6 +544,7 @@ class WorkspaceLoaderWidget(QWidget):
         else:
             client.workspace_op_done.connect(self._on_op_done)
             client.labware_updated.connect(self._canvas.set_plate_specs)
+            client.limits_updated.connect(self._canvas.set_limits)
 
         self._status("")
 
@@ -475,6 +576,8 @@ class WorkspaceLoaderWidget(QWidget):
         self._clear_btn.clicked.connect(self._on_clear)
         self._apply_btn.clicked.connect(self._on_apply)
         self._yaml_edit.textChanged.connect(self._on_text_changed)
+        if self._details_chk:
+            self._details_chk.toggled.connect(self._canvas.set_show_details)
 
     def _on_text_changed(self) -> None:
         text = self._yaml_edit.toPlainText()

@@ -39,6 +39,12 @@ def test_96_well_depth(plate_96):
     assert plate_96.well_depth_mm > 0
 
 
+def test_96_plate_height_covers_well_depth(plate_96):
+    # The top surface a travel move must clear can't sit below the well's
+    # own bottom, or the "safe" clearance height would be a lie.
+    assert plate_96.plate_height_mm >= plate_96.well_depth_mm
+
+
 def test_96_parse_a1(plate_96):
     assert plate_96.parse_label("A1") == (0, 0)
 
@@ -137,6 +143,7 @@ columns: 3
 spacing_mm: 10.0
 well_diameter_mm: 5.0
 well_depth_mm: 8.0
+plate_height_mm: 11.0
 a1_offset_x: 12.0
 a1_offset_y: 11.0
 """
@@ -158,7 +165,7 @@ def test_missing_fields_named_in_error(tmp_path, monkeypatch):
 
 def test_missing_spacing_named_in_error(tmp_path, monkeypatch):
     _labware_dir(tmp_path, monkeypatch, {"partial_plate": (
-        "rows: 2\ncolumns: 3\nwell_diameter_mm: 1\nwell_depth_mm: 1\n"
+        "rows: 2\ncolumns: 3\nwell_diameter_mm: 1\nwell_depth_mm: 1\nplate_height_mm: 2\n"
         "a1_offset_x: 1\na1_offset_y: 1\n"
     )})
     with pytest.raises(ValueError, match="spacing_mm"):

@@ -33,6 +33,7 @@ class GantryController:
         y_max: float = 350.0,
         z_min: float = 0.0,
         z_max: float = 340.0,
+        z_clearance_padding_mm: float = 5.0,
     ):
         """Initialise the controller and restore any persisted homing state.
 
@@ -44,11 +45,14 @@ class GantryController:
             y_max: Back axis limit in mm.
             z_min: Lower Z limit in mm (Z=0 is the reference surface).
             z_max: Upper Z limit in mm.
+            z_clearance_padding_mm: Safety margin added above the tallest
+                loaded labware when computing safe clearance-travel height.
         """
         self._toolhead_mgr = ToolheadManager()
         self._homing_mgr = HomingManager(client, x_min, x_max, y_min, y_max, z_min, z_max)
         self._engine = MotionEngine(client)
         self._workspace_mgr = WorkspaceManager()
+        self._z_clearance_padding_mm = z_clearance_padding_mm
         self._restore_state()
 
     def _restore_state(self) -> None:
@@ -61,16 +65,28 @@ class GantryController:
 
     @property
     def _safe_clearance_z(self) -> float:
-        """Height to raise to during clearance travel: enough to clear the active tip.
+        """Height to raise to during clearance travel: enough to clear every
+        loaded plate's top surface as well as the active tip.
 
-        Derived, not configured - a fixed bare-carriage floor, or (for a
-        toolhead whose tip hangs down further than that) exactly enough to
-        keep the tip above z_min while raised. Every Z target is still
-        bounds-checked against z_min/tip_offset_z regardless of this value.
+        Derived, not a single fixed guess: the bare-carriage floor, the
+        active tip's own hang-down, and (if a workspace is loaded) the
+        tallest placed plate's top surface plus a configurable safety
+        padding all compete, and clearance travel rises to whichever demands
+        the most headroom. This replaces a flat constant that had no idea
+        whether a tall beaker was sharing the deck with a low-profile plate,
+        so travel over an unexpectedly tall container was never actually
+        checked against real geometry. Every Z target is still bounds-checked
+        against z_min/z_max/tip_offset_z regardless of this value.
         """
         th = self._toolhead_mgr.toolhead
         tip_z = th.tip_offset_z if th else 0.0
-        return max(self._BARE_CLEARANCE_Z_MM, tip_z + self._homing_mgr.z_min)
+        labware_top = self._workspace_mgr.max_labware_top_z()
+        labware_clearance = labware_top + self._z_clearance_padding_mm if labware_top > 0 else 0.0
+        return max(
+            self._BARE_CLEARANCE_Z_MM,
+            tip_z + self._homing_mgr.z_min,
+            labware_clearance,
+        )
 
     def _check_bounds(
         self,

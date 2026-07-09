@@ -132,6 +132,31 @@ class WorkspaceManager:
             self._geometry_cache[plate_type] = PlateGeometry.load(plate_type)
         return self._geometry_cache[plate_type]
 
+    def max_labware_top_z(self) -> float:
+        """Return the highest loaded labware top surface (origin_z + plate_height_mm) in mm.
+
+        Used to size safe clearance-travel height from the actual deck
+        contents instead of a fixed guess. A plate whose type can't be
+        loaded is skipped (with a warning) rather than failing the whole
+        calculation - the same resilience GetLabware already applies to a
+        single bad definition file.
+
+        Returns:
+            The tallest placed plate's top-surface height in mm, or 0.0 if
+            no workspace is loaded or it has no plates.
+        """
+        if self._config is None or not self._config.plates:
+            return 0.0
+        tops = []
+        for plate in self._config.plates:
+            try:
+                geom = self._load_geometry(plate.plate_type)
+            except Exception as exc:
+                _log.warning("Skipping plate %r in clearance calc: %s", plate.id, exc)
+                continue
+            tops.append(plate.origin_z + geom.plate_height_mm)
+        return max(tops) if tops else 0.0
+
     @staticmethod
     def _apply_orientation(
         plate_dx: float,

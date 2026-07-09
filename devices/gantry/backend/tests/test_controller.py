@@ -142,6 +142,42 @@ def test_toolhead_tip_offset_z_raises_safe_clearance_height(ctrl, client):
     assert client.calls[0][1]["z"] == 110.0  # max(clearance_z=50, tip_offset_z=110)
 
 
+# ---------------------------------------------------------------------------
+# Workspace-aware safe clearance height (dynamic, not a flat constant)
+# ---------------------------------------------------------------------------
+
+def test_safe_clearance_falls_back_to_bare_floor_without_workspace(ctrl, client):
+    ctrl.move_to(100.0, 100.0, 100.0)
+    assert client.calls[0][1]["z"] == pytest.approx(50.0)  # _BARE_CLEARANCE_Z_MM
+
+
+def test_safe_clearance_uses_workspace_labware_height(ctrl, client):
+    # plate1 sits at origin_z=15.0; 96_well_standard's plate_height_mm=39 ->
+    # top=54.0, plus the default 5mm padding = 59.0, which beats the bare
+    # 50mm floor.
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.move_to(100.0, 100.0, 100.0)
+    assert client.calls[0][1]["z"] == pytest.approx(59.0)
+
+
+def test_safe_clearance_padding_is_configurable(client):
+    ctrl = GantryController(
+        client=client,
+        x_min=0.0, x_max=300.0, y_min=0.0, y_max=300.0, z_min=0.0, z_max=250.0,
+        z_clearance_padding_mm=20.0,
+    )
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
+    ctrl.move_to(100.0, 100.0, 100.0)
+    assert client.calls[0][1]["z"] == pytest.approx(15.0 + 39.0 + 20.0)
+
+
+def test_safe_clearance_ignores_padding_when_no_labware_loaded(ctrl, client):
+    # Padding is only meaningful relative to a measured labware height - it
+    # must not become a phantom floor of its own when the deck is empty.
+    ctrl.move_to(100.0, 100.0, 100.0)
+    assert client.calls[0][1]["z"] == pytest.approx(50.0)
+
+
 def test_toolhead_tip_below_z_min_raises(ctrl):
     ctrl.set_toolhead("ph_probe")
     ctrl._toolhead_mgr.toolhead.tip_offset_z = 110.0  # tip sits 110mm below the carriage

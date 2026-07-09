@@ -118,3 +118,37 @@ def test_to_yaml_round_trips_through_load_from_yaml(mgr):
     data = yaml.safe_load(mgr.to_yaml())
     assert data["name"] == "test_bench"
     assert {p["id"] for p in data["plates"]} == {"plates", "rotated"}
+
+
+# ---------------------------------------------------------------------------
+# max_labware_top_z - drives GantryController's dynamic safe clearance height
+# ---------------------------------------------------------------------------
+
+def test_max_labware_top_z_zero_without_workspace():
+    assert WorkspaceManager().max_labware_top_z() == 0.0
+
+
+def test_max_labware_top_z_uses_origin_plus_plate_height(mgr):
+    # Both plates share plate_type=96_well_standard (plate_height_mm=39) and
+    # the same origin_z=15.0, so both tops are 15.0 + 39 = 54.0.
+    from rxn_bench_gantry.plate_geometry import PlateGeometry
+    plate_height = PlateGeometry.load("96_well_standard").plate_height_mm
+    assert mgr.max_labware_top_z() == pytest.approx(15.0 + plate_height)
+
+
+def test_max_labware_top_z_picks_the_tallest_plate():
+    m = WorkspaceManager()
+    m.load_from_yaml(textwrap.dedent("""\
+        name: mixed_bench
+        calibration_reference_well: low/A1
+        plates:
+          - id: low
+            plate_type: 24_well_standard
+            origin: {x: 0.0, y: 0.0, z: 0.0}
+          - id: tall
+            plate_type: 100ml_beaker
+            origin: {x: 150.0, y: 0.0, z: 0.0}
+    """))
+    from rxn_bench_gantry.plate_geometry import PlateGeometry
+    tall_top = PlateGeometry.load("100ml_beaker").plate_height_mm
+    assert m.max_labware_top_z() == pytest.approx(tall_top)

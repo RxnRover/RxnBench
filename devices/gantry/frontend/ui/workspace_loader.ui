@@ -115,6 +115,29 @@
         </property>
        </widget>
       </item>
+      <item>
+       <spacer name="toolbar_spacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="show_details_chk">
+        <property name="toolTip">
+         <string>Show the deck's axis-limit boundary and corner coordinates on the canvas</string>
+        </property>
+        <property name="text">
+         <string>Show more details</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

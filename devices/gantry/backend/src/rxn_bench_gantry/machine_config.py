@@ -29,6 +29,13 @@ class MachineConfig:
 
     moonraker_fallback_host: str = "192.168.10.2"
 
+    # Safety margin added on top of the tallest loaded labware's top surface
+    # when computing safe clearance-travel height, to absorb measurement
+    # error in labware/toolhead geometry. Per-machine (not per-labware)
+    # because it is about the operator's confidence in *this bench's*
+    # measurements, not a physical property of any one plate.
+    z_clearance_padding_mm: float = 5.0
+
     @classmethod
     def load(cls) -> MachineConfig:
         """Load from ~/.rxn_bench/machine.yaml, or return defaults if absent."""
@@ -40,6 +47,9 @@ class MachineConfig:
             cfg = cls(
                 moonraker_fallback_host=str(
                     data.get("moonraker_fallback_host", cls.moonraker_fallback_host)
+                ),
+                z_clearance_padding_mm=float(
+                    data.get("z_clearance_padding_mm", cls.z_clearance_padding_mm)
                 ),
             )
             log.info("Machine config loaded from %s", _CONFIG_FILE)

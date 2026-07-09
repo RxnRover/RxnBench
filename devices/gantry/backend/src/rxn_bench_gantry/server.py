@@ -42,20 +42,26 @@ async def create_app(config):
             log.warning("Moonraker not discovered - falling back to %s", host)
         motion_client = MoonrakerClient(host)
 
-    # get_axis_limits() is the single source of truth for the starting bounds -
-    # Klipper's own configured travel range for real hardware, or the fixed
-    # simulated bed for mock mode - instead of a second, separately maintained
-    # set of numbers that can silently drift out of sync with it. This is only
-    # the *initial* default: manual homing (confirm_x_min/max, confirm_y_min/max)
+    # get_axis_limits() is the single source of truth for the starting *size*
+    # of each axis - Klipper's own configured travel range for real hardware,
+    # or the fixed simulated bed for mock mode - instead of a second,
+    # separately maintained set of numbers that can silently drift out of
+    # sync with it. Only the span (max - min) is taken from it, never
+    # Klipper's raw absolute numbering: every workspace YAML, plate origin,
+    # and HomingManager.confirm_x_min/y_min (which declares the operator's
+    # confirmed corner *as* 0) assumes a 0-based frame throughout this app, so
+    # min is always forced to 0 here regardless of what Klipper's own
+    # position_min happens to be (which is sometimes negative, e.g. endstop
+    # backoff clearance). This is only the *initial* default: manual homing
     # and its saved state always take precedence once calibrated, exactly as
     # before. Falls back to a conservative default if the query fails, so a
     # motion controller that's slow to come up doesn't take the whole SiLA
     # server down with it.
     try:
         limits = motion_client.get_axis_limits()
-        x_min, x_max = limits["x"]
-        y_min, y_max = limits["y"]
-        z_min, z_max = limits["z"]
+        x_min, x_max = 0.0, limits["x"][1] - limits["x"][0]
+        y_min, y_max = 0.0, limits["y"][1] - limits["y"][0]
+        z_min, z_max = 0.0, limits["z"][1] - limits["z"][0]
     except Exception as exc:
         log.warning("Could not query axis limits (%s) - using conservative defaults.", exc)
         x_min, x_max = 0.0, 350.0
@@ -67,6 +73,7 @@ async def create_app(config):
         x_min=x_min, x_max=x_max,
         y_min=y_min, y_max=y_max,
         z_min=z_min, z_max=z_max,
+        z_clearance_padding_mm=machine.z_clearance_padding_mm,
     )
 
     app.register(Gantry(controller=controller))

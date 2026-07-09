@@ -15,7 +15,7 @@ _log = logging.getLogger(__name__)
 
 _REQUIRED_FIELDS = (
     "rows", "columns",
-    "well_diameter_mm", "well_depth_mm",
+    "well_diameter_mm", "well_depth_mm", "plate_height_mm",
     "a1_offset_x", "a1_offset_y",
 )
 
@@ -32,6 +32,7 @@ class PlateGeometry:
     columns: int
     well_diameter_mm: float
     well_depth_mm: float
+    plate_height_mm: float  # deck to plate top surface - what travel moves must clear
     a1_offset_x: float
     a1_offset_y: float
     spacing_mm: float | None = None    # centre-to-centre, both axes; used when x/y not given
@@ -124,6 +125,7 @@ class PlateGeometry:
             columns=data["columns"],
             well_diameter_mm=data["well_diameter_mm"],
             well_depth_mm=data["well_depth_mm"],
+            plate_height_mm=data["plate_height_mm"],
             a1_offset_x=data["a1_offset_x"],
             a1_offset_y=data["a1_offset_y"],
             spacing_mm=data.get("spacing_mm"),
