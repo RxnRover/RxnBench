@@ -10,7 +10,7 @@ This is a library, not a server — it has no entry point and no SiLA server of 
 
 - Python 3.10+
 - [`uv`](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- `rxn-bench-gantry` and/or `rxn-bench-ph` running (locally, mocked, or on a remote Pi) — see [../../../docs/usage.md](../../../docs/usage.md)
+- `rxn-bench-gantry` and/or `rxn-bench-ph` running (locally, mocked, or on a remote device host) — see [../../../docs/usage.md](../../../docs/usage.md)
 
 Install from the workspace root:
 
@@ -44,7 +44,7 @@ with RxnBenchClient() as bench:
     bench.gantry.save_and_park()
 ```
 
-### Connecting explicitly (e.g. a remote Pi)
+### Connecting explicitly (e.g. a remote device host)
 
 Skip mDNS discovery by passing `host`/`port` instead of `server`:
 
@@ -112,7 +112,7 @@ Use as a context manager (`with RxnBenchClient() as bench:`) to ensure connectio
 
 ## How Scripts Get to the Backend
 
-The client is a library meant to be imported in scripts that run **on the backend machine** (the Raspberry Pi, or a machine on the same network as the Pi). Options for deploying scripts:
+The client is a library meant to be imported in scripts that run **on the backend machine** (a Raspberry Pi in the reference deployment, or a machine on the same network as the backend host). Options for deploying scripts:
 
 - **`scp`** — copy the script file and run it over SSH
 - **Git pull** — keep experiment scripts in a repo and pull on the backend
