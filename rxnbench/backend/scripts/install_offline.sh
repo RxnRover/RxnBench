@@ -14,8 +14,17 @@
 #     old install.sh + install_service.sh two-step flow.
 #
 # Usage:
-#   scripts/install_offline.sh                      # install every registered device
+#   scripts/install_offline.sh                       # install every registered device
 #   scripts/install_offline.sh --devices gantry,ph   # install just these
+#   scripts/install_offline.sh --advertise-ip 192.168.50.1   # pin a specific IP
+#   scripts/install_offline.sh --no-pin              # skip IP pinning entirely
+#
+# By default this auto-detects the host's primary IPv4 (the Pi's bench-switch
+# address) and pins each device's SiLA server to it, so mDNS discovery works
+# on the gatewayless bench network (where the CDK would otherwise advertise
+# 127.0.0.1 and multicast couldn't egress - see docs/deployment.md). Pass
+# --advertise-ip to override the detected address, or --no-pin to leave the
+# CDK's 0.0.0.0 auto-detect in place (fine on a normal LAN with a default route).
 #
 # Device keys must match the registry in install_service.sh (this script's
 # firewall-port lookup below is kept in sync with that same registry - add a
@@ -39,14 +48,24 @@ _PACKAGE_DIR_OF() {
 }
 
 DEVICES="gantry,ph,camera"
+ADVERTISE_IP=""
+NO_PIN=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --devices)
             DEVICES="$2"
             shift 2
             ;;
+        --advertise-ip)
+            ADVERTISE_IP="$2"
+            shift 2
+            ;;
+        --no-pin)
+            NO_PIN=1
+            shift
+            ;;
         *)
-            echo "Usage: $0 [--devices gantry,ph]"
+            echo "Usage: $0 [--devices gantry,ph] [--advertise-ip <IP> | --no-pin]"
             exit 1
             ;;
     esac
@@ -93,7 +112,72 @@ else
     echo "No bundled wheelhouse found at $WHEELHOUSE - installing from the network."
 fi
 
-"${SCRIPT_DIR}/install_service.sh" "${DEVICE_LIST[@]}" "${OFFLINE_ARGS[@]}"
+# --- Step 2b: resolve the IP to advertise/bind (see docs/deployment.md) ---
+# Auto-detect the primary IPv4 unless the user gave one or opted out. On the
+# reference Pi the isolated bench interface (eth0, 192.168.50.1) is the only
+# one with a global address, so `hostname -I`'s first token is it.
+PIN_ARGS=()
+if [[ -z "$NO_PIN" ]]; then
+    if [[ -z "$ADVERTISE_IP" ]]; then
+        ADVERTISE_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    fi
+    if [[ "$ADVERTISE_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Pinning SiLA servers to ${ADVERTISE_IP} for reliable mDNS discovery"
+        echo "(override with --advertise-ip <IP>, or skip with --no-pin)."
+        PIN_ARGS=(--advertise-ip "$ADVERTISE_IP")
+    else
+        echo "Warning: could not auto-detect a bench IP to pin (got '${ADVERTISE_IP:-none}')."
+        echo "Discovery may fail on a gatewayless network - see docs/deployment.md."
+        echo "Re-run with --advertise-ip <the Pi's bench IP> if so."
+    fi
+fi
+
+"${SCRIPT_DIR}/install_service.sh" "${DEVICE_LIST[@]}" "${OFFLINE_ARGS[@]}" "${PIN_ARGS[@]}"
+
+# --- Step 2c: multicast route for mDNS discovery on a gatewayless network ---
+# The SiLA CDK announces to 224.0.0.251 with a plain sendto() and relies on the
+# kernel's default-route lookup to choose an egress interface. The isolated
+# bench network has no default route by design, so that lookup fails and every
+# announcement is dropped - discovery silently fails even with everything else
+# correct. The CDK's connector never forwards discovery.network_interfaces to
+# its multicast socket (it uses the config only as an on/off gate), so
+# IP_MULTICAST_IF is never set and a route is the only lever. Install a tiny
+# boot-time oneshot that pins an on-link 224.0.0.0/4 route on the bench
+# interface. Gated on the multicast group not already being routable, so it's a
+# no-op on a normal LAN where a default (or existing multicast) route exists.
+if [[ -n "$ADVERTISE_IP" ]] && [[ "$ADVERTISE_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        && ! ip route get 224.0.0.251 &>/dev/null; then
+    MCAST_IFACE="$(ip -o -4 addr show | awk -v ip="$ADVERTISE_IP" '$4 ~ "^"ip"/" {print $2; exit}')"
+    IP_BIN="$(command -v ip)"
+    if [[ -n "$MCAST_IFACE" && -n "$IP_BIN" ]]; then
+        echo ""
+        echo "Multicast isn't routable (gatewayless network) - installing a boot-time"
+        echo "224.0.0.0/4 route on ${MCAST_IFACE} so mDNS discovery works..."
+        sudo tee /etc/systemd/system/rxn-bench-mcast-route.service > /dev/null <<EOF
+[Unit]
+Description=Rxn Bench multicast route for SiLA/mDNS discovery
+Wants=network-online.target
+After=network-online.target
+Before=rxn-bench-gantry.service rxn-bench-ph.service rxn-bench-camera.service
+
+[Service]
+Type=oneshot
+ExecStart=${IP_BIN} route replace 224.0.0.0/4 dev ${MCAST_IFACE}
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo systemctl daemon-reload
+        sudo systemctl enable rxn-bench-mcast-route.service
+        sudo systemctl restart rxn-bench-mcast-route.service
+        echo "Installed rxn-bench-mcast-route.service (224.0.0.0/4 dev ${MCAST_IFACE})."
+    else
+        echo ""
+        echo "Warning: multicast isn't routable and no interface owns ${ADVERTISE_IP}."
+        echo "mDNS discovery will fail - add a 224.0.0.0/4 route manually (see docs/deployment.md)."
+    fi
+fi
 
 # --- Step 3: firewall (only touch it if ufw is present and active - most
 #     bench Pis don't run one, but this keeps the installer correct if IT does) ---

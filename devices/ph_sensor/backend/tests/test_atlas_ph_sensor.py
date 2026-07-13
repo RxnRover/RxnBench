@@ -81,3 +81,19 @@ def test_status_handles_short_response():
     sensor, _ = _sensor(_ok_response("?Status"))
     status = sensor.status()
     assert status == {"restart_reason": None, "voltage": None}
+
+
+def test_sensor_accepts_injected_uart_driver():
+    """The driver= keyword lets the sensor run over UART instead of I2C."""
+    from rxn_bench_ph.atlas_scientific_uart_driver import AtlasScientificEZOUart
+    from rxn_bench_ph.mock_uart import MockEZOUart
+
+    sensor = AtlasPHSensor(driver=AtlasScientificEZOUart(MockEZOUart(ph=7.2)), sensor_id="uart_ph")
+    reading = sensor.read()
+    assert reading.value == 7.2
+    assert reading.sensor_id == "uart_ph"
+
+
+def test_sensor_requires_bus_or_driver():
+    with pytest.raises(ValueError):
+        AtlasPHSensor()

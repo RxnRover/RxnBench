@@ -2,7 +2,7 @@ name: ph_experiment-1
 
 # Well used as the physical reference point during deck calibration.
 # Use "plate_id/well_label" format, e.g. "reagents/A1".
-calibration_reference_well: 96-well/H1
+calibration_reference_well: 24-well/A1
 
 plates:
   - id: 24-well                     # unique id used in well labels, e.g. "plate1/A3"

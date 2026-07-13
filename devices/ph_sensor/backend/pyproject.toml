@@ -8,7 +8,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-rpi = ["smbus2>=0.4.3"]
+# Real-hardware transports on the Pi: smbus2 for the I2C path, pyserial for the
+# UART path. Both are pure Python and small, so they're bundled together.
+rpi = ["smbus2>=0.4.3", "pyserial>=3.5"]
 
 [project.scripts]
 rxn-bench-ph = "rxn_bench_ph._cli:main"
@@ -61,5 +63,5 @@ disallow_untyped_defs = true
 exclude = ["tests/", "docs/"]
 
 [[tool.mypy.overrides]]
-module = ["unitelabs.*", "smbus2.*"]
+module = ["unitelabs.*", "smbus2.*", "serial.*"]
 ignore_missing_imports = true

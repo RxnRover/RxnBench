@@ -17,20 +17,40 @@ class PHReading(SensorReading):
 
 
 class AtlasPHSensor(BaseSensor):
-    """Atlas Scientific EZO-pH sensor."""
+    """Atlas Scientific EZO-pH sensor, over I2C or UART."""
 
     display_name = 'Atlas Scientific pH Sensor'
-    description = 'Measures solution pH via Atlas Scientific EZO-pH circuit over I2C.'
+    description = 'Measures solution pH via an Atlas Scientific EZO-pH circuit.'
 
-    def __init__(self, i2c_bus, sensor_id: str = 'atlas_ph', address: int = DEFAULT_I2C_ADDRESS):
+    def __init__(
+        self,
+        i2c_bus=None,
+        sensor_id: str = 'atlas_ph',
+        address: int = DEFAULT_I2C_ADDRESS,
+        *,
+        driver=None,
+    ):
         """
         Args:
-            i2c_bus:   Open SMBus (or compatible) object for the I2C bus.
+            i2c_bus:   Open SMBus (or compatible) object for the I2C bus. Used to
+                       build the default I2C driver when *driver* is not given.
             sensor_id: Logical identifier used in readings and logs.
-            address:   7-bit I2C address of the EZO-pH circuit.
+            address:   7-bit I2C address of the EZO-pH circuit (I2C path only).
+            driver:    A ready EZO command driver (e.g. ``AtlasScientificEZOUart``)
+                       to use instead of building an I2C one - the transport-agnostic
+                       injection point for the UART path. Mutually exclusive with
+                       *i2c_bus*.
+
+        Raises:
+            ValueError: If neither *i2c_bus* nor *driver* is provided.
         """
         super().__init__(sensor_id)
-        self._driver = AtlasScientificEZO(i2c_bus, address)
+        if driver is not None:
+            self._driver = driver
+        elif i2c_bus is not None:
+            self._driver = AtlasScientificEZO(i2c_bus, address)
+        else:
+            raise ValueError("AtlasPHSensor requires either an i2c_bus or a driver")
 
     def read(self) -> PHReading:
         value = self._driver.read_ph()

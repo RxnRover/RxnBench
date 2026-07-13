@@ -223,11 +223,14 @@ devices/ph_sensor/backend/src/rxn_bench_ph/
 ├── feature.py
 ├── interfaces.py
 ├── atlas_ph_sensor.py
-├── atlas_scientific_driver.py
+├── ezo_commands.py                 ← transport-agnostic EZO command set (shared)
+├── atlas_scientific_driver.py      ← EZO over I2C (commands + status-byte parsing)
+├── atlas_scientific_uart_driver.py ← EZO over UART/serial
 ├── base_sensor.py
-├── base_driver.py
-├── i2c_bus.py
-├── mock_i2c.py
+├── base_driver.py                  ← I2C transport base (AbstractI2CDriver)
+├── i2c_bus.py                      ← SMBusI2C adapter
+├── mock_i2c.py                     ← EZO I2C protocol emulator
+├── mock_uart.py                    ← EZO UART protocol emulator
 ├── mock_ph_sensor.py
 ├── enums.py
 └── session_log.py
@@ -237,10 +240,16 @@ Main responsibilities:
 
 - Expose the pH SiLA feature.
 - Keep pH feature logic decoupled from concrete sensor implementation through `PHSensorProtocol`.
-- Support mock pH readings for development (`MockPHSensor`), plus `MockI2CBus`, an
-  EZO-protocol emulator that exercises the *real* driver stack end-to-end without hardware.
+- Speak the Atlas EZO-pH command protocol over **either I2C or UART**: `ezo_commands.EZOCommandSet`
+  holds the transport-agnostic commands (`read_ph`, `calibrate_*`, `get_slope`, …) once, and the two
+  drivers (`AtlasScientificEZO` for I2C, `AtlasScientificEZOUart` for UART) each supply only the
+  byte-level send/receive. `server.py` selects the transport at startup via `RXN_BENCH_PH_TRANSPORT`
+  (`i2c` default / `uart`), with `RXN_BENCH_PH_SERIAL_PORT`/`RXN_BENCH_PH_BAUD` for the serial path.
+- Support mock pH readings for development (`MockPHSensor`), plus `MockI2CBus` **and** `MockEZOUart`,
+  protocol emulators that exercise the *real* driver stack end-to-end without hardware on each transport.
 - Bridge smbus2 to the driver's raw write/read interface via `i2c_bus.SMBusI2C`
-  (EZO circuits speak raw I2C byte streams, not the SMBus register protocol).
+  (EZO circuits speak raw I2C byte streams, not the SMBus register protocol); the UART driver talks to
+  a pyserial `Serial` (or any `write`/`read_until` object) directly.
 - Keep pH-specific calibration concepts inside the pH package.
 
 ### Camera package
@@ -319,6 +328,7 @@ Main responsibilities:
 | Workspace YAML source of truth | Done — `GetWorkspaceYaml`/`Subscribe_CurrentWorkspaceYaml` read from the controller's workspace manager, so name-loaded (`SetWorkspace`) and boot-restored workspaces are visible to clients (previously only `LoadWorkspaceYaml` updated a feature-level cache) |
 | Multi-toolhead support (two heads mounted at once) | Done — mount confirmations are **per-head** and survive activation switches: confirm each physically installed head once at setup, then scripts alternate between them unattended (`set_toolhead` is a pure software switch; `mount_toolhead` is idempotent). `move_to_well` refuses a head that was never confirmed mounted (`ToolheadNotMountedError`) or whose geometry is unvalidated. Homing invalidation moved from switching to the *physical-change* events (confirm/clear mounted, remove head), and only when state actually changes — so a mid-script switch no longer kills `save_and_park`. `ToolheadInfo` streams `mounted_toolheads` (pipe-delimited) so both UI slots show their own head's mount readiness; each slot's Activate switches the active head, the matching slot shows the ACTIVE badge, and mount/remove/calibrate only enable on the active slot. Verified end-to-end against a live mock server. |
 | Mock I2C bus (`MockI2CBus`) + SMBus adapter (`SMBusI2C`) | Done — the real pH driver stack runs end-to-end against the EZO emulator in tests; `SMBusI2C` fixes a latent crash where `smbus2.SMBus` was passed directly to a driver expecting raw `write`/`read` |
+| pH EZO-pH over UART/serial (alongside I2C) | Done — `AtlasScientificEZOUart` speaks the EZO serial protocol (`cmd\r`, CR-terminated `*OK`/`*ER`-framed replies, continuous mode disabled at startup) sharing the command set with the I2C driver via `ezo_commands.EZOCommandSet`; selected by `RXN_BENCH_PH_TRANSPORT=uart` (+ `RXN_BENCH_PH_SERIAL_PORT`/`RXN_BENCH_PH_BAUD`). `MockEZOUart` runs the real UART driver stack in tests. Added for the bench probe wired to the Pi's TX/RX rather than I2C. Needs pyserial (now in the `[rpi]` extra) - the deployed offline bundle must be rebuilt to include it before the Pi can run the UART path. |
 | Frontend test suite | Done (first pass) — `rxnbench/frontend/tests/`: generator golden checks per device, `_format_error` decoding, labware→canvas spec conversion; run with `make test` (headless) |
 | Client test suite | Done — `rxnbench/backend/client/tests/` (37 tests, `make test-client`, in CI): `RxnBenchClient` session wiring (connect/close, lock-holder selection, release-failure safety), `at_well` sequencing incl. disengage-on-exception, pause/stop polling, CSV logging, lock-token attachment to every gantry command, server-labware well enumeration, and the PHProbe convenience readers — all against fakes, no servers needed |
 | CI workflow | Done — `.github/workflows/ci.yml` runs both backend suites, frontend tests, `check-proto`, and `check-connections` on push/PR |
@@ -355,6 +365,7 @@ These are the active issues worth tracking now.
 | Verify Crowsnest wiring on the real SV08 | `rxn_bench_camera/crowsnest_camera.py` + physical bench | High | The HTTP client, config loading, feature, and mock path are complete and tested, but `crowsnest_base_url`/`crowsnest_snapshot_path` defaults (ustreamer's `/snapshot`) have not been confirmed against a live Crowsnest deployment - verify on a bench session and adjust `~/.rxn_bench/machine.yaml` if the SV08's `crowsnest.conf` uses mjpg-streamer instead. |
 | Tune camera image-log retention for the deployment's storage budget | `rxn_bench_camera/image_log.py`, `~/.rxn_bench/machine.yaml` | Medium | Default is `capture_interval_s=30`, 7-day retention on `logs/images/`; this can still add up to several GB on a Pi's SD card at higher capture rates. No pressure to change until a real bench session shows it's a problem. |
 | Windows PyInstaller build (CI) | `rxnbench/frontend/packaging/` | High for TODO-AI.md §1.2 | PyInstaller doesn't cross-compile, so `make dist` has only been run and verified on Linux so far. The required target is a Windows `.exe` — needs a `windows-latest` GitHub Actions job (or a Windows VM) running the same `make dist` and producing a downloadable artifact. Also unverified on Windows: Qt platform plugin bundling (`windows` platform plugin vs. this session's `offscreen`/`xcb` testing) and whether `pyinstaller-hooks-contrib`'s grpc/zeroconf hooks need Windows-specific hidden imports. |
+| Verify installer's auto-pin + multicast-route service on a from-scratch reinstall | `rxnbench/backend/scripts/install_offline.sh` (+ `install_service.sh`) | Medium | On the gatewayless bench network discovery silently fails despite healthy services, two independent causes (see the 2026-07-13 CHANGELOG entry): the CDK auto-detect advertises `127.0.0.1`, and multicast can't egress with no default route. Fixed: `install_offline.sh` auto-detects the host's primary IPv4 (`hostname -I`) and (a) pins `sila_server.hostname` via a `~/.rxn_bench/<device>.json` override (new `--advertise-ip <IP>` flag to `install_service.sh`; `--no-pin` opts out), and (b) when the multicast group isn't already routable, installs a boot-time `rxn-bench-mcast-route.service` oneshot (`ip route replace 224.0.0.0/4 dev <iface>`). Device systemd units now wait on `network-online.target` since they bind a specific IP. **Note:** `discovery.network_interfaces` is a no-op — the CDK connector (`unitelabs/cdk/connector.py`) never forwards the discovery config to its multicast socket, so `IP_MULTICAST_IF` is never set; the route is the only lever (confirmed empirically). The pin/route logic was validated in isolation and applied by hand to the live Pi (discovery confirmed working), but the full installer path hasn't been re-run end-to-end on a from-scratch reinstall yet. Repo config templates intentionally keep `hostname: "0.0.0.0"` — the correct *generic* default; the pin/route are deployment-time only. |
 
 ---
 
