@@ -12,19 +12,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - name: Install workspace
-        working-directory: software/backend
+        working-directory: rxnbench/backend
         run: uv sync
       - name: Gantry tests
-        working-directory: software/backend
+        working-directory: rxnbench/backend
         run: make test-gantry
       - name: pH tests
-        working-directory: software/backend
+        working-directory: rxnbench/backend
         run: make test-ph
       - name: Client tests
-        working-directory: software/backend
+        working-directory: rxnbench/backend
         run: make test-client
       - name: Proto drift check
-        working-directory: software/backend
+        working-directory: rxnbench/backend
         run: make check-proto
 
   frontend:
@@ -35,11 +35,11 @@ jobs:
       - name: Qt runtime libraries
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1
       - name: Install frontend
-        working-directory: software/frontend
+        working-directory: rxnbench/frontend
         run: uv sync
       - name: Generated-connection drift check
-        working-directory: software/frontend
+        working-directory: rxnbench/frontend
         run: make check-connections
       - name: Frontend tests
-        working-directory: software/frontend
+        working-directory: rxnbench/frontend
         run: make test

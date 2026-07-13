@@ -1,7 +1,7 @@
 #!/bin/bash
 # Driver setup for rxn-bench-ph: enables the I2C interface the Atlas
 # Scientific EZO-pH circuit talks over. Called automatically by
-# software/backend/scripts/install_offline.sh (and install_service.sh) when
+# rxnbench/backend/scripts/install_offline.sh (and install_service.sh) when
 # installing the ph_sensor service - safe to re-run.
 set -e
 

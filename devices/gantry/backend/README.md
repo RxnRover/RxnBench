@@ -1,6 +1,6 @@
 # rxn-bench-gantry
 
-SiLA2 server for the Sovol SV08 gantry motion platform. Drives the XYZ carriage via Moonraker (Klipper REST API), manages toolhead config, workspace/well-plate layout, and homing state. Runs as an independent process on the Raspberry Pi.
+SiLA2 server for a Klipper/Moonraker-based XYZ gantry (reference hardware: Sovol SV08 3D printer). Drives the XYZ carriage via Moonraker (Klipper REST API), manages toolhead config, workspace/well-plate layout, and homing state. Runs as an independent process on the device host (a Raspberry Pi in the reference deployment).
 
 **Port:** 50051  
 **SiLA UUID:** `a9a1052f-64e0-4108-bb32-361c2facb4fb`
@@ -11,13 +11,13 @@ SiLA2 server for the Sovol SV08 gantry motion platform. Drives the XYZ carriage 
 
 - Python 3.10+
 - [`uv`](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- Moonraker running on the SV08 at port 7125 (auto-discovered via mDNS or IPv6 link-local)
-- Access to the UniteLabs private PyPI index (see `software/backend/pyproject.toml` for the index URL)
+- Moonraker/Klipper running on the motion platform (reference hardware: Sovol SV08) at port 7125 (auto-discovered via mDNS or IPv6 link-local)
+- Access to the UniteLabs private PyPI index (see `rxnbench/backend/pyproject.toml` for the index URL)
 
 Install dependencies from the workspace root:
 
 ```bash
-cd software/backend
+cd rxnbench/backend
 uv sync
 ```
 
@@ -27,17 +27,17 @@ uv sync
 
 ### Development (mock hardware)
 
-No SV08 or Moonraker needed — all motion is simulated in memory:
+No physical motion platform or Moonraker needed — all motion is simulated in memory:
 
 ```bash
-cd software/backend
+cd rxnbench/backend
 RXN_BENCH_MOCK=1 uv run rxn-bench-gantry
 ```
 
 ### Real hardware
 
 ```bash
-cd software/backend
+cd rxnbench/backend
 uv run rxn-bench-gantry
 ```
 
@@ -54,7 +54,7 @@ uv run rxn-bench-gantry --config /path/to/gantry.json
 
 ### As a systemd service
 
-From `software/backend`, run `scripts/install_service.sh gantry`. This builds a standalone venv at `devices/gantry/backend/.venv` (separate from the shared dev workspace venv) and registers `rxn-bench-gantry.service`, so it can be updated/restarted independently of the pH service.
+From `rxnbench/backend`, run `scripts/install_service.sh gantry`. This builds a standalone venv at `devices/gantry/backend/.venv` (separate from the shared dev workspace venv) and registers `rxn-bench-gantry.service`, so it can be updated/restarted independently of the pH service.
 
 ---
 
@@ -150,7 +150,7 @@ Drop a new YAML under `src/rxn_bench_gantry/labware/` following the existing `96
 ## Tests
 
 ```bash
-cd software/backend
+cd rxnbench/backend
 make test-gantry
 # or directly:
 PYTHONPATH="" uv run --package rxn-bench-gantry pytest ../../devices/gantry/backend/tests/ -v
@@ -163,7 +163,7 @@ PYTHONPATH="" uv run --package rxn-bench-gantry pytest ../../devices/gantry/back
 The `Position` and `ToolheadInfo` dataclasses in `feature.py` are the source of truth for the frontend proto:
 
 ```bash
-cd software/backend
+cd rxnbench/backend
 make gen-proto     # regenerate + recompile stubs
 make check-proto   # verify stubs match source (run in CI)
 ```

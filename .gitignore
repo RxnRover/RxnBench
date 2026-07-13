@@ -21,6 +21,12 @@ logs/
 
 _build/
 
+rxnbench/frontend/build/
+rxnbench/frontend/dist/
+rxnbench/backend/dist/
+rxnbench/backend/build
+
+
 _uml/
 
 results/

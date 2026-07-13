@@ -1,58 +1,60 @@
 """
-MyDevice widget - minimal MDI sub-window: live measurement + one action control.
+Camera widget - minimal MDI sub-window: live image view + capture interval control.
 
 No .ui file here on purpose - this is meant to be copy-pasted and grown, not
 loaded from a designer file. See devices/ph_sensor/frontend/widget.py for a
-fuller example (custom-painted history graph, .ui-loaded layout) once you
-outgrow this.
-
-TODO: rename MyDeviceWidget and replace the measurement/action labels with
-      your device's real fields.
+fuller example (custom-painted history graph, .ui-loaded layout) once this
+needs to grow beyond a single image view.
 """
 from __future__ import annotations
 
-import math
-
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QDoubleSpinBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 
 from ...discovery import DiscoveredServer
-from .connection import MyDeviceConnection
+from .connection import CameraConnection
 
 
-class MyDeviceWidget(QWidget):
-    """MDI sub-window for MyDevice: live measurement display and one action button."""
+class CameraWidget(QWidget):
+    """MDI sub-window for Camera: live image view and a capture-interval control."""
 
-    preferred_mdi_size = (280, 160)
+    preferred_mdi_size = (360, 320)
 
     def __init__(self, server: DiscoveredServer, t: dict,
                  parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._server = server
         self._t = t
-        self._last_value = float("nan")
 
         self._status_lbl = QLabel("Connecting…")
-        self._value_lbl = QLabel("-")
-        self._param_spin = QDoubleSpinBox()
-        self._param_spin.setRange(-1000.0, 1000.0)
-        self._action_btn = QPushButton("Perform Action")
 
-        param_row = QHBoxLayout()
-        param_row.addWidget(self._param_spin)
-        param_row.addWidget(self._action_btn)
+        self._image_lbl = QLabel("No image yet")
+        self._image_lbl.setMinimumSize(320, 240)
+        self._image_lbl.setScaledContents(False)
+
+        self._interval_spin = QDoubleSpinBox()
+        self._interval_spin.setRange(0.1, 3600.0)
+        self._interval_spin.setValue(30.0)
+        self._interval_spin.setSuffix(" s")
+        self._interval_btn = QPushButton("Set Capture Interval")
+
+        interval_row = QHBoxLayout()
+        interval_row.addWidget(self._interval_spin)
+        interval_row.addWidget(self._interval_btn)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._status_lbl)
-        layout.addWidget(self._value_lbl)
-        layout.addLayout(param_row)
+        layout.addWidget(self._image_lbl)
+        layout.addLayout(interval_row)
 
         self._apply_theme()
-        self._action_btn.clicked.connect(self._on_action)
+        self._interval_btn.clicked.connect(self._on_set_interval)
 
-        self._client = MyDeviceConnection()
-        self._client.measurement_updated.connect(self._on_measurement)
+        self._client = CameraConnection()
+        self._client.latest_image_updated.connect(self._on_image)
         self._client.connection_changed.connect(self._on_connection)
         self._client.error_occurred.connect(self._on_error)
         self._client.connect_to(server.host, server.port)
@@ -64,15 +66,20 @@ class MyDeviceWidget(QWidget):
     def _on_connection(self, ready: bool) -> None:
         self._status_lbl.setText("Connected" if ready else "Connecting…")
 
-    def _on_measurement(self, value: float) -> None:
-        self._last_value = value
-        self._value_lbl.setText(f"{value:.2f}" if not math.isnan(value) else "-")
+    def _on_image(self, data: bytes) -> None:
+        pixmap = QPixmap()
+        if pixmap.loadFromData(data):
+            self._image_lbl.setPixmap(
+                pixmap.scaled(self._image_lbl.size(), Qt.AspectRatioMode.KeepAspectRatio)
+            )
+        else:
+            self._image_lbl.setText("Received unreadable image data")
 
     def _on_error(self, msg: str) -> None:
         self._status_lbl.setText(f"Error: {msg[:60]}")
 
-    def _on_action(self) -> None:
-        self._client.perform_action(self._param_spin.value())
+    def _on_set_interval(self) -> None:
+        self._client.set_capture_interval(self._interval_spin.value())
 
     def set_theme(self, t: dict) -> None:
         """Replace the active theme dict and repaint."""

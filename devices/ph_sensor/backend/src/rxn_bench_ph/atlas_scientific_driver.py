@@ -36,7 +36,7 @@ class AtlasScientificEZO(AbstractI2CDriver):
     def read_ph(self) -> float:
         """Trigger a pH reading and return the result as a float."""
         self._send_command('R')
-        return float(self._read_response(delay_ms=900))
+        return round(float(self._read_response(delay_ms=900)), 3)  # Atlas Scientific claims a +/- 0.001 resolution with the Spear Tip / Soil pH Probe 
 
     def set_temperature_compensation(self, temp: float) -> None:
         """Set the temperature compensation value in °C used during pH calculations."""

@@ -2,7 +2,7 @@
 
 ## 1. Prototype / First Product Release Blockers
 
-### 1.1 Reliable Z-axis referencing, clearance, and tool engagement
+### DONE 1.1 Reliable Z-axis referencing, clearance, and tool engagement
 
 Current status:
 Rxn Bench can navigate accurately in the X/Y plane to selected wells, but high-density formats like 96-well plates require very precise calibration. The current Z-reference method probes the bottom of the base plate/tool area, which is finicky and can cause overly strict movement denial even when enough clearance appears to exist.
@@ -38,7 +38,7 @@ Acceptance criteria:
 
 ---
 
-### 1.2 Executable frontend and offline backend installation
+### DONE 1.2 Executable frontend and offline backend installation
 
 Frontend:
 
@@ -77,7 +77,7 @@ Acceptance criteria:
 
 ---
 
-### 1.3 Raspberry Pi / IT setup notes
+### DONE 1.3 Raspberry Pi / IT setup notes
 
 Create a short IT-facing setup document containing:
 
@@ -100,7 +100,7 @@ Acceptance criteria:
 
 ---
 
-### 1.4 Repository cleanup
+### DONE 1.4 Repository cleanup
 
 Clean the codebase before release.
 
@@ -123,7 +123,7 @@ Acceptance criteria:
 
 ---
 
-### 1.5 Documentation cleanup
+### DONE 1.5 Documentation cleanup
 
 Tasks:
 
@@ -148,7 +148,7 @@ Acceptance criteria:
 
 ## 2. New Device Implementations
 
-### 2.1 Generic camera device
+### DONE 2.1 Generic camera device
 
 Initial target: Crowsnest camera stream on the SOVOL SV08.
 Architecture should remain generic so other cameras can be supported later.
@@ -179,7 +179,7 @@ Acceptance criteria:
 
 ---
 
-### 2.2 New Device Agent Skill
+### DONE 2.2 New Device Agent Skill
 
 Create an AI/dev-agent skill for implementing new Rxn Bench devices.
 

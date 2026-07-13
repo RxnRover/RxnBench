@@ -9,9 +9,9 @@
     "private_key": null,
     "options": {},
     "uuid": "c100b376-f1f2-4c63-986d-448e0fdf0f57",
-    "name": "Rxn Bench Camera",
-    "type": "Camera Device",
-    "description": "Camera device for the Rxn Bench",
+    "name": "Camera",
+    "type": "LabAutomation",
+    "description": "Crowsnest-backed webcam stream for the Ames Lab automated chemistry bench.",
     "version": "0.1",
     "vendor_url": "https://github.com",
     "default_lifetime": 3600.0

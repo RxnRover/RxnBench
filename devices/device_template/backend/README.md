@@ -36,7 +36,7 @@ grep -rl "rxn_bench_template\|mydevice\|MyDevice\|template" . \
 
 **4. Add the backend to the uv workspace**
 ```toml
-# software/backend/pyproject.toml
+# rxnbench/backend/pyproject.toml
 [tool.uv.workspace]
 members = [
     "../../devices/gantry/backend",
@@ -60,7 +60,7 @@ devices/my_device/frontend/
 ```
 
 - `__init__.py` follows the same contract as [devices/gantry/frontend/`__init__.py`](../../gantry/frontend/__init__.py): a `FEATURE_FRAGMENTS: list[str]` matched against advertised SiLA feature identifiers, and `create_widget(server, theme) -> QWidget`. Rename the fragments and widget class.
-- Add your device to `_DEVICES` in `software/backend/scripts/gen_proto.py` and run `make gen-proto` (from `software/backend`) to generate the protobuf stubs into `frontend/proto/`. Then update `connection_spec.yaml` (see [devices/gantry/frontend/connection_spec.yaml](../../gantry/frontend/connection_spec.yaml) or [devices/ph_sensor/frontend/connection_spec.yaml](../../ph_sensor/frontend/connection_spec.yaml)) and regenerate the boilerplate from `software/frontend/`:
+- Add your device to `_DEVICES` in `rxnbench/backend/scripts/gen_proto.py` and run `make gen-proto` (from `rxnbench/backend`) to generate the protobuf stubs into `frontend/proto/`. Then update `connection_spec.yaml` (see [devices/gantry/frontend/connection_spec.yaml](../../gantry/frontend/connection_spec.yaml) or [devices/ph_sensor/frontend/connection_spec.yaml](../../ph_sensor/frontend/connection_spec.yaml)) and regenerate the boilerplate from `rxnbench/frontend/`:
 
   ```bash
   python scripts/gen_connections.py \
@@ -73,14 +73,14 @@ devices/my_device/frontend/
 
 **6. Run the mock to verify everything wires up**
 ```bash
-cd software/backend
+cd rxnbench/backend
 uv sync
 RXN_BENCH_MOCK=1 uv run rxn-bench-mydevice
 ```
 
 **7. Add an instrument class to `rxn-bench-client`**
 ```python
-# software/backend/client/src/rxn_bench_client/instruments.py
+# rxnbench/backend/client/src/rxn_bench_client/instruments.py
 class MyDevice:
     def __init__(self, sila: SilaClient) -> None:
         self._d = sila
@@ -88,7 +88,7 @@ class MyDevice:
     def read(self) -> float:
         return _once(self._d.MyDevice.Measurement)
 ```
-Export it from `software/backend/client/src/rxn_bench_client/__init__.py`, then use it like the built-in instruments:
+Export it from `rxnbench/backend/client/src/rxn_bench_client/__init__.py`, then use it like the built-in instruments:
 ```python
 bench.connect("mydevice", MyDevice, server="rxn-bench-mydevice")
 bench.mydevice.read()

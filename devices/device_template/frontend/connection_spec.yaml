@@ -1,13 +1,13 @@
 # Manifest for the rxn-bench-mydevice SiLA feature (see ../backend).
-# Run from software/frontend/:
+# Run from rxnbench/frontend/:
 #   python scripts/gen_connections.py \
 #     ../../devices/mydevice/frontend/connection_spec.yaml \
 #     --out ../../devices/mydevice/frontend/generated_connection.py
 #
 # TODO: rename mydevice/MyDevice throughout this file and the generated
 # output. Protobuf stubs come from the backend manifest: add your device to
-# _DEVICES in software/backend/scripts/gen_proto.py, then run `make gen-proto`
-# (from software/backend) to produce proto/<name>_pb2.py next to this file.
+# _DEVICES in rxnbench/backend/scripts/gen_proto.py, then run `make gen-proto`
+# (from rxnbench/backend) to produce proto/<name>_pb2.py next to this file.
 
 meta:
   package: sila2.edu.iastate.ames.rxnbench.mydevice.v1

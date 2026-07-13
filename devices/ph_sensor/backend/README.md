@@ -1,6 +1,6 @@
 # rxn-bench-ph
 
-SiLA2 server for the Atlas Scientific EZO-pH sensor. Reads pH over I2C (Raspberry Pi), supports mid/low/high three-point calibration, and exposes a streaming `Ph` observable property. Runs as an independent process on the Raspberry Pi alongside `rxn-bench-gantry`.
+SiLA2 server for the Atlas Scientific EZO-pH sensor. Reads pH over I2C, supports mid/low/high three-point calibration, and exposes a streaming `Ph` observable property. Runs as an independent process on the device host alongside `rxn-bench-gantry` (a Raspberry Pi in the reference deployment).
 
 **Port:** 50052  
 **SiLA UUID:** `c1876353-a389-430e-81b0-c8d55cd56640`
@@ -11,23 +11,23 @@ SiLA2 server for the Atlas Scientific EZO-pH sensor. Reads pH over I2C (Raspberr
 
 - Python 3.10+
 - [`uv`](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- **Real hardware only:** Raspberry Pi with I2C enabled; Atlas Scientific EZO-pH circuit at I2C address `0x63`
-- Access to the UniteLabs private PyPI index (see `software/backend/pyproject.toml` for the index URL)
+- **Real hardware only:** a host with I2C enabled (Raspberry Pi in the reference deployment); Atlas Scientific EZO-pH circuit at I2C address `0x63`
+- Access to the UniteLabs private PyPI index (see `rxnbench/backend/pyproject.toml` for the index URL)
 
 Install dependencies from the workspace root:
 
 ```bash
-cd software/backend
+cd rxnbench/backend
 uv sync
 ```
 
-For real hardware on a Raspberry Pi, install I2C support:
+For real hardware, install I2C support (the `rpi` extra pulls in `smbus2`; works on Raspberry Pi and other Linux SBCs with I2C):
 
 ```bash
 uv sync --extra rpi
 ```
 
-Enable I2C on the Pi if not already done:
+Enable I2C on the host if not already done (Raspberry Pi reference instructions shown; other SBCs have their own equivalent):
 
 ```bash
 sudo raspi-config  # Interface Options → I2C → Enable
@@ -42,14 +42,14 @@ sudo raspi-config  # Interface Options → I2C → Enable
 Returns a fixed pH of 7.00 — no hardware needed:
 
 ```bash
-cd software/backend
+cd rxnbench/backend
 RXN_BENCH_MOCK=1 uv run rxn-bench-ph
 ```
 
-### Real hardware (Raspberry Pi)
+### Real hardware
 
 ```bash
-cd software/backend
+cd rxnbench/backend
 uv run rxn-bench-ph
 ```
 
@@ -106,7 +106,7 @@ Copy `configs/ph_sensor.json` to `~/.rxn_bench/ph_sensor.json` and edit as neede
 
 ---
 
-## Hardware Wiring
+## Hardware Wiring (Raspberry Pi reference)
 
 | EZO-pH Pin | Raspberry Pi Pin |
 |------------|-----------------|

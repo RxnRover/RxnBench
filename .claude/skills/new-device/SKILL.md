@@ -1,0 +1,18 @@
+---
+name: new-device
+description: Scaffold a new Rxn Bench device (backend SiLA server + frontend plugin), reusing an existing device's interface/UI/mock when the new hardware fits one instead of creating a new abstraction. Use when the user wants to add support for a new physical device/instrument.
+argument-hint: "[device name/hardware, what it measures or does, and any manual/datasheet/API docs for it]"
+---
+
+New device: $ARGUMENTS
+
+Do not start copying template files yet — reuse comes before scaffolding.
+
+1. Read whatever manual/datasheet/vendor API doc the user gave for the new hardware (above, or a path/URL they point to). Extract: what it reads/reports (properties, streamed values), what actions it accepts (commands), and whether behavior is request-response or observable/streamed.
+2. Check for reuse before creating anything new. Read the backend `interfaces.py` (the `Protocol`) and `feature.py` for every existing device — [devices/gantry/backend](../../../devices/gantry/backend), [devices/ph_sensor/backend](../../../devices/ph_sensor/backend), [devices/camera/backend](../../../devices/camera/backend) — plus each device's frontend `widget.py`/`connection.py`. If the new hardware's operations are essentially the same shape as an existing `*Protocol` (e.g. another pH-style probe, another motion platform), reuse that device's backend package, interface, mock, and frontend widget rather than standing up a new device. Only scaffold a brand-new `devices/<name>/` when the operations genuinely don't fit any existing interface. State which case applies and why before proceeding.
+3. If it's genuinely new, follow [devices/device_template/README.md](../../../devices/device_template/README.md) and [devices/device_template/backend/README.md](../../../devices/device_template/backend/README.md) step by step: copy the template to `devices/<name>/`, rename the package, fill in `interfaces.py`/`feature.py`/`mock_device.py`/`server.py`, add it to the uv workspace, add it to `gen_proto.py`'s `_DEVICES` manifest and run `make gen-proto` (from `rxnbench/backend`), then write `connection_spec.yaml` and run `make gen-connections` (from `rxnbench/frontend`) to produce `generated_connection.py`.
+4. Keep it minimal. Only add the properties/commands the hardware actually has — no speculative config layers, base classes, or generic frameworks beyond what `device_template` already provides. `device_template`'s Protocol + mock + feature shape is the target complexity, not a floor to build on.
+5. Frontend widget: only hand-write one if the device needs custom UI. A device with no `devices/<name>/frontend/` folder (or an empty one) falls back to the generic `GenericDeviceWidget` (see [docs/ai/CURRENT_STATE.md](../../../docs/ai/CURRENT_STATE.md) §2) — that's a valid, often-correct outcome, not a shortcut to avoid. Never hand-edit `generated_connection.py` or put widgets/workflows/dataclasses into it — see `CLAUDE.md`'s hard rules and CURRENT_STATE.md §3's generator boundary.
+6. Verify: run the mock (`RXN_BENCH_MOCK=1 uv run rxn-bench-<device>` from the new backend package), the new backend's test suite, and `make check-proto` / `make check-connections`.
+7. Update [docs/ai/CURRENT_STATE.md](../../../docs/ai/CURRENT_STATE.md) (device table, layout tree, capabilities) and add a dated bullet to the `Unreleased` section of [CHANGELOG.md](../../../CHANGELOG.md) prefixed with the device name.
+8. Summarize: which existing interface was reused (or why a new one was needed), files touched, how to verify, and any hardware-specific follow-up (e.g. a real driver still needed behind the mock).

@@ -5,8 +5,8 @@ name: ph_experiment-1
 calibration_reference_well: 96-well/H1
 
 plates:
-  - id: 96-well                     # unique id used in well labels, e.g. "plate1/A3"
-    plate_type: 96_well_standard   # must match a file in labware/
+  - id: 24-well                     # unique id used in well labels, e.g. "plate1/A3"
+    plate_type: 24_well_standard   # must match a file in labware/
     origin:
       x: 175    # mm, centre of the plate's footprint in gantry X
       y: 175   # mm, centre of the plate's footprint in gantry Y

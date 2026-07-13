@@ -9,9 +9,11 @@ from pathlib import Path
 # TODO: rename mydevice to match your device (must match the filename in configs/)
 _DEVICE_NAME = "mydevice"
 
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+
 _DEFAULT_CONFIGS = [
     Path.home() / ".rxn_bench" / f"{_DEVICE_NAME}.json",
-    Path("configs") / f"{_DEVICE_NAME}.json",
+    _PACKAGE_ROOT / "configs" / f"{_DEVICE_NAME}.json",
 ]
 
 

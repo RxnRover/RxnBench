@@ -1,5 +1,5 @@
 # Manifest for the rxn-bench-gantry SiLA feature.
-# Run from software/frontend/:
+# Run from rxnbench/frontend/:
 #   python scripts/gen_connections.py \
 #     ../../devices/gantry/frontend/connection_spec.yaml \
 #     --out ../../devices/gantry/frontend/generated_connection.py

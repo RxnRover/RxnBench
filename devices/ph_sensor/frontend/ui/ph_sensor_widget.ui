@@ -137,10 +137,10 @@
         </item>
         <item>
          <widget class="QDoubleSpinBox" name="cal_value_spin">
-          <property name="minimum"><double>0.00</double></property>
-          <property name="maximum"><double>14.00</double></property>
-          <property name="value"><double>7.00</double></property>
-          <property name="decimals"><number>2</number></property>
+          <property name="minimum"><double>0.000</double></property>
+          <property name="maximum"><double>14.000</double></property>
+          <property name="value"><double>7.000</double></property>
+          <property name="decimals"><number>3</number></property>
           <property name="singleStep"><double>0.10</double></property>
          </widget>
         </item>

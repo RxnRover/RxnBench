@@ -6,28 +6,30 @@ install command.
 
 ## What ships on the Pi
 
-- `rxn-bench-gantry` and `rxn-bench-ph` - independent SiLA2 gRPC servers, one
-  per device, each in its own venv, each its own systemd service.
+- `rxn-bench-gantry`, `rxn-bench-ph`, and `rxn-bench-camera` - independent
+  SiLA2 gRPC servers, one per device, each in its own venv, each its own
+  systemd service.
 - Nothing else. No database, no message broker, no container runtime.
 
 ## Network footprint
 
-| Traffic | Direction | Port | Notes |
-|---|---|---|---|
-| Gantry SiLA/gRPC | inbound | `50051/tcp` | plaintext (no TLS/auth - assumes an isolated bench network, see [CURRENT_STATE.md](ai/CURRENT_STATE.md) §6) |
-| pH sensor SiLA/gRPC | inbound | `50052/tcp` | plaintext, same as above |
-| mDNS/DNS-SD discovery | inbound+outbound | `5353/udp` (multicast) | broadcast by the SiLA2 CDK itself - no separate avahi/mDNS service needed |
+| Traffic               | Direction        | Port                   | Notes                                                                                                       |
+| --------------------- | ---------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Gantry SiLA/gRPC      | inbound          | `50051/tcp`            | plaintext (no TLS/auth - assumes an isolated bench network, see [CURRENT_STATE.md](ai/CURRENT_STATE.md) §6) |
+| pH sensor SiLA/gRPC   | inbound          | `50052/tcp`            | plaintext, same as above                                                                                    |
+| Camera SiLA/gRPC      | inbound          | `50053/tcp`            | plaintext, same as above                                                                                    |
+| mDNS/DNS-SD discovery | inbound+outbound | `5353/udp` (multicast) | broadcast by the SiLA2 CDK itself - no separate avahi/mDNS service needed                                   |
 
 Port registry, so the next device doesn't collide (this bit us once already -
 `camera` and `device_template` both hardcoded `50053`):
 
-| Device | Port |
-|---|---|
-| gantry | 50051 |
-| ph_sensor | 50052 |
-| camera | 50053 |
-| next new device | 50054, then up |
-| device_template (scaffold, never run in production) | 50099 |
+| Device                                              | Port           |
+| --------------------------------------------------- | -------------- |
+| gantry                                              | 50051          |
+| ph_sensor                                           | 50052          |
+| camera                                              | 50053          |
+| next new device                                     | 50054, then up |
+| device_template (scaffold, never run in production) | 50099          |
 
 If a firewall (`ufw`) is active on the Pi, `install_offline.sh` opens the
 ports above for whichever devices you install; if `ufw` isn't installed or
@@ -46,13 +48,13 @@ on any machine (this step needs internet once, to fetch the OS image):
 
 ## Build the offline bundle (dev machine, has internet)
 
-From `software/backend`:
+From `rxnbench/backend`:
 
 ```bash
 scripts/build_offline_bundle.sh
 ```
 
-This resolves and downloads every dependency wheel for aarch64/Python 3.11
+This resolves and downloads every dependency wheel for aarch64/Python 3.13
 (from PyPI, [piwheels.org](https://www.piwheels.org) for prebuilt ARM wheels,
 and the private UniteLabs index), vendors a matching `uv` binary, and packages
 the repo source + wheelhouse + `uv` into one tarball under `dist/`:
@@ -62,17 +64,23 @@ rxn-bench-backend-offline-<date>-linux_aarch64.tar.gz
 ```
 
 Override the target platform/Python version with env vars if the Pi's OS
-differs (`PYTHON_VERSION`, `PLATFORM_TAG`, `UV_TARGET`, `UV_VERSION`) - see
-the script header.
+differs (`PYTHON_VERSION`, `PLATFORM_TAG`, `PIP_PLATFORM_TAG`, `UV_TARGET`,
+`UV_VERSION`) - see the script header.
 
 ## Install on the Pi (no network required)
 
-Copy the tarball over (USB drive, `scp`, whatever's easiest), then:
+Copy the tarball over (USB drive, `scp`, whatever's easiest), for example
+
+``` bash
+scp rxnbench/backend/dist/rxn-bench-backend-offline-20260710-linux_aarch64.tar.gz bench@192.168.50.1:~/
+```
+
+then:
 
 ```bash
 tar xzf rxn-bench-backend-offline-*.tar.gz
-cd rxn-bench-backend-offline-*/software/backend
-./scripts/install_offline.sh --devices gantry,ph
+cd rxn-bench-backend-offline-*/rxnbench/backend
+./scripts/install_offline.sh --devices gantry,ph,camera
 ```
 
 One command does all of the following:
@@ -82,24 +90,31 @@ One command does all of the following:
    bundle's wheelhouse (no PyPI/network access used).
 3. Runs that device's driver setup if it has one - today, only the pH sensor
    does (`raspi-config nonint do_i2c 0` to enable I2C, then an `i2cdetect`
-   sanity scan for the EZO-pH circuit at `0x63`).
+   sanity scan for the EZO-pH circuit at `0x63`). The camera has no driver
+   setup step - it only needs network access to Crowsnest (see
+   [devices/camera/backend/README.md](../devices/camera/backend/README.md)).
 4. Installs a systemd unit per device (`Restart=on-failure`, `RestartSec=5`,
    `WantedBy=multi-user.target`) and starts it - survives crashes and
    reboots.
 5. Opens firewall ports if `ufw` is active.
 
-Only setting up one bench device? `--devices gantry` or `--devices ph` installs
-just that one.
+Only setting up one bench device? `--devices gantry`, `--devices ph`, or
+`--devices camera` installs just that one.
 
 ## Verify
 
 ```bash
-sudo systemctl status rxn-bench-gantry rxn-bench-ph
+sudo systemctl status rxn-bench-gantry rxn-bench-ph rxn-bench-camera
 journalctl -u rxn-bench-gantry -f
 ```
 
+Note: `make start-<device>`/`uv run rxn-bench-<device>` are shared-dev-workspace
+commands (see [usage.md](usage.md)) - `uv run` resyncs dev-only deps like `pytest` by
+default, which needs network this Pi doesn't have. Manage the installed services with
+`systemctl`/`journalctl` instead.
+
 From another machine on the same network, the frontend's server browser
-should discover both over mDNS automatically; if mDNS is blocked (VPN,
+should discover all of them over mDNS automatically; if mDNS is blocked (VPN,
 managed network, different subnet), use its "connect manually" option with
 the Pi's IP and the port from the table above.
 

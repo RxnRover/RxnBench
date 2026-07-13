@@ -1,10 +1,10 @@
 # Manifest for the rxn-bench-ph SiLA feature.
-# Run from software/frontend/:
+# Run from rxnbench/frontend/:
 #   python scripts/gen_connections.py \
 #     ../../devices/ph_sensor/frontend/connection_spec.yaml \
 #     --out ../../devices/ph_sensor/frontend/generated_connection.py
 #
-# Protobuf stubs are generated from the backend manifest (software/backend:
+# Protobuf stubs are generated from the backend manifest (rxnbench/backend:
 # make gen-proto) into proto/ph_sensor_pb2.py.
 
 meta:

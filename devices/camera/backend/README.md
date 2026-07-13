@@ -1,137 +1,116 @@
-# device_template
+# rxn-bench-camera
 
-Boilerplate for adding a new device to the rxn bench. Each device is a self-contained `devices/<name>/{backend,frontend}` folder (see `docs/ai/CURRENT_STATE.md`). Copy this directory, rename everything marked `TODO`, and fill in your hardware logic. The mock runs immediately — real hardware comes later.
+SiLA2 server for a Crowsnest-managed webcam stream. Streams periodic still images as a `LatestImage` observable property and archives each capture to disk. Runs as an independent process on the device host alongside `rxn-bench-gantry`/`rxn-bench-ph`.
+
+**Port:** 50053
+**SiLA UUID:** `c100b376-f1f2-4c63-986d-448e0fdf0f57`
 
 ---
 
-## Checklist
+## Requirements
 
-**1. Copy and rename the device folder**
+- Python 3.10+
+- [`uv`](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Real hardware only:** a webcam already streaming through [Crowsnest](https://github.com/mainsail-crew/crowsnest) (or a compatible ustreamer/mjpg-streamer HTTP endpoint) on the same network
+- Access to the UniteLabs private PyPI index (see `rxnbench/backend/pyproject.toml` for the index URL)
+
+Install dependencies from the workspace root:
+
 ```bash
-# from the repo root
-cp -r devices/device_template devices/my_device
-```
-
-**2. Rename `rxn_bench_template` → `rxn_bench_mydevice` in the backend half**
-```bash
-# In devices/my_device/backend/:
-mv src/rxn_bench_template src/rxn_bench_mydevice
-grep -rl "rxn_bench_template\|mydevice\|MyDevice\|template" . \
-  --include="*.py" --include="*.toml" --include="*.json" \
-  | xargs sed -i 's/rxn_bench_template/rxn_bench_mydevice/g'
-# Then rename classes by hand in interfaces.py, feature.py, mock_device.py, server.py
-```
-
-**3. Edit each backend file** — follow the `TODO` comments in order:
-
-| File | What to change |
-|------|----------------|
-| `interfaces.py` | Rename `MyDeviceProtocol`; replace `read()` / `do_action()` with your hardware operations |
-| `feature.py` | Rename `MyDevice`; rename `measurement` / `perform_action`; add/remove properties and commands |
-| `mock_device.py` | Rename `MockMyDevice`; return realistic fixed values |
-| `server.py` | Add real hardware initialisation in the `else` block |
-| `_cli.py` | Set `_DEVICE_NAME` to your device's config filename stem |
-| `configs/mydevice.json` | Rename file; set `port` (next available after 50052); generate a new UUID; update `name` and `description` |
-| `pyproject.toml` | Rename `name`, `description`, entry point, and `packages` |
-
-**4. Add the backend to the uv workspace**
-```toml
-# software/backend/pyproject.toml
-[tool.uv.workspace]
-members = [
-    "../../devices/gantry/backend",
-    "../../devices/ph_sensor/backend",
-    "../../devices/my_device/backend",
-    "client",
-]
-```
-
-**5. Edit the frontend device plugin**
-
-There is no registry file to edit — `rxn_bench_ui.devices.all_devices()` auto-discovers every `devices/<name>/frontend/` folder at the repo root. `devices/my_device/frontend/` already exists (copied in step 1) with the same shape as `devices/gantry/frontend/` and `devices/ph_sensor/frontend/`:
-
-```text
-devices/my_device/frontend/
-  __init__.py             ← exports FEATURE_FRAGMENTS + create_widget()
-  connection_spec.yaml    ← manifest: streams/commands this feature exposes
-  generated_connection.py ← generated boilerplate, do not hand-edit
-  connection.py           ← handwritten subclass: decode handlers, convenience methods
-  widget.py               ← handwritten Qt widget
-```
-
-- `__init__.py` follows the same contract as [devices/gantry/frontend/`__init__.py`](../../gantry/frontend/__init__.py): a `FEATURE_FRAGMENTS: list[str]` matched against advertised SiLA feature identifiers, and `create_widget(server, theme) -> QWidget`. Rename the fragments and widget class.
-- Add your device to `_DEVICES` in `software/backend/scripts/gen_proto.py` and run `make gen-proto` (from `software/backend`) to generate the protobuf stubs into `frontend/proto/`. Then update `connection_spec.yaml` (see [devices/gantry/frontend/connection_spec.yaml](../../gantry/frontend/connection_spec.yaml) or [devices/ph_sensor/frontend/connection_spec.yaml](../../ph_sensor/frontend/connection_spec.yaml)) and regenerate the boilerplate from `software/frontend/`:
-
-  ```bash
-  python scripts/gen_connections.py \
-      ../../devices/my_device/frontend/connection_spec.yaml \
-      --out ../../devices/my_device/frontend/generated_connection.py
-  ```
-
-- `connection.py` subclasses the generated base and adds decode handlers/convenience methods by hand. `widget.py` is fully handwritten — never generated (see `CLAUDE.md`).
-- If you don't need a custom widget yet, you can delete `devices/my_device/frontend/` entirely: unrecognized servers fall back to the generic `GenericDeviceWidget`.
-
-**6. Run the mock to verify everything wires up**
-```bash
-cd software/backend
+cd rxnbench/backend
 uv sync
-RXN_BENCH_MOCK=1 uv run rxn-bench-mydevice
-```
-
-**7. Add an instrument class to `rxn-bench-client`**
-```python
-# software/backend/client/src/rxn_bench_client/instruments.py
-class MyDevice:
-    def __init__(self, sila: SilaClient) -> None:
-        self._d = sila
-
-    def read(self) -> float:
-        return _once(self._d.MyDevice.Measurement)
-```
-Export it from `software/backend/client/src/rxn_bench_client/__init__.py`, then use it like the built-in instruments:
-```python
-bench.connect("mydevice", MyDevice, server="rxn-bench-mydevice")
-bench.mydevice.read()
 ```
 
 ---
 
-## Generating a new UUID
+## Running
+
+### Development (mock camera)
+
+Returns a fixed placeholder image - no hardware or network needed:
 
 ```bash
-python3 -c "import uuid; print(uuid.uuid4())"
+cd rxnbench/backend
+RXN_BENCH_MOCK=1 uv run rxn-bench-camera
 ```
 
-Each device must have a unique UUID in its config. Never reuse the template UUID.
+### Real hardware
+
+```bash
+cd rxnbench/backend
+uv run rxn-bench-camera
+```
+
+The server searches for a config file in this order:
+
+1. `~/.rxn_bench/camera.json`
+2. `configs/camera.json` (bundled default, relative to this package's own directory)
+
+Pass an explicit config with `--config`:
+
+```bash
+uv run rxn-bench-camera --config /path/to/camera.json
+```
 
 ---
 
-## File structure reference
+## Configuration
 
-```
-devices/my_device/
-  backend/
-    src/rxn_bench_mydevice/
-      __init__.py          ← empty, leave as-is
-      interfaces.py        ← Protocol (hardware contract)
-      feature.py           ← SiLA feature (CDK decorators)
-      mock_device.py       ← in-memory mock for dev/testing
-      server.py            ← create_app() factory
-      _cli.py               ← entry point
-      my_driver.py          ← (optional) low-level hardware driver
-    configs/
-      mydevice.json        ← SiLA server identity and port
-    tests/
-      __init__.py
-      test_mock_device.py  ← starter tests, add more
-    pyproject.toml
-    README.md
-  frontend/
-    __init__.py             ← FEATURE_FRAGMENTS + create_widget()
-    connection_spec.yaml    ← manifest for gen_connections.py
-    generated_connection.py ← generated, do not hand-edit
-    connection.py           ← handwritten decode handlers/convenience methods
-    widget.py                ← handwritten Qt widget
-```
+`configs/camera.json` holds the SiLA server identity/port (same shape as every other device's config - see `sila_server.port`/`hostname`/`tls`).
 
-The `ph_sensor/` package is the canonical real-world example of this pattern.
+Crowsnest connection settings live separately, in `~/.rxn_bench/machine.yaml` (shared with the gantry package's `moonraker_fallback_host` - both describe the same physical bench machine):
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `crowsnest_base_url` | `http://sv08.local:8080` | Host:port Crowsnest's streamer is listening on |
+| `crowsnest_snapshot_path` | `/snapshot` | HTTP path returning one JPEG frame (ustreamer's default; use e.g. `/webcam/?action=snapshot` for mjpg-streamer) |
+| `capture_interval_s` | `30.0` | Seconds between captures - also runtime-adjustable via the `SetCaptureInterval` command |
+
+Shorter intervals give more responsive live viewing at the cost of faster growth of `logs/images/` (each capture is archived - see below).
+
+---
+
+## SiLA Features
+
+### `Camera`
+
+**Observable Properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `LatestImage` | `bytes` (SiLA Binary) | Most recently captured frame, JPEG-encoded. Streams a new value every `capture_interval_s`. |
+
+**Commands:**
+
+| Command | Parameters | Description |
+|---------|------------|-------------|
+| `SetCaptureInterval` | `Seconds: float` | Change how often `LatestImage` captures (and archives) a new frame. Must be positive. |
+
+---
+
+## Logging
+
+Every capture is logged twice:
+
+- `logs/<timestamp>.jsonl` - one line per capture (filename + size), auto-pruned after 30 days. Same append-only JSONL pattern as every other device's `session_log.py`.
+- `logs/images/camera_<timestamp>.jpg` - the actual frame, auto-pruned after 7 days (`image_log.py`) since binary frames are far heavier than a log line. Tune `capture_interval_s` or `ImageLog`'s `max_days` if this doesn't fit the host's storage budget.
+
+---
+
+## Crowsnest Wiring
+
+Crowsnest itself has no API - it is a process supervisor that launches a real streamer backend (ustreamer by default, sometimes mjpg-streamer) per camera defined in its own `crowsnest.conf` on the host running it (the SOVOL SV08's controller in the reference deployment). `crowsnest_camera.py` talks straight to that streamer's plain HTTP snapshot route. If a bench's `crowsnest.conf` is configured for mjpg-streamer instead of the ustreamer default, override `crowsnest_snapshot_path` in `~/.rxn_bench/machine.yaml` (e.g. `/webcam/?action=snapshot`).
+
+**Known gap:** the exact snapshot path has not yet been verified against a live SV08/Crowsnest deployment - confirm `crowsnest_base_url`/`crowsnest_snapshot_path` on a real bench before relying on the non-mock path.
+
+---
+
+## Adding a Different Camera Source
+
+Implement a class satisfying `CameraProtocol` (one method: `capture() -> bytes`) and pass it to `Camera(camera=your_instance)` in `server.py`. `CrowsnestCamera` is not referenced anywhere in the SiLA feature - only the protocol matters.
+
+```python
+# interfaces.py
+class CameraProtocol(Protocol):
+    def capture(self) -> bytes: ...
+```
