@@ -15,7 +15,7 @@ plates:
     origin_mode: center
 
   - id: wash-station
-    plate_type: 100ml_beaker
+    plate_type: washing_station
     origin:
       x: 175
       y: 58
@@ -50,7 +50,7 @@ plates:
     orientation: rotated_90
     origin_mode: center
 
-  - id: 3-well-2
+  - id: Pippette-tip-disposal
     plate_type: 3_well_sample_holder
     origin:
       x: 322.5

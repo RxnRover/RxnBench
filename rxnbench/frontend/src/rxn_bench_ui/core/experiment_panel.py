@@ -33,14 +33,31 @@ class _ScriptRunner(QThread):
         self._path   = script_path
         self._proc: subprocess.Popen | None = None
 
+    def _build_command(self) -> tuple[list[str], dict | None]:
+        """Return the (argv, env) to launch the script with.
+
+        In a packaged build `sys.executable` is this GUI app, not a Python
+        interpreter, so `[sys.executable, script]` would just open a second UI
+        (the script path is ignored as argv[1]). Re-exec ourselves in
+        script-runner mode instead - the frozen bundle ships Python +
+        rxn_bench_client, and the entrypoint runs RXN_BENCH_UI_RUN_SCRIPT. In a
+        source checkout `sys.executable` is real Python, so run the script
+        directly as before.
+        """
+        if getattr(sys, "frozen", False):
+            return [sys.executable], {**os.environ, "RXN_BENCH_UI_RUN_SCRIPT": self._path}
+        return [sys.executable, self._path], None
+
     def run(self) -> None:
         try:
+            cmd, env = self._build_command()
             self._proc = subprocess.Popen(
-                [sys.executable, self._path],
+                cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
+                env=env,
             )
             for line in self._proc.stdout:
                 self.line_ready.emit(line.rstrip())

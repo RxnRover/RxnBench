@@ -52,9 +52,38 @@ def _selftest() -> int:
     return 0
 
 
+def _run_script(path: str) -> None:
+    """Run a user experiment script inside this bundle's Python runtime.
+
+    In a PyInstaller build `sys.executable` is this GUI app, not a Python
+    interpreter, so the Experiment Runner can't launch `python script.py` -
+    there is no python. Instead it re-execs us with RXN_BENCH_UI_RUN_SCRIPT
+    set, and we run the script here: the frozen bundle already ships
+    rxn_bench_client + grpc, so scripts that drive the bench run directly.
+
+    Run as __main__ (so the script's `if __name__ == "__main__"` fires) with a
+    line-buffered stdout so the panel streams output live. Exceptions - and the
+    KeyboardInterrupt raised by the runner's Stop (SIGINT) - propagate out so
+    the traceback reaches the log and the exit code is nonzero; the script's
+    own `with RxnBenchClient()` cleanup still runs on the way out.
+    """
+    import runpy
+
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
+    sys.argv = [path]
+    runpy.run_path(path, run_name="__main__")
+
+
 def main():
     if os.environ.get("RXN_BENCH_UI_SELFTEST"):
         sys.exit(_selftest())
+    script = os.environ.get("RXN_BENCH_UI_RUN_SCRIPT")
+    if script:
+        _run_script(script)
+        return
     from rxn_bench_ui.app import main as app_main
 
     app_main()
