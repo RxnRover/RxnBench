@@ -45,11 +45,14 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="rxn-bench-ui",
+    name="Rxn Bench",
     debug=False,
     strip=False,
     upx=False,
     console=False,
+    # PyInstaller converts non-.ico images via Pillow (see `package` dep
+    # group) and auto-generates the standard icon sizes from this source.
+    icon=os.path.join(_SRC, "rxn_bench_ui", "assets", "rxnbench_logo.png"),
 )
 
 coll = COLLECT(
@@ -58,5 +61,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="rxn-bench-ui",
+    name="Rxn Bench",
 )

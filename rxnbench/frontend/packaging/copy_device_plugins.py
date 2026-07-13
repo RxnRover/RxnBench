@@ -8,7 +8,7 @@ script populates that folder from the repo's devices/<name>/frontend/ dirs so
 a fresh build ships with the same devices it has today - backend/ and
 __pycache__ are left out since the frontend never bundles backend code.
 
-Run from rxnbench/frontend/: python packaging/copy_device_plugins.py dist/rxn-bench-ui
+Run from rxnbench/frontend/: python packaging/copy_device_plugins.py "dist/Rxn Bench"
 """
 import shutil
 import sys

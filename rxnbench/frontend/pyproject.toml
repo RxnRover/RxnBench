@@ -25,6 +25,7 @@ dev = [
 package = [
     "pyinstaller>=6.10",
     "pyinstaller-hooks-contrib>=2024.9",
+    "pillow>=10.0",
 ]
 
 [build-system]

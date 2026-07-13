@@ -21,6 +21,8 @@ logs/
 
 _build/
 
+dist-installer/
+
 rxnbench/frontend/build/
 rxnbench/frontend/dist/
 rxnbench/backend/dist/

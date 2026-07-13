@@ -1,4 +1,4 @@
-.PHONY: gen-connections check-connections test dist dist-check
+.PHONY: gen-connections check-connections test dist dist-check installer
 
 DEVICES_DIR := ../../devices
 
@@ -36,11 +36,21 @@ check-connections:
 # the required target) to get a native build.
 dist:
 	uv run --group package pyinstaller --noconfirm --distpath dist --workpath build packaging/rxn-bench-ui.spec
-	uv run python packaging/copy_device_plugins.py dist/rxn-bench-ui
+	uv run python packaging/copy_device_plugins.py "dist/Rxn Bench"
 
 # Build-verification pass against the real frozen exe: actually constructs
 # every discovered device widget (see packaging/entrypoint.py) rather than
 # just starting the app, since a plugin's missing dependency only surfaces
 # once something tries to load that plugin.
 dist-check: dist
-	cd dist/rxn-bench-ui && RXN_BENCH_UI_SELFTEST=1 QT_QPA_PLATFORM=offscreen ./rxn-bench-ui
+	cd "dist/Rxn Bench" && RXN_BENCH_UI_SELFTEST=1 QT_QPA_PLATFORM=offscreen "./Rxn Bench"
+
+# Wrap the onedir build (dist/Rxn Bench/) in a single Windows installer for
+# non-technical users, via packaging/installer.iss. Requires Inno Setup's
+# ISCC.exe on PATH (Windows only - installers aren't produced on Linux).
+# Installs per-user by default so devices/ next to the exe stays writable
+# without admin rights, keeping the drop-in plugin model intact post-install.
+# Version is read from pyproject.toml so it can't drift from the app itself.
+installer: dist
+	@version=$$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/'); \
+	iscc "/DMyAppVersion=$$version" packaging/installer.iss
