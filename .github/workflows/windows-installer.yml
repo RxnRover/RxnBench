@@ -1,0 +1,65 @@
+name: Windows installer
+
+# Builds the Windows Rxn Bench desktop installer and uploads it as an artifact.
+# PyInstaller can't cross-compile and Inno Setup (ISCC) is Windows-only, so this
+# has to run on a windows-latest runner - which is how the installer gets built
+# from a Linux dev machine without owning Windows: push a tag (or run it
+# manually) and download the .exe from the run's artifacts. Separate from ci.yml
+# (Linux tests/drift checks) on purpose - different OS, heavier, tag-triggered.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: rxnbench/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress -y
+          # Put ISCC.exe on PATH for the later build step (choco installs v6 here).
+          echo "C:\Program Files (x86)\Inno Setup 6" >> "$GITHUB_PATH"
+
+      - name: Install frontend deps (incl. the 'package' group for PyInstaller)
+        run: uv sync --group package
+
+      - name: Build onedir executable + stage device plugins
+        run: |
+          uv run --group package pyinstaller --noconfirm --distpath dist --workpath build packaging/rxn-bench-ui.spec
+          uv run python packaging/copy_device_plugins.py "dist/Rxn Bench"
+
+      # Best-effort: constructs every device widget inside the real frozen build
+      # (same check make dist-check runs on Linux). Non-blocking because Qt's
+      # offscreen platform plugin bundling on Windows is still unverified (see
+      # CURRENT_STATE.md "Standalone executable packaging") - a failure here
+      # should surface in the log without blocking the installer artifact.
+      - name: Self-test the frozen build (non-blocking)
+        continue-on-error: true
+        run: |
+          cd "dist/Rxn Bench"
+          RXN_BENCH_UI_SELFTEST=1 QT_QPA_PLATFORM=offscreen "./Rxn Bench.exe"
+
+      - name: Build the installer (Inno Setup)
+        run: |
+          version=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "Building Rxn Bench installer, version $version"
+          iscc "/DMyAppVersion=$version" packaging/installer.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rxn-bench-windows-installer
+          path: rxnbench/frontend/dist-installer/Rxn-Bench-Setup-*.exe
+          if-no-files-found: error
