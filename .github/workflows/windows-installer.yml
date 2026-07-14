@@ -51,10 +51,15 @@ jobs:
           cd "dist/Rxn Bench"
           RXN_BENCH_UI_SELFTEST=1 QT_QPA_PLATFORM=offscreen "./Rxn Bench.exe"
 
+      # PowerShell, not bash: Git Bash (MSYS) rewrites the leading /D of the
+      # ISCC "/DMyAppVersion=..." option as a path, so ISCC sees it as a second
+      # script filename ("You may not specify more than one script filename").
+      # PowerShell passes the argument through untouched.
       - name: Build the installer (Inno Setup)
+        shell: pwsh
         run: |
-          version=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          echo "Building Rxn Bench installer, version $version"
+          $version = (uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])").Trim()
+          Write-Host "Building Rxn Bench installer, version $version"
           iscc "/DMyAppVersion=$version" packaging/installer.iss
 
       - name: Upload installer artifact
