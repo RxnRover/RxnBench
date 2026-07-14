@@ -21,10 +21,10 @@ def main() -> None:
             ph = bench.ph.read()
 
         if ph < 7.0:
-            print(f"pH is acidic ({ph:.2f}), moving to A2 …")
+            print(f"pH is acidic ({ph:.2f}), moving to A2 ...")
             bench.gantry.move_to_well("plate1/A2")
         else:
-            print(f"pH is basic ({ph:.2f}), moving to A3 …")
+            print(f"pH is basic ({ph:.2f}), moving to A3 ...")
             bench.gantry.move_to_well("plate1/A3")
 
         # bench.ph.wait_for() blocks until the solution crosses a threshold.

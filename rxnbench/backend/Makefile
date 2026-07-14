@@ -11,16 +11,7 @@ CAMERA_DIR    := ../../devices/camera/backend
 
 # Set only when running from inside an extracted build_offline_bundle.sh
 # tarball, which ships a wheelhouse/ at its root (sibling to devices/,
-# rxnbench/) - see install_offline.sh. `uv run`'s implicit project sync
-# always hits PyPI for anything not already in uv's cache (including
-# dev-group deps like pytest) - `--offline --find-links` does NOT change
-# that for a locked project (only uv's own cache is checked in --offline
-# mode; --find-links is a resolution source, not a substitute for a
-# pinned-but-uncached lockfile entry). The only mechanism that's actually
-# offline-safe is a plain, non-project `--no-index --find-links` pip
-# install - the same one install_service.sh uses for its systemd-managed
-# venvs - so these targets do that directly instead of going through `uv
-# run`'s project/lockfile machinery at all.
+# rxnbench/)
 WHEELHOUSE := $(abspath ../../wheelhouse)
 
 install:

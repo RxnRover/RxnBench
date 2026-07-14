@@ -65,9 +65,7 @@ def _attach_gantry(bench, states=("running",)):
     return g
 
 
-# ---------------------------------------------------------------------------
 # at_well context manager
-# ---------------------------------------------------------------------------
 
 def test_at_well_requires_gantry(bench):
     with pytest.raises(RuntimeError, match="requires a gantry"):
@@ -111,9 +109,7 @@ def test_at_well_clears_current_well_after_exit(bench):
     assert bench._current_well is None
 
 
-# ---------------------------------------------------------------------------
 # check_pause_stop
-# ---------------------------------------------------------------------------
 
 def test_check_pause_stop_noop_without_lock_holder(bench):
     bench.check_pause_stop()  # no gantry connected -> nothing to check
@@ -141,9 +137,7 @@ def test_check_pause_stop_stop_during_pause_raises(bench):
         bench.check_pause_stop()
 
 
-# ---------------------------------------------------------------------------
 # CSV logging
-# ---------------------------------------------------------------------------
 
 def test_log_without_output_raises(bench):
     with pytest.raises(RuntimeError, match="set_log_output"):
@@ -186,9 +180,7 @@ def test_log_creates_parent_directories(bench, tmp_path):
     assert out.exists()
 
 
-# ---------------------------------------------------------------------------
 # connect() / close() session wiring
-# ---------------------------------------------------------------------------
 
 class _FakeSilaClient:
     instances: list = []

@@ -154,7 +154,7 @@ class RxnBenchClient:
             bench.connect("ph",     PHProbe, host="192.168.1.10", port=50052)
 
         Args:
-            name:   Attribute name (e.g. ``"ph"`` → ``bench.ph``).
+            name:   Attribute name (e.g. ``"ph"`` -> ``bench.ph``).
             cls:    Instrument class. Must accept a ``SilaClient`` as its only
                     constructor argument.
             server: mDNS server name - matched case-insensitively as a substring.

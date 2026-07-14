@@ -29,7 +29,6 @@ def main() -> None:
         # Move to but do not engage to each well in the workspace
         for well in wells:
             bench.gantry.move_to_well(well, True)
-            #time.sleep(3)
 
         # Always save and park at the end of a script.
         bench.gantry.save_and_park()

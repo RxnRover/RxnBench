@@ -122,9 +122,7 @@ def gantry(feature):
     return Gantry(sila)
 
 
-# ---------------------------------------------------------------------------
 # Experiment-lock token plumbing
-# ---------------------------------------------------------------------------
 
 def test_acquire_lock_stores_token_and_attaches_it_to_commands(gantry, feature):
     gantry.acquire_experiment_lock()
@@ -155,9 +153,7 @@ def test_mount_toolhead_sets_then_confirms_with_token(gantry, feature):
     assert feature.kwargs_of("ConfirmToolheadMounted")["Token"] == "tok-secret"
 
 
-# ---------------------------------------------------------------------------
 # Server-sourced labware and well enumeration
-# ---------------------------------------------------------------------------
 
 def test_well_labels_row_major():
     assert _well_labels(2, 3) == ["A1", "A2", "A3", "B1", "B2", "B3"]
@@ -211,9 +207,7 @@ def test_list_workspaces_drops_blank_lines(gantry):
     assert gantry.list_workspaces() == ["bench_default", "calibration"]
 
 
-# ---------------------------------------------------------------------------
 # PHProbe convenience readers
-# ---------------------------------------------------------------------------
 
 class _FakeSubscription:
     def __init__(self, value):
@@ -286,9 +280,7 @@ def test_wait_for_timeout_raises():
         probe.wait_for(below=5.0, timeout=0.0, interval=0)
 
 
-# ---------------------------------------------------------------------------
 # Camera
-# ---------------------------------------------------------------------------
 
 class _FakeImageProperty:
     def __init__(self, image: bytes):
