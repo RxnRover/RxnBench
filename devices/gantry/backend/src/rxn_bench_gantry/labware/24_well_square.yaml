@@ -1,0 +1,12 @@
+# 24-Well Standard Plate 
+
+rows: 4           # A–D
+columns: 6        # 1–6
+spacing_mm: 18.22  # centre-to-centre, both axes
+well_diameter_mm: 15.62
+well_depth_mm: 40
+plate_height_mm: 44.5   # mm, deck to plate top surface
+a1_offset_x: 18.4   # mm, A1 from corner
+a1_offset_y: 15.135   # mm, A1 from corner
+width_mm: 127.76     # mm, plate footprint along X 
+height_mm: 85.48     # mm, plate footprint along Y 

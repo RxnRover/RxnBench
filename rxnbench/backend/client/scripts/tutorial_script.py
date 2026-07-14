@@ -1,6 +1,7 @@
 import time
 from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
 
+# This script demonstrates how to use the bench to scan a plate of wells and log pH values.
 
 def main() -> None:
     with RxnBenchClient() as bench:
@@ -60,35 +61,6 @@ def main() -> None:
                 bench.log(ph=ph)
 
         # Always save and park at the end of a script.
-        bench.gantry.save_and_park()
-
-    # You can also use logical control to react to readings:
-    with RxnBenchClient() as bench:
-        bench.connect("gantry", Gantry, server="Gantry")
-        bench.connect("ph", PHProbe, server="pH")
-
-        bench.set_log_output("results/ph_scan_control.csv")
-        bench.gantry.load_workspace_yaml()
-        bench.gantry.mount_toolhead("ph_probe")
-
-        # Read a well and branch depending on the result.
-        with bench.at_well("plate1/A1", stabilize=3):
-            ph = bench.ph.read()
-
-        if ph < 7.0:
-            print(f"pH is acidic ({ph:.2f}), moving to A2 …")
-            bench.gantry.move_to_well("plate1/A2")
-        else:
-            print(f"pH is basic ({ph:.2f}), moving to A3 …")
-            bench.gantry.move_to_well("plate1/A3")
-
-        # bench.ph.wait_for() blocks until the solution crosses a threshold.
-        for well in bench.gantry.get_workspace_wells("plate1"):
-            with bench.at_well(well):
-                ph = bench.ph.wait_for(above=7.0, timeout=120, interval=5)
-                bench.log(ph=ph)
-
-        # Always save and park at the end of a script
         bench.gantry.save_and_park()
 
 

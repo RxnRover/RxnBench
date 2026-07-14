@@ -14,10 +14,10 @@
 ; Build (from rxnbench/frontend/, after `make dist`):
 ;   iscc packaging\installer.iss
 ; or with an explicit version:
-;   iscc /DMyAppVersion=0.1.0 packaging\installer.iss
+;   iscc /DMyAppVersion=0.1.1 packaging\installer.iss
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.0"
+  #define MyAppVersion "0.1.1"
 #endif
 #define MyAppName "Rxn Bench"
 #define MyAppPublisher "Ames National Laboratory"

@@ -14,7 +14,7 @@ deck_height_mm: 5.0
 
 plates:
   - id: 24-well                     # unique id used in well labels, e.g. "plate1/A3"
-    plate_type: 24_well_standard   # must match a file in labware/
+    plate_type: 24_well_square   # must match a file in labware/
     origin:
       x: 175    # mm, centre of the plate's footprint in gantry X
       y: 175   # mm, centre of the plate's footprint in gantry Y

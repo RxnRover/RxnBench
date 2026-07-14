@@ -4,6 +4,10 @@ All notable changes to Rxn Bench are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- frontend: the packaged app can now actually run experiment scripts. The PyInstaller spec never bundled `rxn_bench_client` (nor its `sila2` / `grpc_tools` dependencies) — scripts are loaded only dynamically via `runpy` when the Experiment Runner runs one, so PyInstaller's static analysis never saw them — and the frozen app threw `ModuleNotFoundError: No module named 'rxn_bench_client'` on the first script run. The spec now `collect_all`s `rxn_bench_client`, `sila2`, and `grpc_tools` (the last needed because sila2 compiles FDL to gRPC stubs at runtime, and its Cython `_protoc_compiler` imports `grpc_version` invisibly to static analysis), matching how device-plugin deps (`yaml`, `connections.base`) are already handled. Verified by running a script through the real frozen exe. (2026-07-14)
+
 ## [0.1.1] - 2026-07-13
 
 ### Added
