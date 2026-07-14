@@ -3,8 +3,8 @@ name: Windows installer
 # Builds the Windows Rxn Bench desktop installer and uploads it as an artifact.
 # PyInstaller can't cross-compile and Inno Setup (ISCC) is Windows-only, so this
 # has to run on a windows-latest runner - which is how the installer gets built
-# from a Linux dev machine without owning Windows: push a tag (or run it
-# manually) and download the .exe from the run's artifacts. Separate from ci.yml
+# from a Linux dev machine
+# push a tag (or run it manually) and download the .exe from the run's artifacts.
 # (Linux tests/drift checks) on purpose - different OS, heavier, tag-triggered.
 
 on:
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # create/update the GitHub Release and attach the installer
 
 jobs:
   windows-installer:
@@ -62,9 +62,23 @@ jobs:
           Write-Host "Building Rxn Bench installer, version $version"
           iscc "/DMyAppVersion=$version" packaging/installer.iss
 
+      # Always upload as a workflow artifact - available from every run
+      # (including manual dispatch, which has no tag to release against).
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: rxn-bench-windows-installer
           path: rxnbench/frontend/dist-installer/Rxn-Bench-Setup-*.exe
           if-no-files-found: error
+
+      # On version-tag builds, also publish it to the tag's GitHub Release so it
+      # has a permanent, repo-visible download URL (Releases page). Tags with a
+      # pre-release suffix (e.g. v0.1.0-ci-test2, v0.1.0-rc1) are marked
+      # prerelease so they don't become the "Latest release".
+      - name: Attach installer to the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rxnbench/frontend/dist-installer/Rxn-Bench-Setup-*.exe
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
