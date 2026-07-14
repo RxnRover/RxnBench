@@ -54,12 +54,8 @@ Note the address is `192.168.50.1` (Pi as gateway), **not** `192.168.1.50`
 | `avahi-daemon` | mDNS/DNS-SD advertising (`rxnbenchpi.local`) — the same discovery mech>
 | `dnsmasq` | DHCP server for the instrument switch (see Network above) |
 | `NetworkManager` | Network configuration |
-
-## Not yet set up
-
-- SiLA2 servers for the pH probe and the SV08 gantry
-- Moonraker client for the gantry
-- Any other instrument-facing software
+| `rxnbench-gantry` | SiLA server for Gantry |
+| `rxnbench-ph` | SiLA server for Gantry |
 
 ## Where to find the rest
 
