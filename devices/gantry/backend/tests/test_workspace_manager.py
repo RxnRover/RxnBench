@@ -173,3 +173,50 @@ def test_max_labware_top_z_picks_the_tallest_plate():
     from rxn_bench_gantry.plate_geometry import PlateGeometry
     tall_top = PlateGeometry.load("100ml_beaker").plate_height_mm
     assert m.max_labware_top_z() == pytest.approx(tall_top)
+
+
+# --- Shared deck/workplate height (deck_height_mm) --------------------------
+
+_DECK_YAML = textwrap.dedent("""\
+    name: deck_bench
+    calibration_reference_well: plates/A1
+    deck_height_mm: 8.0
+    plates:
+      - id: plates
+        plate_type: 96_well_standard
+        origin: {x: 50.0, y: 30.0, z: 2.0}
+        orientation: standard
+""")
+
+
+def test_deck_height_folds_into_well_opening():
+    # Opening Z = deck(8) + this plate's footprint offset origin.z(2) + plate height.
+    m = WorkspaceManager()
+    m.load_from_yaml(_DECK_YAML)
+    _, _, z = m.resolve_well("plates/A1")
+    assert z == pytest.approx(8.0 + 2.0 + _PLATE_HEIGHT_96)
+
+
+def test_deck_height_raises_max_labware_top_z():
+    m = WorkspaceManager()
+    m.load_from_yaml(_DECK_YAML)
+    assert m.max_labware_top_z() == pytest.approx(8.0 + 2.0 + _PLATE_HEIGHT_96)
+
+
+def test_deck_height_defaults_to_zero_for_backward_compat():
+    # SIMPLE_YAML has no deck_height_mm: origin.z alone must still be the
+    # resting-surface height above Z=0, exactly as before the field existed.
+    m = WorkspaceManager()
+    m.load_from_yaml(SIMPLE_YAML)
+    _, _, z = m.resolve_well("plates/A1")
+    assert z == pytest.approx(15.0 + _PLATE_HEIGHT_96)  # no deck term added
+
+
+def test_deck_height_survives_yaml_roundtrip():
+    m = WorkspaceManager()
+    m.load_from_yaml(_DECK_YAML)
+    m2 = WorkspaceManager()
+    m2.load_from_yaml(m.to_yaml())  # serialize (to_yaml_string) then reparse
+    assert m2.resolve_well("plates/A1")[2] == pytest.approx(
+        m.resolve_well("plates/A1")[2]
+    )

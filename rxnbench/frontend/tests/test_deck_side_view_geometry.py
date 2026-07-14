@@ -154,3 +154,25 @@ def test_resolve_reference_plate_height_defaults_missing_origin_z_to_zero():
 
 def test_resolve_reference_plate_height_malformed_yaml_returns_none():
     assert resolve_reference_plate_height("not: valid: yaml: [", _LABWARE) is None
+
+
+def test_resolve_reference_plate_height_folds_in_deck_height():
+    # With a shared deck, the reference top surface rides on top of it:
+    # deck(8) + footprint origin.z(15) + plate_height(39).
+    yaml_text = textwrap.dedent("""\
+        name: test_bench
+        calibration_reference_well: plate1/A1
+        deck_height_mm: 8.0
+        plates:
+          - id: plate1
+            plate_type: 96_well_standard
+            origin: {x: 100.0, y: 100.0, z: 15.0}
+    """)
+    result = resolve_reference_plate_height(yaml_text, _LABWARE)
+    assert result == ("plate1", pytest.approx(8.0 + 15.0 + 39.0))
+
+
+def test_resolve_reference_plate_height_deck_defaults_to_zero():
+    # _WORKSPACE_YAML has no deck_height_mm - must behave exactly as before.
+    result = resolve_reference_plate_height(_WORKSPACE_YAML, _LABWARE)
+    assert result == ("plate1", pytest.approx(15.0 + 39.0))

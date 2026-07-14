@@ -9,8 +9,15 @@ from rxn_bench_gantry.errors import (
     ToolheadNotMountedError,
     UnvalidatedGeometryError,
 )
+from rxn_bench_gantry.plate_geometry import PlateGeometry
 
 from tests.fakes import FakeMotionClient
+
+# Derived from the labware source of truth rather than hardcoded, so these
+# tests don't silently break when a bundled plate's dimensions are re-measured
+# (never hardcode plate dimensions outside labware/*.yaml - see CURRENT_STATE §8).
+_PLATE_HEIGHT_96 = PlateGeometry.load("96_well_standard").plate_height_mm
+_WELL_DEPTH_96 = PlateGeometry.load("96_well_standard").well_depth_mm
 
 _SIMPLE_WORKSPACE_YAML = textwrap.dedent("""\
     name: test_bench
@@ -58,7 +65,8 @@ def test_get_safe_clearance_z_matches_get_limits_trailing_field(ctrl):
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
     trailing = float(ctrl.get_limits().split("|")[-1])
     assert ctrl.get_safe_clearance_z() == pytest.approx(trailing)
-    assert trailing == pytest.approx(59.0)  # matches test_safe_clearance_uses_workspace_labware_height
+    # origin_z(15) + 96-well plate height + default 5mm padding
+    assert trailing == pytest.approx(15.0 + _PLATE_HEIGHT_96 + 5.0)
 
 
 def test_move_to_within_bounds(ctrl):
@@ -160,12 +168,11 @@ def test_safe_clearance_falls_back_to_bare_floor_without_workspace(ctrl, client)
 
 
 def test_safe_clearance_uses_workspace_labware_height(ctrl, client):
-    # plate1 sits at origin_z=15.0; 96_well_standard's plate_height_mm=39 ->
-    # top=54.0, plus the default 5mm padding = 59.0, which beats the bare
-    # 50mm floor.
+    # plate1 sits at origin_z=15.0; its top = 15 + 96-well plate height, plus
+    # the default 5mm padding, which beats the bare 50mm floor.
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
     ctrl.move_to(100.0, 100.0, 100.0)
-    assert client.calls[0][1]["z"] == pytest.approx(59.0)
+    assert client.calls[0][1]["z"] == pytest.approx(15.0 + _PLATE_HEIGHT_96 + 5.0)
 
 
 def test_safe_clearance_padding_is_configurable(client):
@@ -176,7 +183,7 @@ def test_safe_clearance_padding_is_configurable(client):
     )
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
     ctrl.move_to(100.0, 100.0, 100.0)
-    assert client.calls[0][1]["z"] == pytest.approx(15.0 + 39.0 + 20.0)
+    assert client.calls[0][1]["z"] == pytest.approx(15.0 + _PLATE_HEIGHT_96 + 20.0)
 
 
 def test_safe_clearance_ignores_padding_when_no_labware_loaded(ctrl, client):
@@ -309,7 +316,7 @@ def test_move_to_well_docks_at_plate_top_not_clearance_height(ctrl, client):
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
     ctrl.move_to_well("plate1/A1")
     lower_call = [c for name, c in client.calls if name == "move"][-1]
-    assert lower_call["z"] == pytest.approx(15.0 + 39.0)  # origin_z + plate_height_mm
+    assert lower_call["z"] == pytest.approx(15.0 + _PLATE_HEIGHT_96)  # origin_z + plate_height_mm
 
 
 # ---------------------------------------------------------------------------
@@ -317,21 +324,17 @@ def test_move_to_well_docks_at_plate_top_not_clearance_height(ctrl, client):
 # ---------------------------------------------------------------------------
 
 def test_move_to_well_rejects_z_engage_deeper_than_well(ctrl):
-    # 24_well_standard's well_depth_mm=17.4; ph_probe's z_engage=25 would
-    # punch through the bottom of this shallower well. geometry_validated is
-    # forced True to isolate this check from the separate unvalidated-geometry
-    # gate (ph_probe ships with geometry_validated: false).
-    ctrl.load_workspace_from_yaml(textwrap.dedent("""\
-        name: shallow_bench
-        calibration_reference_well: plate1/A1
-        plates:
-          - id: plate1
-            plate_type: 24_well_standard
-            origin: {x: 100.0, y: 100.0, z: 15.0}
-            orientation: standard
-    """))
+    # A toolhead whose engagement depth exceeds the target well's depth must be
+    # refused (it would punch through the bottom). Driven off the real well
+    # depth + a deliberately-too-deep z_engage rather than assuming a specific
+    # bundled plate is "shallow" - plate dimensions are operator-tuned and
+    # change. geometry_validated is forced True to isolate this check from the
+    # separate unvalidated-geometry gate (ph_probe ships with it false).
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)  # 96_well_standard
     ctrl.set_toolhead("ph_probe")
-    ctrl._toolhead_mgr.toolhead.geometry_validated = True
+    th = ctrl._toolhead_mgr.toolhead
+    th.geometry_validated = True
+    th.z_engage = _WELL_DEPTH_96 + 5.0  # deeper than the well can accommodate
     ctrl.set_toolhead_mounted(True)
     with pytest.raises(MotionLimitError, match="collide with the well bottom"):
         ctrl.move_to_well("plate1/A1")
@@ -496,3 +499,158 @@ def test_get_labware_yaml_contains_bundled_plates(ctrl):
     # Footprint fields are required by the frontend deck canvas.
     assert plate["width_mm"] == pytest.approx(127.76)
     assert plate["height_mm"] == pytest.approx(85.48)
+
+
+# ---------------------------------------------------------------------------
+# Intra-plate travel optimization: same-plate well moves skip the full-deck
+# clearance and travel at just the target plate's own (uniform) top height.
+# ---------------------------------------------------------------------------
+
+_TWO_PLATE_YAML = textwrap.dedent("""\
+    name: two_plate
+    calibration_reference_well: short/A1
+    plates:
+      - id: short
+        plate_type: 96_well_standard
+        origin: {x: 100.0, y: 100.0, z: 0.0}
+        orientation: standard
+      - id: tall
+        plate_type: 96_well_standard
+        origin: {x: 100.0, y: 250.0, z: 50.0}
+        orientation: standard
+""")
+
+_SHORT_TOP = _PLATE_HEIGHT_96          # origin_z 0 + plate height
+_TALL_TOP = 50.0 + _PLATE_HEIGHT_96    # origin_z 50 + plate height
+_FULL_CLEARANCE = _TALL_TOP + 5.0      # tallest deck plate + default 5mm padding
+_INTRA_SHORT = _SHORT_TOP + 5.0        # just the short plate + padding
+
+
+def test_move_to_well_first_move_uses_full_clearance(ctrl, client):
+    # Carriage starts at home (0,0) - not over any plate - so clear the deck.
+    ctrl.load_workspace_from_yaml(_TWO_PLATE_YAML)
+    ctrl.move_to_well("short/A1")
+    assert client.calls[0][1]["z"] == pytest.approx(_FULL_CLEARANCE)
+
+
+def test_move_to_well_same_plate_uses_intra_plate_clearance(ctrl, client):
+    ctrl.load_workspace_from_yaml(_TWO_PLATE_YAML)
+    ctrl.move_to_well("short/A1")           # now positioned over 'short'
+    client.calls.clear()
+    ctrl.move_to_well("short/A2")           # same plate -> only clear 'short'
+    assert client.calls[0][1]["z"] == pytest.approx(_INTRA_SHORT)
+    assert _INTRA_SHORT < _FULL_CLEARANCE   # the whole point: a much lower raise
+
+
+def test_move_to_well_cross_plate_uses_full_clearance(ctrl, client):
+    ctrl.load_workspace_from_yaml(_TWO_PLATE_YAML)
+    ctrl.move_to_well("short/A1")           # over 'short'
+    client.calls.clear()
+    ctrl.move_to_well("tall/A1")            # hop to 'tall' -> full deck clearance
+    assert client.calls[0][1]["z"] == pytest.approx(_FULL_CLEARANCE)
+
+
+def test_plain_move_to_always_uses_full_clearance(ctrl, client):
+    # A bare move_to has no plate context and must clear the whole deck even
+    # when the carriage happens to sit over a short plate.
+    ctrl.load_workspace_from_yaml(_TWO_PLATE_YAML)
+    ctrl.move_to_well("short/A1")
+    client.calls.clear()
+    ctrl.move_to(120.0, 120.0, 60.0)
+    assert client.calls[0][1]["z"] == pytest.approx(_FULL_CLEARANCE)
+
+
+# ---------------------------------------------------------------------------
+# X-gantry crossbar collision check: the bar spans X at the carriage's Y, so a
+# taller plate sharing the target's Y-row can be hit by the descending bar even
+# though the tip is clear. Off (geometry unset) unless configured.
+# ---------------------------------------------------------------------------
+
+_CROSSBAR_H = 40.0   # crossbar underside sits 40mm above the tip
+_CROSSBAR_T = 20.0   # crossbar is 20mm thick in Y
+
+
+def _crossbar_ctrl(client):
+    return GantryController(
+        client=client,
+        x_min=0.0, x_max=350.0, y_min=0.0, y_max=350.0, z_min=0.0, z_max=250.0,
+        crossbar_clearance_above_tip_mm=_CROSSBAR_H,
+        crossbar_y_thickness_mm=_CROSSBAR_T,
+    )
+
+
+# short plate (top = plate_height) beside a much taller plate in the SAME Y-row.
+_SAME_ROW_YAML = textwrap.dedent("""\
+    name: same_row
+    calibration_reference_well: short/A1
+    plates:
+      - id: short
+        plate_type: 96_well_standard
+        origin: {x: 80.0, y: 150.0, z: 0.0}
+        orientation: standard
+      - id: tall
+        plate_type: 96_well_standard
+        origin: {x: 250.0, y: 150.0, z: 60.0}
+        orientation: standard
+""")
+
+
+def test_crossbar_refuses_dock_when_taller_plate_shares_y_row(client):
+    ctrl = _crossbar_ctrl(client)
+    ctrl.load_workspace_from_yaml(_SAME_ROW_YAML)
+    # tall top = 60 + plate_height; docking at short's opening puts the bar at
+    # opening + H, well below the tall plate -> refuse before any motion.
+    with pytest.raises(MotionLimitError, match="crossbar"):
+        ctrl.move_to_well("short/A1")
+    assert client.calls == []
+
+
+def test_crossbar_allows_dock_when_taller_plate_is_a_different_y_row(client):
+    ctrl = _crossbar_ctrl(client)
+    ctrl.load_workspace_from_yaml(textwrap.dedent("""\
+        name: different_row
+        calibration_reference_well: short/A1
+        plates:
+          - id: short
+            plate_type: 96_well_standard
+            origin: {x: 80.0, y: 100.0, z: 0.0}
+            orientation: standard
+          - id: tall
+            plate_type: 96_well_standard
+            origin: {x: 250.0, y: 260.0, z: 60.0}
+            orientation: standard
+    """))
+    ctrl.move_to_well("short/A1")  # tall plate is out of the crossbar's Y band
+    assert any(name == "move" for name, _ in client.calls)
+
+
+def test_crossbar_disabled_when_geometry_unset(client):
+    ctrl = GantryController(
+        client=client, x_min=0.0, x_max=350.0, y_min=0.0, y_max=350.0,
+        z_min=0.0, z_max=250.0,
+    )  # no crossbar params -> the whole check is inert
+    ctrl.load_workspace_from_yaml(_SAME_ROW_YAML)
+    ctrl.move_to_well("short/A1")  # would refuse if enabled; disabled -> fine
+    assert any(name == "move" for name, _ in client.calls)
+
+
+def test_crossbar_refuses_engage_that_lowers_bar_into_a_taller_row_plate(client):
+    ctrl = _crossbar_ctrl(client)
+    ctrl.load_workspace_from_yaml(textwrap.dedent("""\
+        name: row
+        calibration_reference_well: short/A1
+        plates:
+          - id: short
+            plate_type: 96_well_standard
+            origin: {x: 80.0, y: 150.0, z: 0.0}
+            orientation: standard
+          - id: mid
+            plate_type: 96_well_standard
+            origin: {x: 250.0, y: 150.0, z: 30.0}
+            orientation: standard
+    """))
+    # mid top = 30 + plate_height. Docking at short's opening keeps the bar above
+    # mid (allowed), but engaging deeper drives it down into mid -> refuse.
+    ctrl.move_to_well("short/A1")
+    with pytest.raises(MotionLimitError, match="crossbar"):
+        ctrl.engage_tool(depth=20.0)

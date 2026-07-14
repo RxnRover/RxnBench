@@ -1,6 +1,4 @@
 # 6-Well Sample Holder
-#
-# Designed to hold 6 25ml or 50ml samples
 
 rows: 2           # A-B
 columns: 3        # 1-3
@@ -8,7 +6,7 @@ spacing_mm: 39.12  # centre-to-centre, both axes
 well_diameter_mm: 34.8
 # well_depth_mm: 17.4
 well_depth_mm: 100.0  # for use with 50ml tubes
-# plate_height_mm: 20.4   # mm, deck to holder top surface - estimated (well_depth + ~3mm base), verify with calipers
+# plate_height_mm: 20.4   # mm, deck to holder top surface
 plate_height_mm: 117   # mm, for use with with 50ml tubes
 a1_offset_x: 24.55   # mm, A1 from corner
 a1_offset_y: 23.16   # mm, A1 from corner

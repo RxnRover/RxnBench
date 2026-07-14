@@ -1,4 +1,4 @@
-# Created to test positioning and function of gantry
+# Automatic calibration script for the pH probe
 
 import time
 from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
@@ -22,14 +22,21 @@ def main() -> None:
         # Mount the tool you want to use.
         bench.gantry.mount_toolhead("ph_probe")
 
-        # Get the labels of all wells in the workspace
-        wells: list[str] = bench.gantry.get_workspace_wells()
-        bench.log(wells=wells)  # log the well labels for reference
+        low_buffer_well = 'Calibration/A3'
+        mid_buffer_well = 'Calibration/A2'
+        high_buffer_well = 'Calibration/A1'
 
-        # Move to but do not engage to each well in the workspace
-        for well in wells:
+        buffer = ['mid', 'low', 'high']
+        buffer_wells = [mid_buffer_well, low_buffer_well, high_buffer_well]
+        buffer_ph_values = [7.0, 4.0, 10.0]
+
+        for buffer, well, ph in zip(buffer, buffer_wells, buffer_ph_values):
             bench.gantry.move_to_well(well, True)
-            #time.sleep(3)
+            bench.gantry.engage_toolhead()
+            # wait for stable
+            time.sleep(15)
+            bench.ph.calibrate(buffer, ph)
+            bench.gantry.disengage_toolhead()
 
         # Always save and park at the end of a script.
         bench.gantry.save_and_park()

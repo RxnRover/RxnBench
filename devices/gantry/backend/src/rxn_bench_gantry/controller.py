@@ -34,6 +34,8 @@ class GantryController:
         z_min: float = 0.0,
         z_max: float = 340.0,
         z_clearance_padding_mm: float = 5.0,
+        crossbar_clearance_above_tip_mm: float | None = None,
+        crossbar_y_thickness_mm: float | None = None,
     ):
         """Initialise the controller and restore any persisted homing state.
 
@@ -47,12 +49,19 @@ class GantryController:
             z_max: Upper Z limit in mm.
             z_clearance_padding_mm: Safety margin added above the tallest
                 loaded labware when computing safe clearance-travel height.
+            crossbar_clearance_above_tip_mm: Height of the X-gantry crossbar's
+                underside above the tip (see MachineConfig). None disables the
+                crossbar collision check.
+            crossbar_y_thickness_mm: The crossbar's Y extent. None disables the
+                crossbar collision check.
         """
         self._toolhead_mgr = ToolheadManager()
         self._homing_mgr = HomingManager(client, x_min, x_max, y_min, y_max, z_min, z_max)
         self._engine = MotionEngine(client)
         self._workspace_mgr = WorkspaceManager()
         self._z_clearance_padding_mm = z_clearance_padding_mm
+        self._crossbar_clearance_above_tip_mm = crossbar_clearance_above_tip_mm
+        self._crossbar_y_thickness_mm = crossbar_y_thickness_mm
         self._restore_state()
 
     def _restore_state(self) -> None:
@@ -147,6 +156,24 @@ class GantryController:
         Raises:
             MotionLimitError: If the target position would exceed the calibrated axis limits.
         """
+        # Plain move: no plate context, so clear everything on the deck.
+        self._travel_to(x, y, z, self._safe_clearance_z, speed)
+
+    def _travel_to(
+        self,
+        x: float | None,
+        y: float | None,
+        z: float | None,
+        clearance_z: float,
+        speed: float | None = None,
+    ) -> None:
+        """Offset-compensated safe-travel move at an explicit clearance height.
+
+        Shared by move_to (full-deck clearance) and move_to_well (which may pass
+        a lower intra-plate clearance). Applies the active toolhead's XY offset,
+        bounds-checks both the target and the clearance height, then hands the
+        raise->XY->lower sequence to the engine.
+        """
         th = self._toolhead_mgr.toolhead
         offset_x = (th.offset_x + th.tip_x) if th else 0.0
         offset_y = (th.offset_y + th.tip_y) if th else 0.0
@@ -155,9 +182,64 @@ class GantryController:
         target_y = y + offset_y if y is not None else None
 
         self._check_bounds(x=target_x, y=target_y, z=z)
-        self._check_bounds(z=self._safe_clearance_z)
+        self._check_bounds(z=clearance_z)
 
-        self._engine.move_to(target_x, target_y, z, self._safe_clearance_z, speed)
+        self._engine.move_to(target_x, target_y, z, clearance_z, speed)
+
+    def _plate_clearance_z(self, plate_id: str) -> float:
+        """Travel height that just clears ONE plate - for intra-plate well moves.
+
+        When both the start and end wells are in the same plate, only that
+        plate's own (uniform) top surface has to be cleared, not the tallest
+        plate anywhere on the deck - so the tip rises just `padding` above this
+        plate's rim instead of all the way to the full deck clearance, saving
+        the raise/lower time between wells. Still keeps the tip above z_min.
+        Deliberately omits the bare-carriage comfort floor (_BARE_CLEARANCE_Z_MM):
+        staying low over a known short plate is the entire point.
+        """
+        th = self._toolhead_mgr.toolhead
+        tip_z = th.tip_offset_z if th else 0.0
+        plate_top = self._workspace_mgr.plate_top_z(plate_id)
+        return max(tip_z + self._homing_mgr.z_min, plate_top + self._z_clearance_padding_mm)
+
+    def _clearance_for_well_target(self, plate_id: str) -> float:
+        """Pick intra-plate clearance if the carriage is already over this plate.
+
+        Same-plate is decided from the *actual current tip position* vs. the
+        target plate's footprint (stateless and exact for the supported 0/90
+        orientations, which keep the plate rectangle axis-aligned), so it can't
+        be fooled by stale tracking after a manual jog or a cross-plate hop. Any
+        failure to determine position falls back to the full, safe deck clearance.
+        """
+        try:
+            pos = self._engine.get_position()
+            x_min, x_max, y_min, y_max = self._workspace_mgr.plate_footprint_bounds(plate_id)
+        except Exception:
+            return self._safe_clearance_z
+        th = self._toolhead_mgr.toolhead
+        off_x = (th.offset_x + th.tip_x) if th else 0.0
+        off_y = (th.offset_y + th.tip_y) if th else 0.0
+        tip_x = pos["x"] - off_x   # where the tip is, not the carriage
+        tip_y = pos["y"] - off_y
+        over_plate = (x_min <= tip_x <= x_max) and (y_min <= tip_y <= y_max)
+        return self._plate_clearance_z(plate_id) if over_plate else self._safe_clearance_z
+
+    def _crossbar_min_command_z(self, carriage_y: float) -> float | None:
+        """Lowest Z command allowed at a carriage Y by the X-gantry crossbar.
+
+        The crossbar spans X at the carriage's Y and sits `H` above the tip, so
+        to keep the bar clear of a plate whose top is at `plate_top` the tip
+        (= the Z command, in the workspace Z frame) must stay at or above
+        `plate_top - H`. Returns the tightest such bound over every plate sharing
+        the crossbar's Y band, or None when the check is disabled (crossbar
+        geometry not configured) or nothing shares the band.
+        """
+        h = self._crossbar_clearance_above_tip_mm
+        t = self._crossbar_y_thickness_mm
+        if h is None or t is None:
+            return None
+        top = self._workspace_mgr.max_top_in_y_band(carriage_y - t / 2, carriage_y + t / 2)
+        return (top - h) if top is not None else None
 
     def jog(
         self,
@@ -200,6 +282,15 @@ class GantryController:
         pos = self._engine.get_position()
         target_z = pos["z"] - depth
         self._check_bounds(z=target_z)
+        # Descending lowers the crossbar too; refuse if it would hit a taller
+        # plate sharing the current Y-row.
+        crossbar_min = self._crossbar_min_command_z(pos["y"])
+        if crossbar_min is not None and target_z < crossbar_min:
+            raise MotionLimitError(
+                f"X-gantry crossbar would collide with a taller plate in this "
+                f"Y-row: engaging to Z={target_z:.1f}mm needs the tip at/above "
+                f"Z={crossbar_min:.1f}mm to keep the bar clear."
+            )
         self._engine.move(z=target_z, speed=speed)
 
     def disengage_tool(self, depth: float, speed: float | None = None) -> None:
@@ -501,7 +592,25 @@ class GantryController:
                     f"(z_engage={th.z_engage:.1f}mm) exceeds well {label!r}'s "
                     f"depth ({well_depth:.1f}mm) - would collide with the well bottom."
                 )
-        self.move_to(x=x, y=y, z=z)
+        # Only clear the whole deck when hopping to a different plate; when the
+        # carriage is already over this plate, travel at just this plate's own
+        # clearance height (uniform top) to skip the wasteful full raise/lower.
+        plate_id = self._workspace_mgr.plate_id_for_label(label)
+        clearance = self._clearance_for_well_target(plate_id)
+        # X-gantry crossbar: refuse if docking at this well would drive the bar
+        # into a taller plate sharing the target's Y-row; otherwise raise the
+        # travel clearance so the bar clears that plate on the way in.
+        off_y = (th.offset_y + th.tip_y) if th else 0.0
+        crossbar_min = self._crossbar_min_command_z(y + off_y)
+        if crossbar_min is not None:
+            if z < crossbar_min:
+                raise MotionLimitError(
+                    f"X-gantry crossbar would collide with a taller plate sharing "
+                    f"well {label!r}'s Y-row: docking at Z={z:.1f}mm needs the tip "
+                    f"at/above Z={crossbar_min:.1f}mm to keep the bar clear."
+                )
+            clearance = max(clearance, crossbar_min)
+        self._travel_to(x, y, z, clearance)
         actual = self._engine.get_position()
         return {
             "expected_well_x": x,

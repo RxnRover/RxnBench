@@ -162,8 +162,10 @@ def resolve_reference_plate_height(workspace_yaml: str, labware: dict) -> tuple[
     non-contact Z-reference technique: hover the tip at this known height
     (optionally with a paper shim) instead of touching the deck or a
     toolhead's tip touching it directly. Top surface height is
-    ``origin_z + plate_height_mm`` - the same quantity WorkspaceManager.
-    resolve_well() docks well-targeted moves at server-side.
+    ``deck_height_mm + origin_z + plate_height_mm`` - the same quantity
+    WorkspaceManager.resolve_well() docks well-targeted moves at server-side
+    (the shared deck/workplate height is folded in so this reference lands at
+    the plate's real top even when the whole deck is raised off the bed).
 
     Args:
         workspace_yaml: Raw YAML of the active workspace (as returned by
@@ -193,7 +195,8 @@ def resolve_reference_plate_height(workspace_yaml: str, labware: dict) -> tuple[
         if plate_height_mm is None:
             return None
         origin_z = (plate.get("origin") or {}).get("z") or 0.0
-        return plate_id, origin_z + float(plate_height_mm)
+        deck_height_mm = data.get("deck_height_mm") or 0.0
+        return plate_id, float(deck_height_mm) + origin_z + float(plate_height_mm)
     except Exception:
         return None
 
@@ -605,6 +608,7 @@ class DeckSideViewCanvas(QWidget):
         self._t     = t
         self._axis  = axis
         self._plates: list[dict] = []
+        self._deck_height_mm = 0.0   # shared deck/workplate top height above Z=0
         self._plate_specs: dict[str, _PlateSpec] = {}
         self._active_well = ("", "")
         self._current_pos: tuple[float, float, float] | None = None  # gantry x, y, z mm
@@ -626,10 +630,12 @@ class DeckSideViewCanvas(QWidget):
 
     def load(self, workspace: dict) -> None:
         self._plates = workspace.get("plates", [])
+        self._deck_height_mm = float(workspace.get("deck_height_mm") or 0.0)
         self.update()
 
     def clear(self) -> None:
         self._plates = []
+        self._deck_height_mm = 0.0
         self._active_well = ("", "")
         self._current_pos = None
         self.update()
@@ -701,9 +707,10 @@ class DeckSideViewCanvas(QWidget):
             (plate, self._plate_specs.get(plate.get("plate_type", ""), _FALLBACK_SPEC))
             for plate in self._plates
         ]
+        deck = self._deck_height_mm
         h_spans = [self._h_extent(pl, sp) for pl, sp in entries]
         plate_tops = [
-            (plate.get("origin") or {}).get("z", 0.0) + sp.plate_height_mm
+            deck + ((plate.get("origin") or {}).get("z", 0.0)) + sp.plate_height_mm
             for plate, sp in entries
         ]
 
@@ -760,14 +767,22 @@ class DeckSideViewCanvas(QWidget):
                 oy_off + rend_h - (z_mm - z_lo) * scale,
             )
 
-        # Deck floor (Z=0)
+        # Z=0 floor (the bed / machine origin)
         floor_col = QColor(t["text_dim"])
         p.setPen(QPen(floor_col, 1.5))
         fx0, fy0 = to_px(hmin, 0.0)
         fx1, _fy1 = to_px(hmax, 0.0)
         p.drawLine(int(fx0), int(fy0), int(fx1), int(fy0))
         p.setFont(QFont("sans-serif", 8))
-        p.drawText(QRectF(fx0, fy0 - 16, 140, 14), Qt.AlignLeft, "deck (Z=0)")
+        p.drawText(QRectF(fx0, fy0 - 16, 140, 14), Qt.AlignLeft, "Z=0 (bed)")
+
+        # Shared deck/workplate top, when it's raised off the bed - plates ride on this
+        if deck > 0:
+            p.setPen(QPen(floor_col, 1.2, Qt.DotLine))
+            dx0, dy0 = to_px(hmin, deck)
+            dx1, _dy1 = to_px(hmax, deck)
+            p.drawLine(int(dx0), int(dy0), int(dx1), int(dy0))
+            p.drawText(QRectF(dx0, dy0 - 16, 160, 14), Qt.AlignLeft, f"deck top: {deck:.1f} mm")
 
         # Safe clearance-travel height
         if safe_z is not None:
@@ -786,13 +801,15 @@ class DeckSideViewCanvas(QWidget):
 
         for i, ((plate, spec), (h0, h1)) in enumerate(zip(entries, h_spans)):
             pid    = plate.get("id", f"plate{i + 1}")
-            origin_z = (plate.get("origin") or {}).get("z") or 0.0
-            top_z  = origin_z + spec.plate_height_mm
+            # The plate rests on the shared deck, so its resting surface is
+            # deck_height + its own footprint offset (origin.z) above Z=0.
+            rest_z = deck + ((plate.get("origin") or {}).get("z") or 0.0)
+            top_z  = rest_z + spec.plate_height_mm
             bottom_z = top_z - spec.well_depth_mm
             color  = QColor(_PALETTE[i % len(_PALETTE)])
 
             px0, py0 = to_px(h0, top_z)
-            px1, py1 = to_px(h1, origin_z)
+            px1, py1 = to_px(h1, rest_z)
             rect = QRectF(px0, py0, px1 - px0, py1 - py0)
             fill = QColor(color); fill.setAlphaF(0.15)
             p.fillRect(rect, fill)

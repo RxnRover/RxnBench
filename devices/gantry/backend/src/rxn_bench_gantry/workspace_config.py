@@ -30,7 +30,12 @@ class PlacedPlate:
     plate_type: str
     origin_x: float
     origin_y: float
-    origin_z: float
+    origin_z: float  # mm, this plate's mount/footprint height *above the deck top*
+                     # (WorkspaceConfig.deck_height_mm), i.e. how far its own
+                     # adapter/holder lifts it above the shared deck. 0 = the
+                     # plate sits directly on the deck. When deck_height_mm is 0
+                     # (the default) this is simply the resting-surface height
+                     # above Z=0, exactly as before.
     orientation: Orientation = Orientation.STANDARD
     origin_mode: OriginMode = OriginMode.CENTER
 
@@ -41,6 +46,16 @@ class WorkspaceConfig:
     name: str
     calibration_reference_well: str
     plates: tuple[PlacedPlate, ...]
+    deck_height_mm: float = 0.0
+    """Height (mm) of the shared deck/workplate top surface above Z=0 (the bed).
+
+    The bench's base plate is one physical layer shared by every plate, so its
+    thickness lives here once instead of being baked into each plate's
+    ``origin.z`` (swapping to a thicker/thinner deck is then a one-line change).
+    A well's opening Z is ``deck_height_mm + plate.origin_z + plate_height_mm``.
+    Defaults to 0 so a workspace YAML that predates this field behaves exactly
+    as before (each plate's ``origin.z`` alone = resting-surface height above Z=0).
+    """
 
     def get_plate(self, plate_id: str) -> PlacedPlate:
         """Return the PlacedPlate with the given ID.
@@ -86,6 +101,7 @@ class WorkspaceConfig:
             name=data["name"],
             calibration_reference_well=data["calibration_reference_well"],
             plates=tuple(plates),
+            deck_height_mm=float(data.get("deck_height_mm", 0.0)),
         )
 
     @classmethod
@@ -132,6 +148,7 @@ class WorkspaceConfig:
         data = {
             "name": self.name,
             "calibration_reference_well": self.calibration_reference_well,
+            "deck_height_mm": self.deck_height_mm,
             "plates": [
                 {
                     "id": p.id,

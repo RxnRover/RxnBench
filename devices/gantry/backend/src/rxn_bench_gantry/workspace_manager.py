@@ -88,10 +88,12 @@ class WorkspaceManager:
 
         Returns:
             Tuple of ``(x, y, z)`` in mm in the gantry coordinate frame. ``z``
-            is the plate's *top surface* (``origin_z + plate_height_mm``) -
-            the well's opening, not its bottom - since that is the physically
-            meaningful height to dock at before any tool-specific engagement
-            depth is applied on top of it.
+            is the plate's *top surface*
+            (``deck_height_mm + origin_z + plate_height_mm``) - the well's
+            opening, not its bottom - since that is the physically meaningful
+            height to dock at before any tool-specific engagement depth is
+            applied on top of it. The shared deck/workplate height is folded in
+            here so every plate rides on top of it without repeating it per-plate.
 
         Raises:
             RuntimeError: If no workspace is loaded.
@@ -115,8 +117,80 @@ class WorkspaceManager:
         return (
             plate.origin_x + gantry_dx,
             plate.origin_y + gantry_dy,
-            plate.origin_z + geom.plate_height_mm,
+            self._config.deck_height_mm + plate.origin_z + geom.plate_height_mm,
         )
+
+    def plate_top_z(self, plate_id: str) -> float:
+        """Return one plate's top-surface (well-opening) Z in mm.
+
+        ``deck_height_mm + origin_z + plate_height_mm`` for this specific plate -
+        the intra-plate travel height only has to clear this plate, not the
+        tallest plate anywhere on the deck.
+
+        Raises:
+            RuntimeError: If no workspace is loaded.
+            KeyError: If the plate ID is not found in the current workspace.
+        """
+        if self._config is None:
+            raise RuntimeError("No workspace loaded.")
+        plate = self._config.get_plate(plate_id)
+        geom = self._load_geometry(plate.plate_type)
+        return self._config.deck_height_mm + plate.origin_z + geom.plate_height_mm
+
+    def plate_footprint_bounds(self, plate_id: str) -> tuple[float, float, float, float]:
+        """Return a plate's footprint as gantry-frame ``(x_min, x_max, y_min, y_max)``.
+
+        Used to tell whether the carriage is currently positioned over a given
+        plate. Exact for the supported orientations: a rectangle rotated by 0°
+        or 90° stays axis-aligned, so this bounding box is the true footprint.
+
+        Raises:
+            RuntimeError: If no workspace is loaded.
+            KeyError: If the plate ID is not found in the current workspace.
+        """
+        if self._config is None:
+            raise RuntimeError("No workspace loaded.")
+        plate = self._config.get_plate(plate_id)
+        geom = self._load_geometry(plate.plate_type)
+        w, h = geom.width_mm, geom.height_mm
+        if plate.origin_mode is OriginMode.CENTER:
+            corners = [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]
+        else:  # CORNER: origin is the un-rotated corner
+            corners = [(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]
+        gxs, gys = [], []
+        for cx, cy in corners:
+            ox, oy = self._apply_orientation(cx, cy, plate.orientation)
+            gxs.append(plate.origin_x + ox)
+            gys.append(plate.origin_y + oy)
+        return min(gxs), max(gxs), min(gys), max(gys)
+
+    def plate_id_for_label(self, label: str) -> str:
+        """Return the plate id a well label resolves to (handles the bare-label case)."""
+        plate, _geom, _well = self._resolve_plate(label)
+        return plate.id
+
+    def max_top_in_y_band(self, y_lo: float, y_hi: float) -> float | None:
+        """Return the tallest plate-top Z among plates whose Y footprint overlaps [y_lo, y_hi].
+
+        Used by the X-gantry crossbar collision check: the crossbar spans X at
+        the carriage's Y, so only plates sharing that Y band ("row") can be hit.
+        Returns None if no workspace is loaded or no plate overlaps the band.
+        A plate whose type can't be loaded is skipped (logged), like the
+        clearance calc.
+        """
+        if self._config is None:
+            return None
+        tops = []
+        for plate in self._config.plates:
+            try:
+                _x0, _x1, py0, py1 = self.plate_footprint_bounds(plate.id)
+                top = self.plate_top_z(plate.id)
+            except Exception as exc:
+                _log.warning("Skipping plate %r in crossbar check: %s", plate.id, exc)
+                continue
+            if py1 >= y_lo and py0 <= y_hi:   # Y footprints overlap the band
+                tops.append(top)
+        return max(tops) if tops else None
 
     def get_well_depth(self, label: str) -> float:
         """Return the specific well's depth in mm (top surface to well bottom).
@@ -158,7 +232,7 @@ class WorkspaceManager:
         return self._geometry_cache[plate_type]
 
     def max_labware_top_z(self) -> float:
-        """Return the highest loaded labware top surface (origin_z + plate_height_mm) in mm.
+        """Return the highest loaded labware top surface (deck_height + origin_z + plate_height_mm) in mm.
 
         Used to size safe clearance-travel height from the actual deck
         contents instead of a fixed guess. A plate whose type can't be
@@ -172,6 +246,7 @@ class WorkspaceManager:
         """
         if self._config is None or not self._config.plates:
             return 0.0
+        deck = self._config.deck_height_mm
         tops = []
         for plate in self._config.plates:
             try:
@@ -179,7 +254,7 @@ class WorkspaceManager:
             except Exception as exc:
                 _log.warning("Skipping plate %r in clearance calc: %s", plate.id, exc)
                 continue
-            tops.append(plate.origin_z + geom.plate_height_mm)
+            tops.append(deck + plate.origin_z + geom.plate_height_mm)
         return max(tops) if tops else 0.0
 
     @staticmethod
