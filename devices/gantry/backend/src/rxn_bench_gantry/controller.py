@@ -502,13 +502,24 @@ class GantryController:
         return self._safe_clearance_z
 
     def get_limits(self) -> str:
-        """Return calibrated axis limits + current safe clearance height as a
-        pipe-delimited string: ``x_min|x_max|y_min|y_max|z_min|z_max|safe_clearance_z``.
+        """Return calibrated axis limits + safe clearance + crossbar geometry as a
+        pipe-delimited string:
+        ``x_min|x_max|y_min|y_max|z_min|z_max|safe_clearance_z|crossbar_clearance_above_tip|crossbar_y_thickness``.
+
+        The two trailing crossbar fields are empty strings when the crossbar
+        model is not configured (so the frontend draws nothing). Kept as one
+        SString blob - appending fields is wire-compatible and needs no proto
+        change; the frontend parses 7 or 9 fields.
         """
         h = self._homing_mgr
+
+        def _f(v: float | None) -> str:
+            return "" if v is None else str(v)
+
         return (
             f"{h.x_min}|{h.x_max}|{h.y_min}|{h.y_max}|{h.z_min}|{h.z_max}|"
-            f"{self._safe_clearance_z}"
+            f"{self._safe_clearance_z}|"
+            f"{_f(self._crossbar_clearance_above_tip_mm)}|{_f(self._crossbar_y_thickness_mm)}"
         )
 
     def set_workspace(self, name: str) -> None:

@@ -55,18 +55,26 @@ def ctrl(client):
 def test_get_limits_format(ctrl):
     limits_str = ctrl.get_limits()
     parts = limits_str.split("|")
-    assert len(parts) == 7
-    x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z = [float(p) for p in parts]
+    assert len(parts) == 9  # 7 numeric fields + 2 crossbar (empty when unset)
+    x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z = [float(p) for p in parts[:7]]
     assert (x_min, x_max, y_min, y_max, z_min, z_max) == (0.0, 300.0, 0.0, 300.0, 0.0, 250.0)
     assert safe_clearance_z == pytest.approx(50.0)  # _BARE_CLEARANCE_Z_MM, no workspace loaded
+    assert parts[7] == "" and parts[8] == ""        # crossbar model not configured -> empty
 
 
-def test_get_safe_clearance_z_matches_get_limits_trailing_field(ctrl):
+def test_get_safe_clearance_z_matches_get_limits_field(ctrl):
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
-    trailing = float(ctrl.get_limits().split("|")[-1])
-    assert ctrl.get_safe_clearance_z() == pytest.approx(trailing)
+    safe = float(ctrl.get_limits().split("|")[6])   # 7th field is safe_clearance_z
+    assert ctrl.get_safe_clearance_z() == pytest.approx(safe)
     # origin_z(15) + 96-well plate height + default 5mm padding
-    assert trailing == pytest.approx(15.0 + _PLATE_HEIGHT_96 + 5.0)
+    assert safe == pytest.approx(15.0 + _PLATE_HEIGHT_96 + 5.0)
+
+
+def test_get_limits_includes_crossbar_geometry_when_configured(client):
+    parts = _crossbar_ctrl(client).get_limits().split("|")
+    assert len(parts) == 9
+    assert float(parts[7]) == pytest.approx(_CROSSBAR_H)
+    assert float(parts[8]) == pytest.approx(_CROSSBAR_T)
 
 
 def test_move_to_within_bounds(ctrl):

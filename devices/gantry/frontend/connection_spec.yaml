@@ -5,7 +5,7 @@
 #     --out ../../devices/gantry/frontend/generated_connection.py
 
 meta:
-  package: sila2.edu.iastate.ames.rxnbench.gantry.v0
+  package: sila2.edu.iastate.ames.rxnbench.gantry.v1
   service: Gantry
   class_name: GantryConnectionBase
   proto_module: rxn_bench_ui.devices.gantry.proto.motion_platform_pb2

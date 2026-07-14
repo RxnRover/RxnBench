@@ -14,7 +14,7 @@ from rxn_bench_ui.connections.base import _FeatureConnection
 import rxn_bench_ui.devices.gantry.proto.motion_platform_pb2 as _pb
 
 
-_PKG = "sila2.edu.iastate.ames.rxnbench.gantry.v0"
+_PKG = "sila2.edu.iastate.ames.rxnbench.gantry.v1"
 _SVC = "Gantry"
 
 

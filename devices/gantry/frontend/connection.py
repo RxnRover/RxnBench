@@ -46,7 +46,9 @@ class GantryConnection(GantryConnectionBase):
     here.  Wire/command boilerplate is in GantryConnectionBase (generated).
     """
 
-    limits_updated    = Signal(float, float, float, float, float, float, float)
+    # 7 axis/clearance floats + 2 crossbar geometry values (object = float | None,
+    # None when the server has no crossbar model configured or is an older 7-field server)
+    limits_updated    = Signal(float, float, float, float, float, float, float, object, object)
     labware_updated   = Signal(object)     # dict: plate_type -> geometry dict, server-sourced
     workspace_op_done = Signal(bool, str)  # (ok, message) after apply/load workspace ops
 
@@ -225,19 +227,28 @@ class GantryConnection(GantryConnectionBase):
             self.error_occurred.emit(_format_error("CalibrateToolheadTip", e))
             return None
 
-    def fetch_limits(self) -> tuple[float, float, float, float, float, float, float] | None:
-        """Fetch axis limits + safe clearance height.
+    def fetch_limits(self):
+        """Fetch axis limits + safe clearance + optional crossbar geometry.
 
         Returns:
-            (x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z), or
-            None on failure.
+            ``(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z,
+            crossbar_clearance_above_tip, crossbar_y_thickness)`` or None on
+            failure. The two crossbar values are None when the server has no
+            crossbar model configured, and also when talking to an older
+            7-field server (forward/backward wire-compatible).
         """
         try:
             raw   = self._channel.unary_unary(self._rpc("GetLimits"))(b"", timeout=5.0)
             resp  = _mp.GetLimits_Responses.FromString(bytes(raw))
-            parts = [float(v) for v in resp.Limits.value.split("|")]
-            if len(parts) == 7:
-                return tuple(parts)  # type: ignore[return-value]
+            parts = resp.Limits.value.split("|")
+            if len(parts) < 7:
+                return None
+            nums = [float(v) for v in parts[:7]]
+
+            def _opt(i: int) -> float | None:
+                return float(parts[i]) if len(parts) > i and parts[i] != "" else None
+
+            return (*nums, _opt(7), _opt(8))
         except Exception:
             pass
         return None

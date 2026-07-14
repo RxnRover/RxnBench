@@ -10,7 +10,7 @@ syntax = "proto3";
 // Regenerate (from rxnbench/backend):
 //   make gen-proto
 
-package sila2.edu.iastate.ames.rxnbench.gantry.v0;
+package sila2.edu.iastate.ames.rxnbench.gantry.v1;
 
 // SiLA primitive wrappers
 message Real    { double value = 1; }

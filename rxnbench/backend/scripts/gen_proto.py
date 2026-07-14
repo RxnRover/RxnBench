@@ -83,7 +83,7 @@ _TOKEN = ("token", "SString")
 
 _DEVICES: dict[str, _DeviceSpec] = {
     "gantry": _DeviceSpec(
-        package="sila2.edu.iastate.ames.rxnbench.gantry.v0",
+        package="sila2.edu.iastate.ames.rxnbench.gantry.v1",
         service="Gantry",
         proto_name="motion_platform",
         structures=(

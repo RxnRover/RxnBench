@@ -2,7 +2,7 @@
 
 rows: 4           # A–D
 columns: 6        # 1–6
-spacing_mm: 19.3  # centre-to-centre, both axes
+spacing_mm: 19.2  # centre-to-centre, both axes
 well_diameter_mm: 15.62
 well_depth_mm: 40
 plate_height_mm: 44.5   # mm, deck to plate top surface

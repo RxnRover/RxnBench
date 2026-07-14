@@ -109,8 +109,13 @@ class _LivePanel(QWidget):
         self,
         x_min: float, x_max: float, y_min: float, y_max: float,
         z_min: float, z_max: float, safe_clearance_z: float,
+        crossbar_clearance_above_tip: float | None = None,
+        crossbar_y_thickness: float | None = None,
     ) -> None:
-        self._canvas.set_limits(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
+        self._canvas.set_limits(
+            x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z,
+            crossbar_clearance_above_tip, crossbar_y_thickness,
+        )
 
     def set_toolhead_z_engage(self, value: float | None) -> None:
         self._canvas.set_toolhead_z_engage(value)
@@ -127,7 +132,7 @@ class _LivePanel(QWidget):
 class GantryWidget(QWidget):
     """MDI sub-window for the gantry device: jog controls, toolhead selector, and workspace loader."""
 
-    FEATURE_ID = "edu.iastate.ames/rxnbench/Gantry/v0"
+    FEATURE_ID = "edu.iastate.ames/rxnbench/Gantry/v1"
     preferred_mdi_size = (960, 800)
 
     def __init__(
@@ -449,8 +454,10 @@ class GantryWidget(QWidget):
     def _on_limits(
         self, x_min: float, x_max: float, y_min: float, y_max: float,
         z_min: float, z_max: float, safe_clearance_z: float,
+        crossbar_clearance_above_tip: float | None = None,
+        crossbar_y_thickness: float | None = None,
     ) -> None:
-        """Server-sourced axis limits + safe clearance height: forward to the Live tab's canvas.
+        """Server-sourced axis limits + safe clearance + crossbar geometry: forward to the Live tab's canvas.
 
         The Configuration tab's canvas connects to limits_updated directly
         (see WorkspaceLoaderWidget.__init__) since it owns its own client
@@ -458,7 +465,10 @@ class GantryWidget(QWidget):
         instance.
         """
         if self._live_panel:
-            self._live_panel.set_limits(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
+            self._live_panel.set_limits(
+                x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z,
+                crossbar_clearance_above_tip, crossbar_y_thickness,
+            )
 
     def _slot_widgets(self):
         """Yield (combo, display_lbl, mounted_lbl, active_lbl, last_cal_lbl, per-slot buttons) per slot."""

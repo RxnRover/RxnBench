@@ -46,7 +46,7 @@ class Gantry(sila.Feature):
         super().__init__(
             originator="edu.iastate.ames",
             category="rxnbench",
-            version="0.1",
+            version="1.0",
             maturity_level="Draft",
         )
         self._controller = controller

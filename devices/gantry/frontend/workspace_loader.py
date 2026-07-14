@@ -609,6 +609,8 @@ class DeckSideViewCanvas(QWidget):
         self._axis  = axis
         self._plates: list[dict] = []
         self._deck_height_mm = 0.0   # shared deck/workplate top height above Z=0
+        self._crossbar_clearance_above_tip: float | None = None  # X-gantry crossbar underside above tip
+        self._crossbar_y_thickness: float | None = None
         self._plate_specs: dict[str, _PlateSpec] = {}
         self._active_well = ("", "")
         self._current_pos: tuple[float, float, float] | None = None  # gantry x, y, z mm
@@ -652,8 +654,12 @@ class DeckSideViewCanvas(QWidget):
         self,
         x_min: float, x_max: float, y_min: float, y_max: float,
         z_min: float, z_max: float, safe_clearance_z: float,
+        crossbar_clearance_above_tip: float | None = None,
+        crossbar_y_thickness: float | None = None,
     ) -> None:
         self._limits = (x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
+        self._crossbar_clearance_above_tip = crossbar_clearance_above_tip
+        self._crossbar_y_thickness = crossbar_y_thickness
         self.update()
 
     def set_toolhead_z_engage(self, value: float | None) -> None:
@@ -745,6 +751,12 @@ class DeckSideViewCanvas(QWidget):
         current_z = self._current_pos[2] if self._current_pos is not None else None
         z_lo = z_min if z_min is not None else 0.0
         z_hi_candidates = [z for z in (safe_z, current_z, *plate_tops) if z is not None]
+        # Fold the crossbar underside into the vertical fit when it will be
+        # drawn (show-details + geometry known + a current position): it rides
+        # well above the tip, so without this the bar (and its label) sit jammed
+        # against the very top edge of the auto-fitted view.
+        if self._show_details and self._crossbar_clearance_above_tip is not None and current_z is not None:
+            z_hi_candidates.append(current_z + self._crossbar_clearance_above_tip)
         z_hi = (max(z_hi_candidates) if z_hi_candidates else 50.0) + pad_mm
 
         span_h = hmax - hmin or 1
@@ -796,6 +808,29 @@ class DeckSideViewCanvas(QWidget):
                 QRectF(sx1 - 170, sy0 - 16, 170, 14), Qt.AlignRight,
                 f"safe travel: {safe_z:.1f} mm",
             )
+
+        # X-gantry crossbar (show-details only): its underside rides
+        # crossbar_clearance_above_tip above the *current* tip Z, so it can hit
+        # a taller plate in its Y-row when the gantry descends. Draw where it
+        # currently sits so the operator can see the collision envelope.
+        H = self._crossbar_clearance_above_tip
+        if self._show_details and H is not None and self._current_pos is not None:
+            bar_z = self._current_pos[2] + H
+            bar_col = QColor(t.get("warning", "#f59e0b"))
+            p.setPen(QPen(bar_col, 2.0))
+            if self._axis == "x":
+                # bar spans the full X travel at this height
+                bx0, by = to_px(hmin, bar_z)
+                bx1, _ = to_px(hmax, bar_z)
+            else:
+                # y/z view: the bar shows as its Y-thickness band at the carriage Y
+                ty = self._crossbar_y_thickness or 0.0
+                cy = self._current_pos[1]
+                bx0, by = to_px(cy - ty / 2, bar_z)
+                bx1, _ = to_px(cy + ty / 2, bar_z)
+            p.drawLine(int(bx0), int(by), int(bx1), int(by))
+            p.setPen(bar_col)
+            p.drawText(QRectF(bx0, by - 16, 150, 14), Qt.AlignLeft, "X-gantry bar")
 
         cal_plate_id, cal_well = self._active_well
 
@@ -951,10 +986,18 @@ class DeckViewPanel(QWidget):
         self,
         x_min: float, x_max: float, y_min: float, y_max: float,
         z_min: float, z_max: float, safe_clearance_z: float,
+        crossbar_clearance_above_tip: float | None = None,
+        crossbar_y_thickness: float | None = None,
     ) -> None:
         self._top.set_limits(x_min, x_max, y_min, y_max, z_min, z_max)
-        self._xz.set_limits(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
-        self._yz.set_limits(x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z)
+        self._xz.set_limits(
+            x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z,
+            crossbar_clearance_above_tip, crossbar_y_thickness,
+        )
+        self._yz.set_limits(
+            x_min, x_max, y_min, y_max, z_min, z_max, safe_clearance_z,
+            crossbar_clearance_above_tip, crossbar_y_thickness,
+        )
 
     def set_show_details(self, show: bool) -> None:
         """Toggle the deck-boundary overlay - tight-fit to plates by default on all 3 views."""
