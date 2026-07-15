@@ -3,10 +3,6 @@
 AbstractI2CDriver talks to the bus through two methods:
     write(address, data: bytes)  - send raw bytes to the device
     read(address, n) -> bytes    - read n raw bytes from the device
-
-smbus2.SMBus has neither: its block-data methods speak the SMBus register
-protocol, but Atlas Scientific EZO circuits use plain I2C byte streams. This
-adapter bridges the two with smbus2's raw i2c_rdwr transactions.
 """
 from __future__ import annotations
 

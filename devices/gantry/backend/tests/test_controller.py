@@ -319,43 +319,85 @@ def test_move_to_well_docks_at_plate_top_not_clearance_height(ctrl, client):
     assert lower_call["z"] == pytest.approx(15.0 + _PLATE_HEIGHT_96)  # origin_z + plate_height_mm
 
 
-# Engagement-depth safety: toolhead z_engage vs. the target well's own depth
+# Engagement depth: blended toolhead z_engage + the docked well's own depth
 
-def test_move_to_well_rejects_z_engage_deeper_than_well(ctrl):
-    # A toolhead whose engagement depth exceeds the target well's depth must be
-    # refused (it would punch through the bottom). Driven off the real well
-    # depth + a deliberately-too-deep z_engage rather than assuming a specific
-    # bundled plate is "shallow" - plate dimensions are operator-tuned and
-    # change. geometry_validated is forced True to isolate this check from the
-    # separate unvalidated-geometry gate (ph_probe ships with it false).
+
+def _dock_ph_probe(ctrl):
+    """Load the 96-well bench, activate + mount a validated ph_probe, dock A1.
+
+    Returns the well opening Z (origin_z + plate_height), the height the tip is
+    left at by move_to_well - engage/disengage descend/ascend from here.
+    """
+    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)  # 96_well_standard
+    ctrl.set_toolhead("ph_probe")
+    ctrl._toolhead_mgr.toolhead.geometry_validated = True
+    ctrl.set_toolhead_mounted(True)
+    ctrl.move_to_well("plate1/A1")
+    return 15.0 + _PLATE_HEIGHT_96
+
+
+def test_move_to_well_no_longer_refuses_deep_z_engage(ctrl, client):
+    # A toolhead whose configured z_engage exceeds the target well's depth used
+    # to be refused outright; now the move proceeds and the descent is capped a
+    # safe margin above the bottom at engage time instead (tested below).
+    # geometry_validated is forced True to isolate this from the separate
+    # unvalidated-geometry gate (ph_probe ships with it false).
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)  # 96_well_standard
     ctrl.set_toolhead("ph_probe")
     th = ctrl._toolhead_mgr.toolhead
     th.geometry_validated = True
     th.z_engage = _WELL_DEPTH_96 + 5.0  # deeper than the well can accommodate
     ctrl.set_toolhead_mounted(True)
-    with pytest.raises(MotionLimitError, match="collide with the well bottom"):
-        ctrl.move_to_well("plate1/A1")
-
-
-def test_move_to_well_allows_z_engage_within_well_depth(ctrl, client):
-    # 96_well_standard's well_depth_mm=36 comfortably covers ph_probe's
-    # z_engage=25.
-    ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
-    ctrl.set_toolhead("ph_probe")
-    ctrl._toolhead_mgr.toolhead.geometry_validated = True
-    ctrl.set_toolhead_mounted(True)
-    ctrl.move_to_well("plate1/A1")
+    ctrl.move_to_well("plate1/A1")  # no longer raises
     assert any(name == "move" for name, _ in client.calls)
 
 
-def test_move_to_well_override_unvalidated_also_skips_engagement_check(ctrl, client):
-    # The toolhead calibration wizard relies on this: corner-well visits are
-    # pure positioning moves (it never calls engage_tool), so an unmeasured
-    # toolhead's *configured* z_engage exceeding a shallower calibration
-    # plate's depth isn't actually a collision risk there - only for the
-    # normal move_to_well-then-engage_tool workflow, which doesn't pass
-    # override_unvalidated on real hardware.
+def test_engage_tool_blends_requested_depth_with_docked_well(ctrl, client):
+    # Normal case: requested depth shallower than the well. The tip descends to
+    # the mean of the requested depth and the well's own depth - deeper than the
+    # bare request, but still short of the bottom.
+    opening = _dock_ph_probe(ctrl)
+    client.calls.clear()
+    ctrl.engage_tool(depth=20.0)  # < well_depth (36)
+    expected = (20.0 + _WELL_DEPTH_96) / 2  # 28.0, within the safe cap
+    assert client.calls[-1][1]["z"] == pytest.approx(opening - expected)
+
+
+def test_engage_tool_caps_descent_above_well_bottom(ctrl, client):
+    # Over-deep case: requested depth (40) deeper than the well (36). The blend
+    # would reach past the bottom, so it is capped at well_depth - margin: the
+    # tip stops a fixed gap above the bottom rather than being refused.
+    opening = _dock_ph_probe(ctrl)
+    client.calls.clear()
+    ctrl.engage_tool(depth=40.0)
+    capped = _WELL_DEPTH_96 - ctrl._engage_bottom_margin_mm
+    assert client.calls[-1][1]["z"] == pytest.approx(opening - capped)
+
+
+def test_disengage_returns_tip_to_well_opening(ctrl):
+    # engage then disengage with the same requested depth is symmetric (both use
+    # the same blended depth), so the tip ends exactly back at the well opening
+    # instead of drifting lower each cycle.
+    opening = _dock_ph_probe(ctrl)
+    ctrl.engage_tool(depth=40.0)
+    ctrl.disengage_tool(depth=40.0)
+    assert ctrl.get_position()["z"] == pytest.approx(opening)
+
+
+def test_engage_tool_uses_raw_depth_after_plain_move_clears_well(ctrl, client):
+    # A plain move_to since the last well drops the docked-well context, so
+    # engage_tool falls back to the literal requested depth (nothing to blend).
+    _dock_ph_probe(ctrl)
+    ctrl.move_to(100.0, 100.0, 50.0)   # clears _current_well_label
+    client.calls.clear()
+    ctrl.engage_tool(depth=5.0)
+    assert client.calls[-1][1]["z"] == pytest.approx(45.0)  # raw 5mm descent
+
+
+def test_move_to_well_override_unvalidated_still_allows_the_move(ctrl, client):
+    # The toolhead calibration wizard relies on override_unvalidated to visit
+    # corner wells with an as-yet-unmeasured toolhead (its geometry_validated is
+    # false); the move must proceed.
     ctrl.load_workspace_from_yaml(textwrap.dedent("""\
         name: shallow_bench
         calibration_reference_well: plate1/A1
@@ -365,15 +407,14 @@ def test_move_to_well_override_unvalidated_also_skips_engagement_check(ctrl, cli
             origin: {x: 100.0, y: 100.0, z: 15.0}
             orientation: standard
     """))
-    ctrl.set_toolhead("ph_probe")  # z_engage=25 > 24-well's well_depth_mm=17.4
+    ctrl.set_toolhead("ph_probe")  # ships geometry_validated=false
     ctrl.set_toolhead_mounted(True)
     ctrl.move_to_well("plate1/A1", override_unvalidated=True)
     assert any(name == "move" for name, _ in client.calls)
 
 
-def test_move_to_well_skips_engagement_check_without_toolhead(ctrl):
-    # Bare carriage has no z_engage to check against - only a mounted
-    # toolhead's own configured engagement depth is meaningful here.
+def test_move_to_well_bare_carriage_has_no_engagement_blend(ctrl):
+    # No active toolhead -> nothing to blend against; the well move just works.
     ctrl.load_workspace_from_yaml(textwrap.dedent("""\
         name: shallow_bench
         calibration_reference_well: plate1/A1
@@ -383,7 +424,7 @@ def test_move_to_well_skips_engagement_check_without_toolhead(ctrl):
             origin: {x: 100.0, y: 100.0, z: 15.0}
             orientation: standard
     """))
-    ctrl.move_to_well("plate1/A1")  # no toolhead active -> not refused
+    ctrl.move_to_well("plate1/A1")  # no toolhead active -> fine
 
 
 # Toolhead tip calibration

@@ -36,6 +36,15 @@ class MachineConfig:
     # measurements, not a physical property of any one plate.
     z_clearance_padding_mm: float = 5.0
 
+    # Safety gap kept above a well's bottom when engaging. The engagement
+    # descent is the mean of the toolhead's configured z_engage and the well's
+    # own measured depth (so it adapts to the labware instead of trusting one
+    # hand-tuned number), then capped so the tip stops at least this far above
+    # the well bottom - even when z_engage is configured deeper than the well.
+    # Per-machine for the same reason as z_clearance_padding_mm: it reflects
+    # confidence in this bench's geometry measurements, not any one plate.
+    engage_bottom_margin_mm: float = 2.0
+
     # X-gantry crossbar collision model. The carriage rides on a horizontal
     # crossbar spanning (full) X at the carriage's Y; lowering Z brings the whole
     # bar down, so descending to a low plate can drive the bar into a TALLER
@@ -71,6 +80,9 @@ class MachineConfig:
                 ),
                 z_clearance_padding_mm=float(
                     data.get("z_clearance_padding_mm", cls.z_clearance_padding_mm)
+                ),
+                engage_bottom_margin_mm=float(
+                    data.get("engage_bottom_margin_mm", cls.engage_bottom_margin_mm)
                 ),
                 crossbar_clearance_above_tip_mm=_opt_float("crossbar_clearance_above_tip_mm"),
                 crossbar_y_thickness_mm=_opt_float("crossbar_y_thickness_mm"),

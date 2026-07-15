@@ -14,12 +14,19 @@ def test_defaults_without_file():
     cfg = MachineConfig.load()
     assert cfg.moonraker_fallback_host == "192.168.10.2"
     assert cfg.z_clearance_padding_mm == pytest.approx(5.0)
+    assert cfg.engage_bottom_margin_mm == pytest.approx(2.0)
 
 
 def test_z_clearance_padding_overridden_from_yaml():
     mc._CONFIG_FILE.write_text("z_clearance_padding_mm: 12.5\n")
     cfg = MachineConfig.load()
     assert cfg.z_clearance_padding_mm == pytest.approx(12.5)
+
+
+def test_engage_bottom_margin_overridden_from_yaml():
+    mc._CONFIG_FILE.write_text("engage_bottom_margin_mm: 3.5\n")
+    cfg = MachineConfig.load()
+    assert cfg.engage_bottom_margin_mm == pytest.approx(3.5)
 
 
 def test_moonraker_fallback_host_overridden_from_yaml_leaves_padding_default():

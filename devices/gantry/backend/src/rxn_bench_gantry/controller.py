@@ -34,6 +34,7 @@ class GantryController:
         z_min: float = 0.0,
         z_max: float = 340.0,
         z_clearance_padding_mm: float = 5.0,
+        engage_bottom_margin_mm: float = 2.0,
         crossbar_clearance_above_tip_mm: float | None = None,
         crossbar_y_thickness_mm: float | None = None,
     ):
@@ -49,6 +50,9 @@ class GantryController:
             z_max: Upper Z limit in mm.
             z_clearance_padding_mm: Safety margin added above the tallest
                 loaded labware when computing safe clearance-travel height.
+            engage_bottom_margin_mm: Minimum gap kept above a well's bottom when
+                engaging; the blended engage depth is capped at
+                well_depth - this (see _effective_engage_depth).
             crossbar_clearance_above_tip_mm: Height of the X-gantry crossbar's
                 underside above the tip (see MachineConfig). None disables the
                 crossbar collision check.
@@ -59,7 +63,12 @@ class GantryController:
         self._homing_mgr = HomingManager(client, x_min, x_max, y_min, y_max, z_min, z_max)
         self._engine = MotionEngine(client)
         self._workspace_mgr = WorkspaceManager()
+        # Label of the well the tip is currently docked in (set by move_to_well,
+        # cleared by any plain move_to/jog). Lets engage_tool blend the descent
+        # with that specific well's depth - see _effective_engage_depth.
+        self._current_well_label: str | None = None
         self._z_clearance_padding_mm = z_clearance_padding_mm
+        self._engage_bottom_margin_mm = engage_bottom_margin_mm
         self._crossbar_clearance_above_tip_mm = crossbar_clearance_above_tip_mm
         self._crossbar_y_thickness_mm = crossbar_y_thickness_mm
         self._restore_state()
@@ -151,7 +160,10 @@ class GantryController:
         Raises:
             MotionLimitError: If the target position would exceed the calibrated axis limits.
         """
-        # Plain move: no plate context, so clear everything on the deck.
+        # Plain move: no plate context, so clear everything on the deck, and
+        # forget any docked well - the tip is no longer over a known well, so a
+        # following engage_tool must fall back to its raw requested depth.
+        self._current_well_label = None
         self._travel_to(x, y, z, self._safe_clearance_z, speed)
 
     def _travel_to(
@@ -254,8 +266,11 @@ class GantryController:
         Raises:
             MotionLimitError: If the resulting position would exceed the calibrated axis limits.
         """
-        if not self._homing_mgr.homing_active:
-            if dx != 0.0 or dy != 0.0 or dz != 0.0:
+        if dx != 0.0 or dy != 0.0 or dz != 0.0:
+            # A manual jog moves the tip off its docked well, so a following
+            # engage_tool must not blend against the now-stale well depth.
+            self._current_well_label = None
+            if not self._homing_mgr.homing_active:
                 pos = self._engine.get_position()
                 self._check_bounds(
                     x=pos["x"] + dx if dx != 0.0 else None,
@@ -264,16 +279,50 @@ class GantryController:
                 )
         self._engine.jog(dx, dy, dz, speed)
 
+    def _effective_engage_depth(self, requested: float) -> float:
+        """Blend the requested engagement descent with the current well's depth.
+
+        The engagement depth used to come purely from the toolhead's configured
+        ``z_engage`` - one hand-tuned number that knows nothing about the
+        labware actually under the tip. When the tip is docked in a known well
+        (set by the last move_to_well, cleared by any plain move_to/jog since),
+        average that requested descent with the well's own measured depth: a
+        slightly-shallow z_engage then still reaches meaningfully into the well,
+        while a slightly-deep one is pulled back toward it. The result is then
+        capped at ``well_depth - engage_bottom_margin_mm`` so the tip always
+        stops a fixed safety gap above the bottom - even when z_engage is
+        configured deeper than the whole well (the cap wins there instead of
+        refusing the move). With no docked well or no active toolhead there is
+        nothing to blend against, so the requested depth is returned unchanged
+        (plain engage_tool(depth=...) keeps its literal meaning).
+        """
+        if self._toolhead_mgr.toolhead is None or self._current_well_label is None:
+            return requested
+        try:
+            well_depth = self._workspace_mgr.get_well_depth(self._current_well_label)
+        except Exception:
+            return requested
+        safe_max = max(0.0, well_depth - self._engage_bottom_margin_mm)
+        return min((requested + well_depth) / 2, safe_max)
+
     def engage_tool(self, depth: float, speed: float | None = None) -> None:
-        """Lower the tool tip by *depth* mm from the current Z.
+        """Lower the tool tip into the docked well.
+
+        The literal descent is not *depth* itself but a blend of *depth* and the
+        current well's measured depth (see _effective_engage_depth), so a
+        toolhead's configured z_engage can't drive the tip through the bottom of
+        a shallower well and reaches appropriately into a deeper one. Falls back
+        to a raw *depth* descent when the tip isn't docked in a known well.
 
         Args:
-            depth: Distance in mm to descend.
+            depth: Requested descent in mm (typically the toolhead's z_engage);
+                blended with the docked well's depth before moving.
             speed: Travel speed in mm/min. Uses the client default if None.
 
         Raises:
             MotionLimitError: If the target Z would fall below z_min.
         """
+        depth = self._effective_engage_depth(depth)
         pos = self._engine.get_position()
         target_z = pos["z"] - depth
         self._check_bounds(z=target_z)
@@ -289,15 +338,22 @@ class GantryController:
         self._engine.move(z=target_z, speed=speed)
 
     def disengage_tool(self, depth: float, speed: float | None = None) -> None:
-        """Raise the tool tip by *depth* mm from the current Z.
+        """Raise the tool tip back out of the docked well.
+
+        Applies the same requested-vs-well-depth blend as engage_tool, so an
+        engage/disengage pair with the same *depth* is symmetric and returns the
+        tip exactly to the well opening it started from (rather than drifting
+        lower each cycle when engage descended a blended, deeper amount).
 
         Args:
-            depth: Distance in mm to ascend.
+            depth: Requested ascent in mm (typically the toolhead's z_engage);
+                blended with the docked well's depth before moving.
             speed: Travel speed in mm/min. Uses the client default if None.
 
         Raises:
             MotionLimitError: If the target Z would exceed z_max.
         """
+        depth = self._effective_engage_depth(depth)
         pos = self._engine.get_position()
         target_z = pos["z"] + depth
         self._check_bounds(z=target_z)
@@ -543,12 +599,9 @@ class GantryController:
         Args:
             label: Well label, e.g. ``'A3'``, ``'H12'``, or ``'plate1/A3'``.
             override_unvalidated: If True, proceed even when the active toolhead's
-                geometry is unvalidated (placeholder), and skip the engagement-depth
-                safety check below. Defaults to refusing. Also used by the toolhead
-                calibration wizard, which visits corner wells purely to position the
-                tip - it never calls engage_tool - so a toolhead's configured
-                z_engage exceeding that well's depth is not actually a collision risk
-                there, only for the normal move_to_well-then-engage_tool workflow.
+                geometry is unvalidated (placeholder tip offsets). Defaults to
+                refusing. Also used by the toolhead calibration wizard, which
+                visits corner wells purely to position the tip.
 
         Returns:
             Dict with the well's expected (nominal, pre-toolhead-offset)
@@ -561,10 +614,7 @@ class GantryController:
             RuntimeError: If no workspace is loaded.
             KeyError: If the plate ID is not found in the current workspace.
             ValueError: If the well label format is invalid.
-            MotionLimitError: If the resolved position exceeds axis limits,
-                or (when override_unvalidated is False) the active toolhead's
-                engagement depth (z_engage) exceeds this well's depth and
-                would collide with its bottom.
+            MotionLimitError: If the resolved position exceeds axis limits.
             ToolheadNotMountedError: If the active toolhead has not been
                 confirmed physically mounted.
             UnvalidatedGeometryError: If the active toolhead's geometry is
@@ -590,14 +640,11 @@ class GantryController:
         # of how tall the clearance height needed to be for other labware
         # sharing the deck.
         x, y, z = self._workspace_mgr.resolve_well(label)
-        if th is not None and not override_unvalidated:
-            well_depth = self._workspace_mgr.get_well_depth(label)
-            if th.z_engage > well_depth:
-                raise MotionLimitError(
-                    f"Toolhead {self._toolhead_mgr.name!r}'s engagement depth "
-                    f"(z_engage={th.z_engage:.1f}mm) exceeds well {label!r}'s "
-                    f"depth ({well_depth:.1f}mm) - would collide with the well bottom."
-                )
+        # Engagement depth is no longer gated here: rather than refusing a well
+        # whose depth is shallower than the toolhead's configured z_engage, the
+        # actual descent is blended with this well's depth and capped a fixed
+        # margin above its bottom at engage time (see _effective_engage_depth),
+        # so a probe still runs on a shallower plate without punching through.
         # Only clear the whole deck when hopping to a different plate; when the
         # carriage is already over this plate, travel at just this plate's own
         # clearance height (uniform top) to skip the wasteful full raise/lower.
@@ -617,6 +664,9 @@ class GantryController:
                 )
             clearance = max(clearance, crossbar_min)
         self._travel_to(x, y, z, clearance)
+        # Remember which well the tip is now docked in so a following engage_tool
+        # can blend its descent with this well's depth (_effective_engage_depth).
+        self._current_well_label = label
         actual = self._engine.get_position()
         return {
             "expected_well_x": x,

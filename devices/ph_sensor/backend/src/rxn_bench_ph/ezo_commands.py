@@ -1,21 +1,8 @@
-"""Transport-agnostic Atlas Scientific EZO-pH command set.
+"""Atlas Scientific EZO-pH command set.
 
 The EZO command protocol (``R``, ``Cal,mid,7.0``, ``Slope,?``, ...) is identical
 whether the circuit is spoken to over I2C or UART - only the byte-level
-send/receive differs. This mixin holds those commands once so the I2C driver
-(:class:`~rxn_bench_ph.atlas_scientific_driver.AtlasScientificEZO`) and the UART
-driver (:class:`~rxn_bench_ph.atlas_scientific_uart_driver.AtlasScientificEZOUart`)
-share them instead of each maintaining a drifting copy.
-
-Concrete drivers provide the two transport hooks:
-
-    _send_command(cmd)          - put an ASCII command on the wire
-    _read_response(delay_ms)    - return the device's ASCII reply as a string
-
-For I2C that means writing bytes then reading back a status-byte-prefixed
-payload; for UART it means writing ``cmd\\r`` then reading a CR-terminated line.
-Either way ``_read_response`` returns the already-decoded payload string (empty
-for ack-only commands), so the command methods below never see transport bytes.
+send/receive differs.
 """
 from __future__ import annotations
 

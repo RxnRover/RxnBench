@@ -55,6 +55,22 @@ _PALETTE = [
 ]
 
 
+def effective_engage_depth(z_engage: float, well_depth_mm: float) -> float:
+    """Blended engagement depth the backend actually descends to.
+
+    Mirrors GantryController._effective_engage_depth so the side-view marker
+    shows roughly where the tip really engages, not the toolhead's raw
+    configured z_engage: the mean of z_engage and the well's own depth, capped
+    at the well depth. The backend additionally holds the tip a small
+    machine-configured margin above the well bottom (engage_bottom_margin_mm),
+    which this marker does not model - it isn't sent to the frontend - so in the
+    rare case where the blend reaches the bottom the marker sits a couple mm
+    deeper than reality. Re-derived here rather than imported, like the rest of
+    this module's geometry.
+    """
+    return min((z_engage + well_depth_mm) / 2, well_depth_mm)
+
+
 def _compute_bounds(
     plate_extents: list[tuple[float, float, float, float]],
     limits: tuple[float, float, float, float] | None,
@@ -875,14 +891,17 @@ class DeckSideViewCanvas(QWidget):
                     _gx1, gy1 = to_px(h_pos, bottom_z)
                     p.drawLine(int(gx0), int(gy0), int(gx0), int(gy1))
                     if self._toolhead_z_engage is not None:
-                        engage_z = top_z - self._toolhead_z_engage
+                        eff = effective_engage_depth(
+                            self._toolhead_z_engage, spec.well_depth_mm
+                        )
+                        engage_z = top_z - eff
                         ex, ey = to_px(h_pos, engage_z)
                         p.setPen(QPen(ac, 2.0))
                         p.drawLine(int(ex - 6), int(ey), int(ex + 6), int(ey))
                         p.setFont(QFont("sans-serif", 8))
                         p.drawText(
                             QRectF(ex + 8, ey - 7, 120, 14), Qt.AlignLeft,
-                            f"engage {self._toolhead_z_engage:.1f} mm",
+                            f"engage {eff:.1f} mm",
                         )
 
         # Current gantry position marker

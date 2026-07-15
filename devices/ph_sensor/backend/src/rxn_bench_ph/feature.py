@@ -50,9 +50,7 @@ class PHSensor(sila.Feature):
 
         Args:
             Temperature: Solution temperature in degrees Celsius. The EZO circuit
-                assumes 25 C by default; set this to the actual buffer or sample
-                temperature so readings and calibration are not skewed by the
-                Nernstian temperature dependence of the electrode.
+                assumes 25 C by default
         """
         self._sensor.set_temperature(temperature)
         self._log.log("set_temperature", temperature=temperature)

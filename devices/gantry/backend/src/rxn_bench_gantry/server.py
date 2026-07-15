@@ -68,6 +68,7 @@ async def create_app(config):
         y_min=y_min, y_max=y_max,
         z_min=z_min, z_max=z_max,
         z_clearance_padding_mm=machine.z_clearance_padding_mm,
+        engage_bottom_margin_mm=machine.engage_bottom_margin_mm,
         crossbar_clearance_above_tip_mm=machine.crossbar_clearance_above_tip_mm,
         crossbar_y_thickness_mm=machine.crossbar_y_thickness_mm,
     )

@@ -4,6 +4,12 @@ All notable changes to Rxn Bench are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- `gantry` (2026-07-15): tool engagement depth is now derived from the labware, not only the toolhead config. `GantryController._effective_engage_depth` blends the toolhead's configured `z_engage` with the docked well's own measured `well_depth_mm` (the mean of the two) and caps the result a fixed gap above the well bottom (`MachineConfig.engage_bottom_margin_mm`, new, default 2 mm). This *replaces* the previous hard rejection when `z_engage` exceeded a well's depth: a toolhead configured deeper than a shallower plate's wells — e.g. the bench `ph_probe`'s `z_engage=40` on a 36 mm-deep 96-well plate, which was being refused outright — now engages, capped, instead of blocking the move. The controller tracks the docked well (`_current_well_label`, set by `move_to_well`, cleared by any plain `move_to`/`jog`); with no docked well or no active toolhead `engage_tool(depth=…)` keeps its literal descent. `disengage_tool` applies the same blend so an engage/disengage pair is symmetric, and the frontend side-view engagement marker (`workspace_loader.effective_engage_depth`) mirrors the blended depth. New per-machine `engage_bottom_margin_mm` key in `~/.rxn_bench/machine.yaml`.
+
+## [v0.1.2]
+
 An important milestone was reached, the entire system, `gantry`,`ph_sensor`,`client`,`frontend` was able to perform a script `calibrate_ph.py`
 which automatically calibrates the pH probe. This is important and proves the viability/usability of the system for many more experiments to come.
 
