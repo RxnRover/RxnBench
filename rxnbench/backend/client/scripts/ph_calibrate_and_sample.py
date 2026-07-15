@@ -1,15 +1,15 @@
-# Automatic calibration script for the Atlas Scientific EZO-pH probe.
+# Automatic calibration / sampling script for the Atlas Scientific EZO-pH probe.
 #
 # Runs a clean 3-point calibration in the order the EZO-pH circuit requires:
 # the mid (pH 7) point resets any prior calibration and must be taken first,
 # then the low (pH 4) and high (pH 10) points refine the acid/base slope.
+# After which the script reads every designated well and logs the pH values.
 
 import time
 
 from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
 
 # --- Calibration setup -------------------------------------------------------
-
 # Wells holding each buffer, as "plate/well" labels in the active workspace.
 MID_BUFFER_WELL = "Calibration/A2"  # pH 7 buffer  (calibrated first - resets the probe)
 LOW_BUFFER_WELL = "Calibration/A3"  # pH 4 buffer
@@ -21,6 +21,16 @@ CALIBRATION_POINTS = [
     ("low", LOW_BUFFER_WELL, 4.0),
     # ("high", HIGH_BUFFER_WELL, 10.0),
 ]
+
+# --- Logging setup -----------------------------------------------------------
+PH_CALIBRATION_LOG_FILE = "ph_calibration.csv"
+SAMPLE_LOG_FILE = "ph_sample.csv"
+
+# --- Sampling setup -----------------------------------------------------------
+SAMPLE_PLATE_NAME = "24-well"
+
+
+# --- Working parameters -----------------------------------------------------------
 
 # Optional DI-water well to rinse the probe between buffers, avoiding carryover
 # that would contaminate the next buffer. Set to None to skip (no rinse well).
@@ -88,7 +98,7 @@ def main() -> None:
         bench.connect("ph", PHProbe, server="pH")
 
         # Record each buffer reading before/after calibration for your records.
-        bench.set_log_output("ph_calibration.csv")
+        bench.set_log_output(PH_CALIBRATION_LOG_FILE)
 
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()
@@ -116,6 +126,28 @@ def main() -> None:
             calibrate_point(bench, point, well, known_ph)
 
             # Wash after each buffer to avoid carryover that would contaminate the next buffer.
+            rinse_probe(bench)
+
+        # Read every well in the 24-Well plate now that the probe is calibrated.
+        bench.set_log_output(SAMPLE_LOG_FILE, columns=["well", "ph"])
+        sample_wells = bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME)
+        print(f"Reading pH of {len(sample_wells)} wells in the {SAMPLE_PLATE_NAME} plate...")
+
+        for well in sample_wells:
+            bench.check_pause_stop()  # honor the UI pause/stop button
+
+            # at_well moves to the well, engages the tool, and disengages on exit;
+            # it also tags the log row with the current well automatically.
+            with bench.at_well(well):
+                beforeTime = time.time()
+                print(f"Waiting for probe to settle in {well}...")
+                ph = bench.ph.read_stable(timeout=120)
+                afterTime = time.time()
+                print(f"Probe settled in {afterTime - beforeTime:.1f} seconds.")
+                bench.log(ph=ph, settling_time=afterTime - beforeTime)
+                print(f"{well}: pH {ph:.2f}")
+
+            # Wash between wells to avoid carryover from the previous sample.
             rinse_probe(bench)
 
         # Always save and park at the end of a script.

@@ -6,7 +6,13 @@ All notable changes to Rxn Bench are recorded here.
 
 ### Changed
 
-- `gantry` (2026-07-15): tool engagement depth is now derived from the labware, not only the toolhead config. `GantryController._effective_engage_depth` blends the toolhead's configured `z_engage` with the docked well's own measured `well_depth_mm` (the mean of the two) and caps the result a fixed gap above the well bottom (`MachineConfig.engage_bottom_margin_mm`, new, default 2 mm). This *replaces* the previous hard rejection when `z_engage` exceeded a well's depth: a toolhead configured deeper than a shallower plate's wells — e.g. the bench `ph_probe`'s `z_engage=40` on a 36 mm-deep 96-well plate, which was being refused outright — now engages, capped, instead of blocking the move. The controller tracks the docked well (`_current_well_label`, set by `move_to_well`, cleared by any plain `move_to`/`jog`); with no docked well or no active toolhead `engage_tool(depth=…)` keeps its literal descent. `disengage_tool` applies the same blend so an engage/disengage pair is symmetric, and the frontend side-view engagement marker (`workspace_loader.effective_engage_depth`) mirrors the blended depth. New per-machine `engage_bottom_margin_mm` key in `~/.rxn_bench/machine.yaml`.
+- `client` (2026-07-15): `PHProbe.read_stable` automatic endpoint detection instead of the "N consecutive readings within a tolerance band" check. Readings stream into a rolling window (`window`, default 5) and, once the window is full and at least `min_settle` s (default 5) have elapsed
+- `gantry` (2026-07-15): tool engagement depth is now derived from the labware, not only the toolhead config. `GantryController._effective_engage_depth` blends the toolhead's configured `z_engage` with the docked well's own measured `well_depth_mm` (the mean of the two) and caps the result a fixed gap above the well bottom (`MachineConfig.engage_bottom_margin_mm`, new, default 2 mm). This *replaces* the previous hard rejection when `z_engage` exceeded a well's depth: a toolhead configured deeper than a shallower plate's wells — e.g. the bench `ph_probe`'s `z_engage=40` on a 36 mm-deep 96-well plate, which was being refused outright — now engages, capped, instead of blocking the move. The controller tracks the docked well `_current_well_label`, set by `move_to_well`.
+
+### Added
+
+- `instrument.py` added a `Gantry.shake()` method which oscillates the gantry N number of times over `amplitude`, this is useful for flinging off excess liquid or material on the toolheads
+- `client` (2026-07-15): two scripts for empirically tuning the pH endpoint detector against real hardware. `scripts/record_ph_traces.py` parks the probe in each well and logs the full pH-vs-time trace (instead of stopping early). `scripts/tune_endpoint.py` replays the shipping `_StabilityMonitor` over those traces across a grid of thresholds and reports, per config, median settle time, endpoint error vs. the trace's equilibrium (tail average), and premature-stop / timeout rates — so `read_stable`'s defaults can be chosen from this probe's data rather than borrowed. It reuses the production detector (not a copy) and runs offline against built-in synthetic traces when no recorded ones are given.
 
 ## [v0.1.2]
 
@@ -28,7 +34,7 @@ to avoid overly nested folders etc.
 
 ### Changed
 
-- `instrument.py:288` pH probe `read_stable` now keeps a rolling window of the last samples readings and only returns once the whole window spans ≤ tolerance (max − min), instead of just the latest pair
+- `instrument.py:288` pH probe `read_stable` now keeps a rolling window of the last samples readings and only returns once the whole window spans ≤ tolerance (max - min), instead of just the latest pair
 - `server.py:43`: the default speed of `moonraker_client()` was increased from `3000` to `4000`: `moonraker_client(host, DEFAULT_SPEED=4000)`
 
 ### Fixed

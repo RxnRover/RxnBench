@@ -13,13 +13,13 @@ from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
 # Wells holding each buffer, as "plate/well" labels in the active workspace.
 MID_BUFFER_WELL = "Calibration/A2"  # pH 7 buffer  (calibrated first - resets the probe)
 LOW_BUFFER_WELL = "Calibration/A3"  # pH 4 buffer
-#HIGH_BUFFER_WELL = "Calibration/A1"  # pH 10 buffer
+# HIGH_BUFFER_WELL = "Calibration/A1"  # pH 10 buffer
 
 # (point name, well, known buffer pH). Order matters: "mid" MUST come first.
 CALIBRATION_POINTS = [
     ("mid", MID_BUFFER_WELL, 7.0),
     ("low", LOW_BUFFER_WELL, 4.0),
-    #("high", HIGH_BUFFER_WELL, 10.0),
+    # ("high", HIGH_BUFFER_WELL, 10.0),
 ]
 
 # Optional DI-water well to rinse the probe between buffers, avoiding carryover
@@ -58,7 +58,7 @@ def calibrate_point(bench, point: str, well: str, known_ph: float) -> None:
     # committing this calibration point.
     print(f"Waiting for probe to settle...")
     beforeTime = time.time()
-    before = bench.ph.read_stable(tolerance=0.02, timeout=300, interval=30, samples=3)
+    before = bench.ph.read_stable(timeout=300)
     afterTime = time.time()
     print(f"Probe settled in {afterTime - beforeTime:.1f} seconds.")
     print(
@@ -67,7 +67,7 @@ def calibrate_point(bench, point: str, well: str, known_ph: float) -> None:
     bench.ph.calibrate(point, known_ph)
 
     # A correctly-calibrated point should now read close to the buffer value.
-    after = bench.ph.read_stable(tolerance=0.02, timeout=120, interval=3)
+    after = bench.ph.read_stable(timeout=120)
     bench.log(
         point=point,
         buffer_ph=known_ph,
@@ -93,7 +93,9 @@ def main() -> None:
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()
 
-        print(f"Starting pH calibration script with {len(CALIBRATION_POINTS)} points...")
+        print(
+            f"Starting pH calibration script with {len(CALIBRATION_POINTS)} points..."
+        )
         print(
             f"Note: It is important that the pH probe is fully submerged into the solution, and that the solution is well-mixed before taking a reading."
         )
@@ -109,6 +111,8 @@ def main() -> None:
         print(f"Clearing any prior calibration...")
         bench.ph.calibrate("clear", 0.0)
 
+        totalTimeBefore = time.time()
+
         for point, well, known_ph in CALIBRATION_POINTS:
             bench.check_pause_stop()  # honor the UI pause/stop button
 
@@ -118,8 +122,6 @@ def main() -> None:
             rinse_probe(bench)
 
         # Read every well in the 24-Well plate now that the probe is calibrated.
-        # Well count and labels come from the server's plate definition, so this
-        # covers all 24 wells without hardcoding the 4x6 grid.
         bench.set_log_output("ph_samples.csv", columns=["well", "ph"])
         sample_wells = bench.gantry.get_workspace_wells("24-well")
         print(f"Reading pH of {len(sample_wells)} wells in the 24-Well plate...")
@@ -132,7 +134,7 @@ def main() -> None:
             with bench.at_well(well):
                 beforeTime = time.time()
                 print(f"Waiting for probe to settle in {well}...")
-                ph = bench.ph.read_stable(tolerance=0.02, timeout=120, interval=3, samples=5)
+                ph = bench.ph.read_stable(timeout=120)
                 afterTime = time.time()
                 print(f"Probe settled in {afterTime - beforeTime:.1f} seconds.")
                 bench.log(ph=ph, settling_time=afterTime - beforeTime)
@@ -144,6 +146,11 @@ def main() -> None:
         # Always save and park at the end of a script.
         bench.gantry.save_and_park()
 
+        totalTimeAfter = time.time()
+
+        print(
+            f"Total time for calibration and sample readings: {totalTimeAfter - totalTimeBefore:.1f} seconds."
+        )
 
 if __name__ == "__main__":
     main()

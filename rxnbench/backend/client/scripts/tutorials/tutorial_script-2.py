@@ -1,7 +1,7 @@
 import time
 from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
 
-# This script demonstrates how to use the bench to scan a plate of wells and log pH values.
+# This script demonstrates how to use more exact control over the bench, including reading and logging pH values in different ways.
 
 def main() -> None:
     with RxnBenchClient() as bench:
@@ -12,33 +12,8 @@ def main() -> None:
         bench.connect("gantry", Gantry, server="Gantry")
         bench.connect("ph", PHProbe, server="pH")
 
-        # Tell the bench where to save your results.
-        bench.set_log_output("results/ph_scan.csv")
-
-        # Load the workspace that's currently active in the UI.
-        bench.gantry.load_workspace_yaml()
-
-        # Mount the tool you want to use.
-        bench.gantry.mount_toolhead("ph_probe")
-
-        # Scan every well in a plate. at_well() moves to the well, engages
-        # the tool, waits for it to stabilise, then lifts back up automatically.
-        for well in bench.gantry.get_workspace_wells("plate1"):
-            with bench.at_well(well, stabilize=3):
-                bench.log(ph=bench.ph.read())  # well is saved to the log automatically
-
-        # Always save and park at the end of a script.
-        bench.gantry.save_and_park()
-
-    # For more exact control:
-    with RxnBenchClient() as bench:
-        bench.connect("gantry", Gantry, server="Gantry")
-        bench.connect("ph", PHProbe, server="pH")
-
         bench.set_log_output("results/ph_scan_manual.csv")
         bench.gantry.load_workspace_yaml()
-        bench.gantry.set_toolhead("ph_probe")
-        bench.gantry.confirm_toolhead_mounted()
 
         # You can move to any specific well directly if you know its label.
         bench.gantry.move_to_well("plate1/A1")
@@ -54,10 +29,11 @@ def main() -> None:
                 ph = bench.ph.read_avg(n=5, interval=1.0)
                 bench.log(ph=ph)
 
-        # bench.ph.read_stable() keeps reading until the value settles.
+        # bench.ph.read_stable() keeps reading until the probe settles
+        # (low pH-vs-time drift and a tight peak-to-peak range).
         for well in bench.gantry.get_workspace_wells("plate1"):
             with bench.at_well(well):
-                ph = bench.ph.read_stable(tolerance=0.05, timeout=60)
+                ph = bench.ph.read_stable(max_range=0.05, timeout=60)
                 bench.log(ph=ph)
 
         # Always save and park at the end of a script.

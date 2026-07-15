@@ -14,7 +14,6 @@ def main() -> None:
 
         bench.set_log_output("results/ph_scan_control.csv")
         bench.gantry.load_workspace_yaml()
-        bench.gantry.mount_toolhead("ph_probe")
 
         # Read a well and branch depending on the result.
         with bench.at_well("plate1/A1", stabilize=3):
