@@ -1,7 +1,7 @@
 SPHINXBUILD   = sphinx-build
 SOURCEDIR     = .
 BUILDDIR      = _build
-PACKAGE       = rxn_bench_template
+PACKAGE       = rxn_bench_camera
 SRCDIR        = ../src/$(PACKAGE)
 UMLDIR        = _uml
 

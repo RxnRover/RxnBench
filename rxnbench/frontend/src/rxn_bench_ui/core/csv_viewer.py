@@ -55,9 +55,7 @@ class CsvViewerPanel(QWidget):
         self._timer.timeout.connect(self._poll)
         self._timer.start(1500)
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def watch_file(self, path: str | Path) -> None:
         """Point the viewer at a file path and start watching it."""
@@ -67,9 +65,7 @@ class CsvViewerPanel(QWidget):
         """Replace the active theme dict."""
         self._t = t
 
-    # ------------------------------------------------------------------
     # Internals
-    # ------------------------------------------------------------------
 
     def _open_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

@@ -44,7 +44,7 @@ class MotionClientProtocol(Protocol):
         ...
 
     def get_position(self) -> dict[str, float]:
-        """Return the current XYZ machine position as ``{'x': …, 'y': …, 'z': …}``."""
+        """Return the current XYZ machine position as ``{'x': ..., 'y': ..., 'z': ...}``."""
         ...
 
     def get_homed_axes(self) -> str:

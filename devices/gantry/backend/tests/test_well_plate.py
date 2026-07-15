@@ -126,9 +126,7 @@ def test_24_unknown_plate_raises():
         PlateGeometry.load("does_not_exist_xyz")
 
 
-# ---------------------------------------------------------------------------
 # Malformed / half-written labware definitions
-# ---------------------------------------------------------------------------
 
 def _labware_dir(tmp_path, monkeypatch, files: dict[str, str]):
     import rxn_bench_gantry.plate_geometry as pg

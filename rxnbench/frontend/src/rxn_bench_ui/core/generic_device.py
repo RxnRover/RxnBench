@@ -194,7 +194,7 @@ def _parse_fdl(xml_str: str, feature_id: str) -> dict:
 
 
 def _rpc_base(feature_id: str) -> str:
-    """'edu.iastate.ames/rxnbench/Gantry/v0' → '/sila2.…gantry.v0.Gantry'"""
+    """Feature id to RPC base path, e.g. '.../Gantry/v0' -> '/sila2...gantry.v0.Gantry'."""
     parts = feature_id.split("/")
     if len(parts) < 3:
         return ""
@@ -317,10 +317,8 @@ class _CmdRunner(QThread):
 class _ObservableCmdRunner(QThread):
     """
     Drives a SiLA ObservableCommand: initiate (get a CommandExecutionUUID),
-    poll <Cmd>_Info for status/progress until finished, then fetch
-    <Cmd>_Result. See SiLAFramework.proto for the wire pattern this
-    implements - verified against a real running server exercising
-    unitelabs-cdk's own ObservableCommandTest feature.
+    poll <Cmd>_Info for status/progress until finished, then fetch <Cmd>_Result.
+    Wire pattern follows SiLAFramework.proto.
     """
     status = Signal(str)
     result = Signal(str)

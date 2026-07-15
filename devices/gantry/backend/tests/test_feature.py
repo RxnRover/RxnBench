@@ -87,9 +87,7 @@ async def _first(agen):
         await agen.aclose()
 
 
-# ---------------------------------------------------------------------------
 # Motion commands - current_action bookkeeping
-# ---------------------------------------------------------------------------
 
 def test_move_to_forwards_to_controller():
     ctrl = _FakeController()
@@ -165,9 +163,7 @@ def test_move_to_well_logs_expected_and_actual_position():
     )]
 
 
-# ---------------------------------------------------------------------------
 # Toolhead / workspace listing glue
-# ---------------------------------------------------------------------------
 
 def test_list_toolheads_formats_name_pipe_display_name():
     feature = Gantry(controller=_FakeController())
@@ -181,9 +177,7 @@ def test_list_workspaces_returns_newline_delimited_names():
     assert asyncio.run(feature.list_workspaces()) == "plate_96well\nplate_24well"
 
 
-# ---------------------------------------------------------------------------
 # Experiment lock state machine
-# ---------------------------------------------------------------------------
 
 def test_experiment_starts_idle():
     feature = Gantry(controller=_FakeController())
@@ -266,9 +260,7 @@ def test_stop_experiment_is_noop_while_idle():
     assert asyncio.run(feature.get_experiment_state()) == "idle"
 
 
-# ---------------------------------------------------------------------------
 # Experiment lock gating of motion / toolhead / workspace commands
-# ---------------------------------------------------------------------------
 
 def test_motion_without_token_is_rejected_while_lock_is_held():
     ctrl = _FakeController()
@@ -347,9 +339,7 @@ def test_force_release_is_noop_while_idle():
     assert asyncio.run(feature.get_experiment_state()) == "idle"
 
 
-# ---------------------------------------------------------------------------
 # Workspace YAML source of truth + labware
-# ---------------------------------------------------------------------------
 
 def test_get_workspace_yaml_reflects_set_workspace_by_name():
     """Loading a workspace by name must be visible via GetWorkspaceYaml (this

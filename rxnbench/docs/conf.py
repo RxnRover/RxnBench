@@ -2,7 +2,7 @@ import os
 import sys
 
 # Both packages must be importable during autodoc
-sys.path.insert(0, os.path.abspath("../backend/src"))
+sys.path.insert(0, os.path.abspath("../backend/client/src"))
 sys.path.insert(0, os.path.abspath("../frontend/src"))
 
 project = "Automated Rxn Bench"
@@ -39,13 +39,30 @@ intersphinx_mapping = {
 # Mock heavy/platform-specific packages so autodoc can import source files
 # on any machine without requiring all runtime deps to be installed.
 autodoc_mock_imports = [
-    "grpc",
-    "unitelabs",
-    "zeroconf",
+    # Qt
     "PySide6",
+    "PySide6.QtWidgets",
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtUiTools",
+    # gRPC / protobuf / SiLA
+    "grpc",
+    "google",
+    "google.protobuf",
+    "google.protobuf.internal",
+    "google.protobuf.descriptor",
+    "google.protobuf.message",
+    "google.protobuf.reflection",
+    "sila2",
+    "unitelabs",
+    # compiled proto stubs in the source tree (can't load without the full runtime)
+    "rxn_bench_ui.proto.sila_service_pb2",
+    "rxn_bench_ui.devices.gantry.proto.motion_platform_pb2",
+    # other deps
+    "zeroconf",
+    "yaml",
     "smbus2",
     "requests",
-    "yaml",
 ]
 
 templates_path = ["_templates"]

@@ -85,9 +85,7 @@ def test_resolve_well_gxy_invalid_label_returns_none():
     assert resolve_well_gxy(plate, _SPEC, "") is None
 
 
-# ---------------------------------------------------------------------------
 # resolve_reference_plate_height
-# ---------------------------------------------------------------------------
 
 _WORKSPACE_YAML = textwrap.dedent("""\
     name: test_bench

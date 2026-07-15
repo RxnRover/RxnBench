@@ -24,3 +24,10 @@ def test_calibrate_does_not_raise():
 def test_slope_returns_nominal_tuple():
     sensor = MockPHSensor()
     assert sensor.slope() == (99.7, 100.3)
+
+
+def test_temperature_defaults_to_25_and_roundtrips():
+    sensor = MockPHSensor()
+    assert sensor.get_temperature() == 25.0
+    sensor.set_temperature(18.5)
+    assert sensor.get_temperature() == 18.5

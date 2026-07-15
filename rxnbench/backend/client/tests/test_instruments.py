@@ -260,8 +260,28 @@ def test_read_avg_averages_n_readings():
 
 
 def test_read_stable_returns_when_consecutive_readings_agree():
-    probe = _probe([7.5, 7.3, 7.29])
+    # Settles once the default three consecutive readings agree within tolerance.
+    probe = _probe([7.5, 7.31, 7.30, 7.29])
     assert probe.read_stable(tolerance=0.05, interval=0) == pytest.approx(7.29)
+
+
+def test_read_stable_waits_out_slow_drift():
+    # A steady ramp (each consecutive pair within tolerance) that plateaus at
+    # 7.16. Requiring three-in-a-row holds out through the drift and returns the
+    # settled plateau...
+    ramp = [7.00, 7.04, 7.08, 7.12, 7.16]
+    assert _probe(ramp).read_stable(
+        tolerance=0.05, interval=0, samples=3
+    ) == pytest.approx(7.16)
+    # ...whereas the old pairwise check accepts the very first in-tolerance step.
+    assert _probe(ramp).read_stable(
+        tolerance=0.05, interval=0, samples=2
+    ) == pytest.approx(7.04)
+
+
+def test_read_stable_rejects_samples_below_two():
+    with pytest.raises(ValueError, match="at least 2"):
+        _probe([7.0]).read_stable(samples=1)
 
 
 def test_wait_for_above_returns_first_crossing():

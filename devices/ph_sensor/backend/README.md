@@ -39,7 +39,7 @@ sudo raspi-config  # Interface Options → I2C → Enable
 
 ### Development (mock sensor)
 
-Returns a fixed pH of 7.00 — no hardware needed:
+Returns a random pH of 1 to 14 — no hardware needed:
 
 ```bash
 cd rxnbench/backend
@@ -125,7 +125,7 @@ i2cdetect -y 1
 
 ## Adding a Different pH Sensor
 
-Implement a class satisfying `PHSensorProtocol` (three methods: `read()`, `calibrate()`, `slope()`) and pass it to `PHSensor(sensor=your_instance)` in `server.py`. The Atlas-specific driver and sensor classes are not referenced anywhere in the SiLA feature — only the protocol matters.
+Implement a class satisfying `PHSensorProtocol` (`read()`, `calibrate()`, `slope()`, `set_temperature()`, `get_temperature()`) and pass it to `PHSensor(sensor=your_instance)` in `server.py`. The Atlas-specific driver and sensor classes are not referenced anywhere in the SiLA feature — only the protocol matters.
 
 ```python
 # interfaces.py
@@ -133,4 +133,6 @@ class PHSensorProtocol(Protocol):
     def read(self) -> SensorReading: ...
     def calibrate(self, point: CalibrationPoint, value: float) -> None: ...
     def slope(self) -> str: ...
+    def set_temperature(self, temp: float) -> None: ...
+    def get_temperature(self) -> float: ...
 ```

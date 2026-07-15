@@ -167,9 +167,7 @@ geometry:
     assert not caplog.records
 
 
-# ---------------------------------------------------------------------------
 # Calibration timestamp
-# ---------------------------------------------------------------------------
 
 def test_new_toolhead_has_no_calibration_timestamp():
     mgr = ToolheadManager()

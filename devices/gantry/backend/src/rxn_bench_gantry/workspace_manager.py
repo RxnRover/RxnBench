@@ -12,7 +12,7 @@ _STATE_FILE = Path.home() / ".rxn_bench" / "workspace.yaml"
 
 
 class WorkspaceManager:
-    """Loads and persists the active workspace; resolves 'plate_id/well_label' → gantry XYZ."""
+    """Loads and persists the active workspace; resolves 'plate_id/well_label' -> gantry XYZ."""
 
     def __init__(self) -> None:
         self._config: WorkspaceConfig | None = None
@@ -141,8 +141,8 @@ class WorkspaceManager:
         """Return a plate's footprint as gantry-frame ``(x_min, x_max, y_min, y_max)``.
 
         Used to tell whether the carriage is currently positioned over a given
-        plate. Exact for the supported orientations: a rectangle rotated by 0°
-        or 90° stays axis-aligned, so this bounding box is the true footprint.
+        plate. Exact for the supported orientations: a rectangle rotated by 0
+        or 90 degrees stays axis-aligned, so this bounding box is the true footprint.
 
         Raises:
             RuntimeError: If no workspace is loaded.

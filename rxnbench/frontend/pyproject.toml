@@ -1,6 +1,6 @@
 [project]
 name = "rxn-bench-ui"
-version = "0.1.1"
+version = "0.1.2"
 description = "Desktop control UI for the Automated Rxn Bench"
 requires-python = ">=3.10"
 dependencies = [

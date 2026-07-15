@@ -51,7 +51,7 @@ class _Workspace:
         empty_title: QLabel,
         empty_hint:  QLabel,
     ) -> None:
-        self.widget      = widget        # the tab's content widget (= stack)
+        self.widget      = widget        # the tab's content widget (a stack)
         self.mdi         = mdi
         self.empty_title = empty_title
         self.empty_hint  = empty_hint
@@ -79,17 +79,13 @@ class MainWindow(QMainWindow):
         self._build_menu()
         self._build_central()
 
-    # ------------------------------------------------------------------
     # Convenience
-    # ------------------------------------------------------------------
 
     @property
     def _ws(self) -> _Workspace:
         return self._workspaces[self._current_ws_idx]
 
-    # ------------------------------------------------------------------
     # Menu
-    # ------------------------------------------------------------------
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -208,9 +204,7 @@ class MainWindow(QMainWindow):
                                    border-color: {t['accent_dim']}; }}
         """)
 
-    # ------------------------------------------------------------------
     # Central widget: tab bar with multiple workspaces + Add Device
-    # ------------------------------------------------------------------
 
     def _build_central(self) -> None:
         self._main_tabs = QTabWidget()
@@ -341,15 +335,13 @@ class MainWindow(QMainWindow):
 
         self._main_tabs.removeTab(tab_idx)
 
-        # Renumber remaining workspace tabs so they're always 1, 2, 3…
+        # Renumber remaining workspace tabs so they're always 1, 2, 3...
         for i in range(len(self._workspaces)):
             self._main_tabs.setTabText(i, f"Workspace {i + 1}")
 
         self._update_workspace_stack()
 
-    # ------------------------------------------------------------------
     # Core panel management (View menu)
-    # ------------------------------------------------------------------
 
     def _toggle_core_panel(self, name: str, checked: bool) -> None:
         if checked:
@@ -393,9 +385,7 @@ class MainWindow(QMainWindow):
         if ws is self._ws:
             self._update_workspace_stack()
 
-    # ------------------------------------------------------------------
     # Device panel management
-    # ------------------------------------------------------------------
 
     def _on_device_requested(self, server: DiscoveredServer) -> None:
         ws = self._ws

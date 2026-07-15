@@ -27,7 +27,7 @@ _CAL_POINTS = [
 
 
 def _ph_color(ph: float) -> str:
-    """Smooth red → green → blue hex color across pH 0–14."""
+    """Smooth red to green to blue hex color across pH 0-14."""
     if math.isnan(ph):
         return "#64748b"
     ph = max(0.0, min(14.0, ph))
@@ -44,14 +44,12 @@ def _ph_color(ph: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
-# ---------------------------------------------------------------------------
 # Mini line-graph widget
-# ---------------------------------------------------------------------------
 
 class PHGraph(QWidget):
     """
-    Scrolling pH history chart.  Stores up to _MAX readings at 1 Hz → 2 min
-    of history. Y axis fixed at 0–14; reference lines at pH 4, 7, 10.
+    Scrolling pH history chart. Stores up to _MAX readings at 1 Hz -> 2 min
+    of history. Y axis fixed at 0-14; reference lines at pH 4, 7, 10.
     Each line segment is coloured by the pH value at that point.
     """
     _MAX  = 120
@@ -128,9 +126,7 @@ class PHGraph(QWidget):
             painter.drawLine(x1, y1, x2, y2)
 
 
-# ---------------------------------------------------------------------------
 # Main widget
-# ---------------------------------------------------------------------------
 
 class PHSensorWidget(QWidget):
     """MDI sub-window for the pH sensor: live pH display and calibration controls."""
@@ -220,7 +216,7 @@ class PHSensorWidget(QWidget):
         if self._cal_value_lbl:
             self._cal_value_lbl.setStyleSheet(f"color: {text};")
 
-        # Small icon buttons (↻)
+        # Small icon buttons (refresh)
         icon_btn_ss = (
             f"QPushButton {{ background: {raised}; color: {text};"
             f"  border: 1px solid {border}; border-radius: 3px; padding: 2px 4px; }}"

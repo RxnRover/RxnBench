@@ -17,19 +17,25 @@ html: apidoc
 
 # Auto-generate per-module RST files.
 # --force overwrites stale stubs; --module-first puts module docstring before submodule list.
+# --no-toc skips the master modules.rst (index.rst drives the toctree via autosummary instead).
+# Compiled *_pb2 proto stubs are excluded: they're mock-imported and carry no useful docs.
 apidoc:
 	@$(SPHINXAPIDOC) \
 		--output-dir api/backend/generated \
 		--force \
+		--no-toc \
 		--module-first \
 		--separate \
-		../backend/src/rxn_bench
+		../backend/client/src/rxn_bench_client
 	@$(SPHINXAPIDOC) \
 		--output-dir api/frontend/generated \
 		--force \
+		--no-toc \
 		--module-first \
 		--separate \
-		../frontend/src/rxn_bench_ui
+		../frontend/src/rxn_bench_ui \
+		"../frontend/src/rxn_bench_ui/proto/*_pb2.py" \
+		"../frontend/src/rxn_bench_ui/devices/gantry/proto/*_pb2.py"
 
 clean:
 	rm -rf "$(BUILDDIR)"

@@ -290,20 +290,39 @@ class PHProbe:
         tolerance: float = 0.05,
         timeout: float = 60.0,
         interval: float = 2.0,
+        samples: int = 3,
     ) -> float:
-        """Read until two consecutive readings agree within *tolerance*.
+        """Read until *samples* consecutive readings all fall within *tolerance*.
 
-        Returns the stable reading, or the last reading if *timeout* is reached.
+        Takes a reading every *interval* seconds and keeps a rolling window of
+        the most recent *samples* readings; the probe is considered settled once
+        that whole window spans no more than *tolerance* (window max - min).
+        Requiring several readings to agree - rather than only the latest pair -
+        makes a slow, steady drift much harder to mistake for a settled probe.
+
+        Args:
+            tolerance: Max spread (pH) allowed across the window to count as stable.
+            timeout:   Give up after this many seconds; the latest reading is returned.
+            interval:  Seconds to wait between readings.
+            samples:   Consecutive readings that must agree (>= 2; 2 is the old
+                       pairwise check). Higher = stricter, at one extra reading
+                       per point.
+
+        Returns the latest reading once stable, or the latest reading taken when
+        *timeout* is reached first.
         """
+        if samples < 2:
+            raise ValueError("samples must be at least 2")
         deadline = time.monotonic() + timeout
-        last = self.read()
+        window = [self.read()]
         while time.monotonic() < deadline:
             time.sleep(interval)
-            current = self.read()
-            if abs(current - last) <= tolerance:
-                return current
-            last = current
-        return last
+            window.append(self.read())
+            if len(window) > samples:
+                window.pop(0)
+            if len(window) == samples and max(window) - min(window) <= tolerance:
+                return window[-1]
+        return window[-1]
 
     def wait_for(
         self,
@@ -340,6 +359,14 @@ class PHProbe:
             value: Known pH of the calibration buffer.
         """
         self._p.PHSensor.Calibrate(Point=point, Value=value)
+
+    def set_temperature(self, celsius: float) -> None:
+        """Set the temperature-compensation value used when computing pH.
+
+        The probe assumes 25 C by default; set this to the actual buffer or
+        sample temperature before calibrating or reading for accurate results.
+        """
+        self._p.PHSensor.SetTemperature(Temperature=celsius)
 
 
 class Camera:

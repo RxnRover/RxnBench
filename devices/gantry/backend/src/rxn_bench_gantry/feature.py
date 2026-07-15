@@ -97,9 +97,7 @@ class Gantry(sila.Feature):
                 "returned by AcquireExperimentLock."
             )
 
-    # ------------------------------------------------------------------
     # Observable properties
-    # ------------------------------------------------------------------
 
     @sila.ObservableProperty()
     async def position(self) -> sila.Stream[Position]:
@@ -190,9 +188,7 @@ class Gantry(sila.Feature):
             yield self._experiment_state != "idle"
             await asyncio.sleep(0.2)
 
-    # ------------------------------------------------------------------
     # Motion commands
-    # ------------------------------------------------------------------
 
     @sila.UnobservableCommand()
     async def move_to(self, x: float, y: float, z: float, token: str = "") -> None:
@@ -307,9 +303,7 @@ class Gantry(sila.Feature):
             self._current_action = f"Error: {exc}"
             raise
 
-    # ------------------------------------------------------------------
     # Homing
-    # ------------------------------------------------------------------
 
     # Homing commands are manual-only: they are always rejected while a script
     # holds the experiment lock (scripts never calibrate limits mid-run).
@@ -375,9 +369,7 @@ class Gantry(sila.Feature):
         """
         return await asyncio.to_thread(self._controller.get_limits)
 
-    # ------------------------------------------------------------------
     # Toolhead management
-    # ------------------------------------------------------------------
 
     @sila.UnobservableCommand()
     async def set_toolhead(self, name: str, token: str = "") -> None:
@@ -472,9 +464,7 @@ class Gantry(sila.Feature):
         entries = await asyncio.to_thread(self._controller.list_toolheads)
         return "\n".join(f"{n}|{d}" for n, d in entries)
 
-    # ------------------------------------------------------------------
     # Workspace management
-    # ------------------------------------------------------------------
 
     @sila.UnobservableCommand()
     async def set_workspace(self, name: str, token: str = "") -> None:
@@ -520,9 +510,7 @@ class Gantry(sila.Feature):
         """
         return await asyncio.to_thread(self._controller.get_labware_yaml)
 
-    # ------------------------------------------------------------------
     # Experiment lock
-    # ------------------------------------------------------------------
 
     @sila.UnobservableCommand()
     async def acquire_experiment_lock(self) -> str:

@@ -109,14 +109,14 @@ def scan(timeout: float, probe: bool) -> None:
     finally:
         zc.close()
 
-    print(f"\n{'─' * 40}")
+    print(f"\n{'-' * 40}")
     print(f"Found {len(found)} server(s).")
     if not found:
         print(
             "\nNothing found. Make sure:\n"
-            "  • The SiLA server is running (rxn-bench-gantry / rxn-bench-ph)\n"
-            "  • Both machines are on the same subnet\n"
-            "  • mDNS / Bonjour is not blocked by a firewall\n"
+            "  - The SiLA server is running (rxn-bench-gantry / rxn-bench-ph)\n"
+            "  - Both machines are on the same subnet\n"
+            "  - mDNS / Bonjour is not blocked by a firewall\n"
             "\nIf mDNS is blocked (different VLAN, VPN, wired/WiFi split) use:\n"
             "  uv run python scripts/scan_sila.py --manual 192.168.1.42:50051\n"
             "\nTo test locally run a server in mock mode first:\n"

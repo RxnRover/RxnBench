@@ -20,7 +20,7 @@ class MockMyDevice:
 
     def read(self) -> float:
         # TODO: return a realistic fixed value for your measurement.
-        # e.g. for conductivity: return 1413.0  (µS/cm, mid-range standard)
+        # e.g. for conductivity: return 1413.0  (uS/cm, mid-range standard)
         return 0.0
 
     def do_action(self, parameter: float) -> None:

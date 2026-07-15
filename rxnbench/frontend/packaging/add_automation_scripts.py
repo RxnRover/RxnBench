@@ -1,9 +1,5 @@
 #!/usr/bin/env/python3
-"""
-Add automation scripts next to the build .exe in /scripts
-- Simply moves 
-
-"""
+"""Copy automation scripts into /scripts next to the build .exe. (Work in progress.)"""
 
 import shutil
 import sys

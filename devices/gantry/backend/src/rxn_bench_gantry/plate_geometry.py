@@ -81,7 +81,7 @@ class PlateGeometry:
         col = int(m.group(2)) - 1
         if not (0 <= row < self.rows and 0 <= col < self.columns):
             raise ValueError(
-                f"Well {label!r} out of range for {self.rows}×{self.columns} plate."
+                f"Well {label!r} out of range for {self.rows}x{self.columns} plate."
             )
         return row, col
 

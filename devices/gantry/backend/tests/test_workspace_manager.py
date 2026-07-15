@@ -102,9 +102,7 @@ def test_unknown_plate_id_raises(mgr):
         mgr.resolve_well("nonexistent/A1")
 
 
-# ---------------------------------------------------------------------------
 # get_well_depth - drives the engagement-depth safety check in move_to_well
-# ---------------------------------------------------------------------------
 
 def test_get_well_depth_matches_plate_type(mgr):
     plate_96 = PlateGeometry.load("96_well_standard")
@@ -144,9 +142,7 @@ def test_to_yaml_round_trips_through_load_from_yaml(mgr):
     assert {p["id"] for p in data["plates"]} == {"plates", "rotated"}
 
 
-# ---------------------------------------------------------------------------
 # max_labware_top_z - drives GantryController's dynamic safe clearance height
-# ---------------------------------------------------------------------------
 
 def test_max_labware_top_z_zero_without_workspace():
     assert WorkspaceManager().max_labware_top_z() == 0.0

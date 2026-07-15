@@ -21,3 +21,11 @@ class PHSensorProtocol(Protocol):
     def slope(self) -> tuple[float, float]:
         """Return (acid_pct, base_pct) slope percentages from the last calibration."""
         ...
+
+    def set_temperature(self, temp: float) -> None:
+        """Set the temperature-compensation value (deg C) for pH readings."""
+        ...
+
+    def get_temperature(self) -> float:
+        """Return the current temperature-compensation value in degrees C."""
+        ...

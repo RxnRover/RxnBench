@@ -15,7 +15,7 @@ from tests.fakes import FakeMotionClient
 
 # Derived from the labware source of truth rather than hardcoded, so these
 # tests don't silently break when a bundled plate's dimensions are re-measured
-# (never hardcode plate dimensions outside labware/*.yaml - see CURRENT_STATE §8).
+# (never hardcode plate dimensions outside labware/*.yaml - see CURRENT_STATE section 8).
 _PLATE_HEIGHT_96 = PlateGeometry.load("96_well_standard").plate_height_mm
 _WELL_DEPTH_96 = PlateGeometry.load("96_well_standard").well_depth_mm
 
@@ -48,9 +48,7 @@ def ctrl(client):
     )
 
 
-# ---------------------------------------------------------------------------
 # Bare-carriage bounds (no toolhead mounted)
-# ---------------------------------------------------------------------------
 
 def test_get_limits_format(ctrl):
     limits_str = ctrl.get_limits()
@@ -135,9 +133,7 @@ def test_disengage_tool_exceeding_z_max_raises(ctrl):
         ctrl.disengage_tool(depth=300.0)
 
 
-# ---------------------------------------------------------------------------
 # Toolhead-aware bounds (footprint + tip offset compensation)
-# ---------------------------------------------------------------------------
 
 def test_toolhead_footprint_narrows_x_bounds(ctrl):
     ctrl.set_toolhead("ph_probe")  # footprint_x=44 -> half-width 22mm
@@ -166,9 +162,7 @@ def test_toolhead_tip_offset_z_raises_safe_clearance_height(ctrl, client):
     assert client.calls[0][1]["z"] == 110.0  # max(clearance_z=50, tip_offset_z=110)
 
 
-# ---------------------------------------------------------------------------
 # Workspace-aware safe clearance height (dynamic, not a flat constant)
-# ---------------------------------------------------------------------------
 
 def test_safe_clearance_falls_back_to_bare_floor_without_workspace(ctrl, client):
     ctrl.move_to(100.0, 100.0, 100.0)
@@ -264,9 +258,7 @@ def test_clear_toolhead_of_mounted_head_invalidates_homing(ctrl):
     assert ctrl.get_mounted_toolheads() == []
 
 
-# ---------------------------------------------------------------------------
 # Placeholder-geometry guard on well-targeted moves
-# ---------------------------------------------------------------------------
 
 def test_move_to_well_refuses_unvalidated_toolhead_geometry(ctrl):
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
@@ -327,9 +319,7 @@ def test_move_to_well_docks_at_plate_top_not_clearance_height(ctrl, client):
     assert lower_call["z"] == pytest.approx(15.0 + _PLATE_HEIGHT_96)  # origin_z + plate_height_mm
 
 
-# ---------------------------------------------------------------------------
 # Engagement-depth safety: toolhead z_engage vs. the target well's own depth
-# ---------------------------------------------------------------------------
 
 def test_move_to_well_rejects_z_engage_deeper_than_well(ctrl):
     # A toolhead whose engagement depth exceeds the target well's depth must be
@@ -396,9 +386,7 @@ def test_move_to_well_skips_engagement_check_without_toolhead(ctrl):
     ctrl.move_to_well("plate1/A1")  # no toolhead active -> not refused
 
 
-# ---------------------------------------------------------------------------
 # Toolhead tip calibration
-# ---------------------------------------------------------------------------
 
 def test_calibrate_toolhead_tip_single_well(ctrl):
     ctrl.load_workspace_from_yaml(_SIMPLE_WORKSPACE_YAML)
@@ -467,9 +455,7 @@ def test_move_to_well_allowed_after_switching_back_to_confirmed_head(ctrl, clien
     assert any(name == "move" for name, _ in client.calls)
 
 
-# ---------------------------------------------------------------------------
 # Homing / saved-state integration
-# ---------------------------------------------------------------------------
 
 def test_save_requires_calibration(ctrl):
     with pytest.raises(RuntimeError, match="not been calibrated"):
@@ -482,9 +468,7 @@ def test_save_allowed_after_homing(ctrl):
     assert ctrl.has_saved_state
 
 
-# ---------------------------------------------------------------------------
 # Workspace YAML + labware accessors
-# ---------------------------------------------------------------------------
 
 def test_get_workspace_yaml_empty_without_workspace(ctrl):
     assert ctrl.get_workspace_yaml() == ""
@@ -509,10 +493,8 @@ def test_get_labware_yaml_contains_bundled_plates(ctrl):
     assert plate["height_mm"] == pytest.approx(85.48)
 
 
-# ---------------------------------------------------------------------------
 # Intra-plate travel optimization: same-plate well moves skip the full-deck
 # clearance and travel at just the target plate's own (uniform) top height.
-# ---------------------------------------------------------------------------
 
 _TWO_PLATE_YAML = textwrap.dedent("""\
     name: two_plate
@@ -568,11 +550,9 @@ def test_plain_move_to_always_uses_full_clearance(ctrl, client):
     assert client.calls[0][1]["z"] == pytest.approx(_FULL_CLEARANCE)
 
 
-# ---------------------------------------------------------------------------
 # X-gantry crossbar collision check: the bar spans X at the carriage's Y, so a
 # taller plate sharing the target's Y-row can be hit by the descending bar even
 # though the tip is clear. Off (geometry unset) unless configured.
-# ---------------------------------------------------------------------------
 
 _CROSSBAR_H = 40.0   # crossbar underside sits 40mm above the tip
 _CROSSBAR_T = 20.0   # crossbar is 20mm thick in Y

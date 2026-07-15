@@ -77,15 +77,10 @@ class GantryController:
         """Height to raise to during clearance travel: enough to clear every
         loaded plate's top surface as well as the active tip.
 
-        Derived, not a single fixed guess: the bare-carriage floor, the
-        active tip's own hang-down, and (if a workspace is loaded) the
-        tallest placed plate's top surface plus a configurable safety
-        padding all compete, and clearance travel rises to whichever demands
-        the most headroom. This replaces a flat constant that had no idea
-        whether a tall beaker was sharing the deck with a low-profile plate,
-        so travel over an unexpectedly tall container was never actually
-        checked against real geometry. Every Z target is still bounds-checked
-        against z_min/z_max/tip_offset_z regardless of this value.
+        Rises to whichever demands the most headroom: the bare-carriage floor,
+        the active tip's hang-down, or (if a workspace is loaded) the tallest
+        plate's top surface plus a safety padding. Every Z target is still
+        bounds-checked against z_min/z_max/tip_offset_z regardless of this value.
         """
         th = self._toolhead_mgr.toolhead
         tip_z = th.tip_offset_z if th else 0.0
@@ -488,7 +483,7 @@ class GantryController:
         return self._toolhead_mgr.mounted_toolheads
 
     def list_toolheads(self) -> list[tuple[str, str]]:
-        """Return ``[(name, display_name), …]`` for every installed toolhead config."""
+        """Return ``[(name, display_name), ...]`` for every installed toolhead config."""
         return ToolheadManager.list_toolheads()
 
     def get_safe_clearance_z(self) -> float:

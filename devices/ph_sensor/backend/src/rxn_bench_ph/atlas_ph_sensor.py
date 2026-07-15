@@ -91,7 +91,7 @@ class AtlasPHSensor(BaseSensor):
         self._driver.set_temperature_compensation(temp)
 
     def get_temperature(self) -> float:
-        """Return the current temperature compensation value in °C."""
+        """Return the current temperature compensation value in degrees C."""
         return self._driver.get_temperature_compensation()
 
     def slope(self) -> tuple[float, float]:

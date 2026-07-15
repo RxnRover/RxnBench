@@ -47,7 +47,7 @@ class MachineConfig:
     #     frame (Z = tip height) the bar's underside is always this far above the
     #     tip, so a plate top above `tip_Z + this` is a collision.
     #   crossbar_y_thickness_mm: the bar's extent in Y; only plates whose Y
-    #     footprint overlaps the bar's Y band (carriage Y ± thickness/2) are
+    #     footprint overlaps the bar's Y band (carriage Y +/- thickness/2) are
     #     threatened. (The bar is assumed to span the full X travel.)
     crossbar_clearance_above_tip_mm: float | None = None
     crossbar_y_thickness_mm: float | None = None

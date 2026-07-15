@@ -41,12 +41,12 @@ class EZOCommandSet(ABC):
         return round(float(self._read_response(delay_ms=900)), 3)  # Atlas Scientific claims a +/- 0.001 resolution with the Spear Tip / Soil pH Probe
 
     def set_temperature_compensation(self, temp: float) -> None:
-        """Set the temperature compensation value in °C used during pH calculations."""
+        """Set the temperature compensation value in degrees C used during pH calculations."""
         self._send_command(f'T,{temp}')
         self._read_response(delay_ms=300)
 
     def get_temperature_compensation(self) -> float:
-        """Return the current temperature compensation value in °C."""
+        """Return the current temperature compensation value in degrees C."""
         self._send_command('T,?')
         response = self._read_response(delay_ms=300)
         return float(response.split(',')[1])

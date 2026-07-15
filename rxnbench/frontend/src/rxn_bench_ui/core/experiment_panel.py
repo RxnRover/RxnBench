@@ -22,15 +22,27 @@ _UI_DIR = Path(__file__).parent / "ui"
 preferred_mdi_size = (700, 480)
 
 
+def _default_results_dir() -> Path:
+    """Where experiment output goes when the user hasn't picked a folder.
+
+    Frozen build: a `results/` folder next to the executable, so a lab
+    operator finds their data right where the app lives. Source checkout:
+    `results/` under the current working directory.
+    """
+    base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path.cwd()
+    return base / "results"
+
+
 class _ScriptRunner(QThread):
     """Runs a script in a subprocess and streams its output line by line."""
 
     line_ready = Signal(str)
     finished   = Signal(int)   # exit code
 
-    def __init__(self, script_path: str) -> None:
+    def __init__(self, script_path: str, results_dir: Path | None = None) -> None:
         super().__init__()
-        self._path   = script_path
+        self._path        = script_path
+        self._results_dir = results_dir
         self._proc: subprocess.Popen | None = None
 
     def _build_command(self) -> tuple[list[str], dict | None]:
@@ -51,6 +63,15 @@ class _ScriptRunner(QThread):
     def run(self) -> None:
         try:
             cmd, env = self._build_command()
+            env = {**os.environ, **(env or {})}
+            cwd: str | None = None
+            if self._results_dir is not None:
+                # Run the script with its results folder as the working
+                # directory, and tell rxn_bench_client where relative
+                # set_log_output() paths belong, so results land here rather
+                # than wherever the app was launched from.
+                cwd = str(self._results_dir)
+                env["RXN_BENCH_RESULTS_DIR"] = cwd
             self._proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -58,6 +79,7 @@ class _ScriptRunner(QThread):
                 text=True,
                 bufsize=1,
                 env=env,
+                cwd=cwd,
             )
             for line in self._proc.stdout:
                 self.line_ready.emit(line.rstrip())
@@ -138,6 +160,11 @@ class ExperimentPanel(QWidget):
         self._status_lbl:       QLabel         = self._ui.findChild(QLabel,         "run_status_lbl")
         self._log:              QPlainTextEdit = self._ui.findChild(QPlainTextEdit,  "log_output")
 
+        if self._log_folder_edit is not None:
+            # Show the default so operators know where results land when they
+            # leave this blank; clearing it falls back here (see _play).
+            self._log_folder_edit.setPlaceholderText(str(_default_results_dir()))
+
         self._apply_theme()
         self._wire()
 
@@ -197,6 +224,24 @@ class ExperimentPanel(QWidget):
     def _clear_log_folder(self) -> None:
         self._log_folder_edit.clear()
 
+    def _resolve_results_dir(self) -> Path | None:
+        """Pick the output folder and make sure it exists.
+
+        The folder field wins if set; otherwise fall back to the app's default
+        results/ dir. If neither is writable (e.g. installed under Program
+        Files and elevated), drop back to the user's home so a run never fails
+        just to save its output. Returns None only if even that fails.
+        """
+        folder = self._log_folder_edit.text().strip()
+        preferred = Path(folder) if folder else _default_results_dir()
+        for candidate in (preferred, Path.home() / "Rxn Bench" / "results"):
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+                return candidate
+            except OSError:
+                continue
+        return None
+
     def _play(self) -> None:
         script = self._path_edit.text().strip()
         if not script or not Path(script).exists():
@@ -209,11 +254,12 @@ class ExperimentPanel(QWidget):
         self._paused = False
 
         self._close_log_file()
-        folder = self._log_folder_edit.text().strip()
-        if folder:
+        results_dir = self._resolve_results_dir()
+        if results_dir is not None:
+            self._log.appendPlainText(f"# results → {results_dir}\n")
             ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             stem = Path(script).stem
-            log_path = Path(folder) / f"{stem}_{ts}.log"
+            log_path = results_dir / f"{stem}_{ts}.log"
             try:
                 self._log_fh = open(log_path, "w", encoding="utf-8")
                 self._log_fh.write(f"# {sys.executable} {script}\n")
@@ -223,7 +269,7 @@ class ExperimentPanel(QWidget):
                 self._log_fh = None
                 self._log.appendPlainText(f"[log file error: {e}]")
 
-        self._runner = _ScriptRunner(script)
+        self._runner = _ScriptRunner(script, results_dir)
         self._runner.line_ready.connect(self._log.appendPlainText)
         self._runner.line_ready.connect(self._write_log_line)
         self._runner.finished.connect(self._on_finished)

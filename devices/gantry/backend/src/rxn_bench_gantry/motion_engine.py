@@ -3,7 +3,7 @@ from rxn_bench_gantry.interfaces import MotionClientProtocol
 
 
 class MotionEngine:
-    """Translates high-level move requests into the raise→XY→lower clearance-travel sequence."""
+    """Translates high-level move requests into the raise->XY->lower clearance-travel sequence."""
 
     def __init__(self, client: MotionClientProtocol) -> None:
         """Initialise the engine with a motion client.

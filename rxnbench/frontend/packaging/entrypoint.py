@@ -1,15 +1,13 @@
-"""PyInstaller entry script - app.py itself uses relative imports, which don't
-resolve when a script is run directly as __main__, so this thin wrapper is
-the Analysis target instead.
+"""PyInstaller entry script - app.py uses relative imports, which don't resolve
+when a script is run directly as __main__, so this thin wrapper is the Analysis
+target instead.
 
 Set RXN_BENCH_UI_SELFTEST=1 to run a build-verification pass instead of
-launching the GUI: constructs every discovered device plugin's widget (real
-imports, real create_widget() call, no mock server needed) and exits nonzero
-on the first failure. Catches exactly the class of bug static analysis can't
-see - a plugin's dependency (first- or third-party) missing from the frozen
-bundle - which only shows up once a plugin actually gets loaded, not just
-when the app starts. Meant to be run against a real build (`make dist`),
-headless (QT_QPA_PLATFORM=offscreen), before shipping.
+launching the GUI: it constructs every discovered device plugin's widget and
+exits nonzero on the first failure. This catches the class of bug static
+analysis can't see - a plugin dependency missing from the frozen bundle, which
+only surfaces once the plugin is loaded. Run it against a real build
+(`make dist`), headless (QT_QPA_PLATFORM=offscreen), before shipping.
 """
 import os
 import sys
@@ -56,16 +54,14 @@ def _run_script(path: str) -> None:
     """Run a user experiment script inside this bundle's Python runtime.
 
     In a PyInstaller build `sys.executable` is this GUI app, not a Python
-    interpreter, so the Experiment Runner can't launch `python script.py` -
-    there is no python. Instead it re-execs us with RXN_BENCH_UI_RUN_SCRIPT
-    set, and we run the script here: the frozen bundle already ships
-    rxn_bench_client + grpc, so scripts that drive the bench run directly.
+    interpreter, so the Experiment Runner can't launch `python script.py`.
+    Instead it re-execs us with RXN_BENCH_UI_RUN_SCRIPT set and we run the
+    script here (the frozen bundle already ships rxn_bench_client + grpc).
 
-    Run as __main__ (so the script's `if __name__ == "__main__"` fires) with a
-    line-buffered stdout so the panel streams output live. Exceptions - and the
-    KeyboardInterrupt raised by the runner's Stop (SIGINT) - propagate out so
-    the traceback reaches the log and the exit code is nonzero; the script's
-    own `with RxnBenchClient()` cleanup still runs on the way out.
+    Run as __main__ with line-buffered stdout so the panel streams output live.
+    Exceptions - and the KeyboardInterrupt from the runner's Stop (SIGINT) -
+    propagate out so the traceback reaches the log and the exit code is nonzero;
+    the script's own `with RxnBenchClient()` cleanup still runs.
     """
     import runpy
 

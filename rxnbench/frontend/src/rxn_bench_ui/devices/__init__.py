@@ -2,17 +2,14 @@
 Device plugin package.
 
 Auto-discovers every device under a devices/ directory (each device is a
-self-contained devices/<name>/{backend,frontend} folder - see
-docs/ai/CURRENT_STATE.md). A device is recognized if devices/<name>/frontend/
-exists; its __init__.py is loaded as rxn_bench_ui.devices.<name> so its
-relative imports (e.g. `from ...discovery import ...`) resolve normally.
+self-contained devices/<name>/{backend,frontend} folder). A device is
+recognized if devices/<name>/frontend/ exists; its __init__.py is loaded as
+rxn_bench_ui.devices.<name> so its relative imports resolve normally.
 
-In a source checkout, devices/ is the repo-root folder five levels up from
-this file. In a packaged (PyInstaller) build there is no repo checkout, so
-devices/ is instead expected to sit next to the executable - this keeps the
-same drop-in plugin model after packaging: adding device support to a
-deployed install means adding a devices/<name>/frontend/ folder there, no
-rebuild required.
+In a source checkout, devices/ is the repo-root folder five levels up. In a
+packaged (PyInstaller) build it sits next to the executable instead, so adding
+device support to a deployed install just means dropping in a
+devices/<name>/frontend/ folder, no rebuild required.
 
 Each device frontend package must export:
   FEATURE_FRAGMENTS: list[str]

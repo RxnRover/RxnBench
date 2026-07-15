@@ -7,9 +7,7 @@ nothing else needs to touch hex codes.
 Primary brand colors: orange (#f97316) and blue (#3b82f6).
 """
 
-# ---------------------------------------------------------------------------
 # Dark theme (default) - dark navy bg, orange + blue accents
-# ---------------------------------------------------------------------------
 DARK = {
     # Base surfaces
     "bg":           "#0f1117",
@@ -72,9 +70,7 @@ DARK = {
     "grid_foot_fill_alpha": 40,
 }
 
-# ---------------------------------------------------------------------------
 # Light theme - white bg, same orange/blue accents
-# ---------------------------------------------------------------------------
 LIGHT = {
     "bg":           "#f8fafc",
     "bg_surface":   "#f1f5f9",
@@ -138,7 +134,7 @@ def get(name: str) -> dict:
 
 
 def _x_icon(color: str) -> str:
-    """Return a CSS url() value containing an inline SVG × for QTabBar close buttons."""
+    """Return a CSS url() value containing an inline SVG x for QTabBar close buttons."""
     c = color.replace('#', '%23')
     return (
         "url(\"data:image/svg+xml,"

@@ -14,13 +14,11 @@ def main() -> None:
         bench.connect("ph", PHProbe, server="pH")
 
         # Tell the bench where to save your results.
-        bench.set_log_output("results/ph_scan.csv")
+        bench.set_log_output("results/test_positioning.csv")
 
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()
 
-        # Mount the tool you want to use.
-        bench.gantry.mount_toolhead("ph_probe")
 
         # Get the labels of all wells in the workspace
         wells: list[str] = bench.gantry.get_workspace_wells()

@@ -205,7 +205,7 @@ class ServerCard(QFrame):
         self._t = t
         # Update card border/background
         self._apply_card_frame(t)
-        # Re-apply button state - if connected keep the blue ✓, otherwise re-style with new theme
+        # Re-apply button state - if connected keep the blue check, otherwise re-style with new theme
         if self._connected:
             self._apply_connected_style()
         else:

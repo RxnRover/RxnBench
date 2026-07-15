@@ -1,45 +1,110 @@
-# Automatic calibration script for the pH probe
+# Automatic calibration script for the Atlas Scientific EZO-pH probe.
+#
+# Runs a clean 3-point calibration in the order the EZO-pH circuit requires:
+# the mid (pH 7) point resets any prior calibration and must be taken first,
+# then the low (pH 4) and high (pH 10) points refine the acid/base slope.
 
 import time
+
 from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
 
+# --- Calibration setup -------------------------------------------------------
+
+# Wells holding each buffer, as "plate/well" labels in the active workspace.
+MID_BUFFER_WELL = "Calibration/A2"   # pH 7 buffer  (calibrated first - resets the probe)
+LOW_BUFFER_WELL = "Calibration/A3"   # pH 4 buffer
+HIGH_BUFFER_WELL = "Calibration/A1"  # pH 10 buffer
+
+# (point name, well, known buffer pH). Order matters: "mid" MUST come first.
+CALIBRATION_POINTS = [
+    ("mid",  MID_BUFFER_WELL,  7.0),
+    ("low",  LOW_BUFFER_WELL,  4.0),
+    ("high", HIGH_BUFFER_WELL, 10.0),
+]
+
+# Optional DI-water well to rinse the probe between buffers, avoiding carryover
+# that would contaminate the next buffer. Set to None to skip (no rinse well).
+RINSE_WELL = "Wash-Station/A1"            # e.g. "Calibration/A4"
+
+# General wait times
+SETTLE_SECONDS = 10
+
+# Temperature of the calibration buffers, in degrees C. The EZO assumes 25 C by
+# default; setting the real buffer temperature keeps the acid/base slopes from
+# being skewed by the Nernstian temperature dependence of the electrode.
+BUFFER_TEMPERATURE_C = 25.0
+
+
+def rinse_probe(bench) -> None:
+    """Dip the probe in the rinse well to wash off the previous buffer."""
+    if RINSE_WELL is None:
+        return
+    print(f"Rinsing probe in {RINSE_WELL}...")
+    bench.gantry.move_to_well(RINSE_WELL)
+    bench.gantry.engage_tool()
+    time.sleep(SETTLE_SECONDS)
+    bench.gantry.disengage_tool()
+
+def calibrate_point(bench, point: str, well: str, known_ph: float) -> None:
+    """Calibrate the probe at a single point."""
+    bench.check_pause_stop()   # honor the UI pause/stop button
+
+    bench.gantry.move_to_well(well)
+    bench.gantry.engage_tool()
+
+    # Let the probe settle, then wait for the reading to stabilize before
+    # committing this calibration point.
+    print(f"Waiting for probe to settle...")
+    beforeTime = time.time()
+    before = bench.ph.read_stable(tolerance=0.02, timeout=300, interval=30)
+    afterTime = time.time()
+    print(f"Probe settled in {afterTime - beforeTime:.1f} seconds.")
+    print(f"Calibrating {point} point in {well} (known pH {known_ph:.2f}) - current reading is {before:.2f}")
+    bench.ph.calibrate(point, known_ph)
+
+    # A correctly-calibrated point should now read close to the buffer value.
+    after = bench.ph.read_stable(tolerance=0.02, timeout=120, interval=3)
+    bench.log(point=point, buffer_ph=known_ph, before=before, after=after)
+    print(f"{point:>4} @ pH {known_ph:5.2f}: before={before:.2f}  after={after:.2f}")
+
+    bench.gantry.disengage_tool()
 
 def main() -> None:
     with RxnBenchClient() as bench:
-        """Keep your script inside this main() function to keep things simple."""
-
         # Tell the bench which instruments you're using and where to find them.
         # Server names are discovered automatically on the local network.
         bench.connect("gantry", Gantry, server="Gantry")
         bench.connect("ph", PHProbe, server="pH")
 
-        # Tell the bench where to save your results.
-        bench.set_log_output("results/ph_scan.csv")
+        # Record each buffer reading before/after calibration for your records.
+        bench.set_log_output("ph_calibration.csv")
 
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()
 
-        # Mount the tool you want to use.
-        bench.gantry.mount_toolhead("ph_probe")
+        print(f"Starting pH calibration script with {len(CALIBRATION_POINTS)} points...")
+        print(f"Note: It is important that the pH probe is fully submerged into the solution, and that the solution is well-mixed before taking a reading.")
+        print(f"      If the pH probe is not subermged increase the amount of solution, or adjust the engagement depth")
 
-        low_buffer_well = 'Calibration/A3'
-        mid_buffer_well = 'Calibration/A2'
-        high_buffer_well = 'Calibration/A1'
+        # Compensate readings for the buffer temperature before calibrating so
+        # the acid/base slopes aren't skewed if the buffers aren't at 25 C.
+        bench.ph.set_temperature(BUFFER_TEMPERATURE_C)
 
-        buffer = ['mid', 'low', 'high']
-        buffer_wells = [mid_buffer_well, low_buffer_well, high_buffer_well]
-        buffer_ph_values = [7.0, 4.0, 10.0]
+        # Start from a clean slate so stale calibration can't skew the result.
+        print(f"Clearing any prior calibration...")
+        bench.ph.calibrate("clear", 0.0)
 
-        for buffer, well, ph in zip(buffer, buffer_wells, buffer_ph_values):
-            bench.gantry.move_to_well(well, True)
-            bench.gantry.engage_toolhead()
-            # wait for stable
-            time.sleep(15)
-            bench.ph.calibrate(buffer, ph)
-            bench.gantry.disengage_toolhead()
+        for point, well, known_ph in CALIBRATION_POINTS:
+            bench.check_pause_stop()   # honor the UI pause/stop button
+
+            calibrate_point(bench, point, well, known_ph)
+
+            # Wash after each buffer to avoid carryover that would contaminate the next buffer.
+            rinse_probe(bench)
 
         # Always save and park at the end of a script.
         bench.gantry.save_and_park()
+
 
 if __name__ == "__main__":
     main()

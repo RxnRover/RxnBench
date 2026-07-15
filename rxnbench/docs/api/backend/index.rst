@@ -1,12 +1,12 @@
-Backend  (``rxn_bench``)
-=======================
+Backend client  (``rxn_bench_client``)
+======================================
 
-Runs on the Raspberry Pi as a **SiLA2 server**.  It wraps Klipper/Moonraker for
-motion control, a pH sensor driver, and a camera interface, each exposed as a
-SiLA2 Feature over gRPC.
+Python client library for driving the SiLA2 device servers over gRPC — the
+motion platform, pH sensor, and camera Features exposed by the Raspberry Pi
+device backends.
 
 .. autosummary::
    :toctree: generated
    :recursive:
 
-   rxn_bench
+   rxn_bench_client

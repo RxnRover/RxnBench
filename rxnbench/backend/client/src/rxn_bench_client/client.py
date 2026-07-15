@@ -34,6 +34,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import datetime
+import os
 import pathlib
 import socket
 import time
@@ -268,7 +269,12 @@ class RxnBenchClient:
         """Open a CSV file for recording data with bench.log().
 
         Args:
-            path:    File to write. Parent directories are created if needed.
+            path:    File to write. A relative path is resolved against the
+                     RXN_BENCH_RESULTS_DIR set by the Experiment Runner (the
+                     app's results/ folder) when present, otherwise the current
+                     working directory - so bench.set_log_output("results.csv")
+                     lands somewhere predictable instead of wherever the app
+                     happened to be launched from. Parent dirs are created.
             columns: Column names in order. When omitted, discovered from the
                      first bench.log() call.
         """
@@ -276,8 +282,12 @@ class RxnBenchClient:
             self._log_file.close()
 
         out = pathlib.Path(path)
+        if not out.is_absolute():
+            base = os.environ.get("RXN_BENCH_RESULTS_DIR")
+            out = (pathlib.Path(base) if base else pathlib.Path.cwd()) / out
         out.parent.mkdir(parents=True, exist_ok=True)
         self._log_file = open(out, "w", newline="", encoding="utf-8")
+        print(f"Logging results to {out}", flush=True)
         self._log_columns = list(columns) if columns is not None else None
         self._log_writer = None
 

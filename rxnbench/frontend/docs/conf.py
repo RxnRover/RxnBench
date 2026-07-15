@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 project   = "rxn-bench-ui"
 author    = "Ames National Laboratory"
 copyright = "2026, Ames National Laboratory"
-release   = "0.1.0"
+release   = "0.1.2"
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -50,11 +50,26 @@ autodoc_mock_imports = [
     # compiled proto stubs in the source tree (can't load without the full runtime)
     "rxn_bench_ui.proto.sila_service_pb2",
     "rxn_bench_ui.devices.gantry.proto.motion_platform_pb2",
+    "rxn_bench_ui.devices.ph_sensor.proto.ph_sensor_pb2",
     # other deps
     "zeroconf",
     "yaml",
     "rxn_bench_client",
 ]
+
+# The gantry/ph_sensor frontend plugins live under devices/<name>/frontend/ and are
+# loaded into the rxn_bench_ui.devices.<name> namespace at runtime by a custom importlib
+# loader (rxn_bench_ui.devices.all_devices). autodoc never triggers that, so pre-register
+# the plugin packages here — with the autodoc mocks active so their submodule imports
+# resolve — otherwise autodoc can't import rxn_bench_ui.devices.<name>.* to document them.
+from sphinx.ext.autodoc.mock import mock as _mock  # noqa: E402
+
+with _mock(autodoc_mock_imports):
+    try:
+        from rxn_bench_ui import devices as _devices
+        _devices.all_devices()
+    except Exception as _exc:  # best-effort: never fail the docs build over a plugin
+        print(f"[conf.py] device plugin preload skipped: {_exc}")
 
 html_theme = "furo"
 html_static_path = ["_static"]

@@ -4,13 +4,6 @@
 ; `make dist` / packaging\rxn-bench-ui.spec) in a single-file Windows
 ; installer for non-technical users.
 ;
-; Installs per-user by default (no admin rights, no UAC prompt) so the
-; devices\ folder next to the exe stays end-user-writable, matching the
-; drop-in device plugin model (see rxn_bench_ui/devices/__init__.py and
-; docs/ai/CURRENT_STATE.md "Standalone executable packaging"). An admin
-; running the installer elevated can still choose "install for all users"
-; in the wizard, which targets Program Files instead.
-;
 ; Build (from rxnbench/frontend/, after `make dist`):
 ;   iscc packaging\installer.iss
 ; or with an explicit version:

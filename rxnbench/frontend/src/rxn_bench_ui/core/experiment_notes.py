@@ -54,17 +54,13 @@ class ExperimentNotesPanel(QWidget):
         layout.addLayout(toolbar)
         layout.addWidget(self._editor)
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def set_theme(self, t: dict) -> None:
         """Replace the active theme dict."""
         self._t = t
 
-    # ------------------------------------------------------------------
     # Toolbar handlers
-    # ------------------------------------------------------------------
 
     def _new(self) -> None:
         if self._dirty and not self._prompt_discard():
@@ -113,9 +109,7 @@ class ExperimentNotesPanel(QWidget):
         self._path = Path(path)
         self._save()
 
-    # ------------------------------------------------------------------
     # Internals
-    # ------------------------------------------------------------------
 
     def _on_changed(self) -> None:
         if not self._dirty:

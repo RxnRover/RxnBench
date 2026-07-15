@@ -40,23 +40,17 @@ async def create_app(config):
         else:
             host = machine.moonraker_fallback_host
             log.warning("Moonraker not discovered - falling back to %s", host)
-        motion_client = MoonrakerClient(host)
+        motion_client = MoonrakerClient(host, default_speed=4000)
 
-    # get_axis_limits() is the single source of truth for the starting *size*
-    # of each axis - Klipper's own configured travel range for real hardware,
-    # or the fixed simulated bed for mock mode - instead of a second,
-    # separately maintained set of numbers that can silently drift out of
-    # sync with it. Only the span (max - min) is taken from it, never
-    # Klipper's raw absolute numbering: every workspace YAML, plate origin,
-    # and HomingManager.confirm_x_min/y_min (which declares the operator's
-    # confirmed corner *as* 0) assumes a 0-based frame throughout this app, so
-    # min is always forced to 0 here regardless of what Klipper's own
-    # position_min happens to be (which is sometimes negative, e.g. endstop
-    # backoff clearance). This is only the *initial* default: manual homing
-    # and its saved state always take precedence once calibrated, exactly as
-    # before. Falls back to a conservative default if the query fails, so a
-    # motion controller that's slow to come up doesn't take the whole SiLA
-    # server down with it.
+    # get_axis_limits() gives the starting *size* of each axis (Klipper's
+    # configured travel range, or the mock's fixed bed). Only the span
+    # (max - min) is used, never Klipper's raw absolute numbering: this app
+    # assumes a 0-based frame everywhere (workspace YAML, plate origins,
+    # HomingManager.confirm_x_min/y_min), so min is always forced to 0 here
+    # even when Klipper's position_min is negative. This is only the initial
+    # default - manual homing and its saved state take precedence once
+    # calibrated. Falls back to conservative defaults if the query fails so a
+    # slow motion controller doesn't take the whole server down.
     try:
         limits = motion_client.get_axis_limits()
         x_min, x_max = 0.0, limits["x"][1] - limits["x"][0]

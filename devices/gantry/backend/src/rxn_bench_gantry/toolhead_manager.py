@@ -151,7 +151,7 @@ class ToolheadManager:
 
     @staticmethod
     def list_toolheads() -> list[tuple[str, str]]:
-        """Return [(name, display_name), …] for every installed toolhead config."""
+        """Return [(name, display_name), ...] for every installed toolhead config."""
         results = []
         for folder in sorted(_TOOLHEADS_DIR.iterdir()):
             if not folder.is_dir():

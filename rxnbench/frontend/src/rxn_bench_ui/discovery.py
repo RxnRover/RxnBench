@@ -48,8 +48,8 @@ class DiscoveredServer:
         excluding the mandatory SiLAService core feature.
 
         Works for both rxnbench devices and third-party SiLA devices, e.g.:
-          edu.iastate.ames/rxnbench/PHSensor/v1  → 'PHSensor'
-          org.silastandard/features/PHMeasurement/v1 → 'PHMeasurement'
+          edu.iastate.ames/rxnbench/PHSensor/v1  -> 'PHSensor'
+          org.silastandard/features/PHMeasurement/v1 -> 'PHMeasurement'
         """
         names = []
         for f in self.features:

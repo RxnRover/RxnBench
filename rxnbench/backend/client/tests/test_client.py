@@ -180,6 +180,21 @@ def test_log_creates_parent_directories(bench, tmp_path):
     assert out.exists()
 
 
+def test_relative_path_resolves_against_results_dir_env(bench, tmp_path, monkeypatch):
+    monkeypatch.setenv("RXN_BENCH_RESULTS_DIR", str(tmp_path))
+    bench.set_log_output("results.csv")
+    bench.log(ph=7.0)
+    assert (tmp_path / "results.csv").exists()
+
+
+def test_relative_path_falls_back_to_cwd_without_env(bench, tmp_path, monkeypatch):
+    monkeypatch.delenv("RXN_BENCH_RESULTS_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    bench.set_log_output("results.csv")
+    bench.log(ph=7.0)
+    assert (tmp_path / "results.csv").exists()
+
+
 # connect() / close() session wiring
 
 class _FakeSilaClient:

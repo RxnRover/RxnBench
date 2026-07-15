@@ -132,7 +132,7 @@ class MockMoonrakerClient:
         return self._homed_axes
 
     def get_axis_limits(self) -> dict[str, tuple[float, float]]:
-        """Return fixed simulated axis limits (350 × 350 × 340 mm)."""
+        """Return fixed simulated axis limits (350 x 350 x 340 mm)."""
         return {"x": (0.0, 350.0), "y": (0.0, 350.0), "z": (0.0, 340.0)}
 
     def get_state(self) -> str:

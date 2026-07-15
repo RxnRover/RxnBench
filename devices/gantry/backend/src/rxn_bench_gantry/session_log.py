@@ -37,9 +37,7 @@ class SessionLog:
         self._append("server_start")
         atexit.register(self.close)
 
-    # ------------------------------------------------------------------
     # Public log API
-    # ------------------------------------------------------------------
 
     def log(self, event: str, **kwargs) -> None:
         """Append one event line. None and empty-string values are omitted."""
@@ -51,9 +49,7 @@ class SessionLog:
             self._append("server_stop")
             self._fh.close()
 
-    # ------------------------------------------------------------------
     # Internals
-    # ------------------------------------------------------------------
 
     def _append(self, event: str, **kwargs) -> None:
         entry = {"ts": datetime.now().isoformat(timespec="milliseconds"), "event": event, **kwargs}

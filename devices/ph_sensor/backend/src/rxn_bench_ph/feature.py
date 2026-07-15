@@ -39,6 +39,24 @@ class PHSensor(sila.Feature):
         """Acid/base slope percentages from the last calibration. Close to 100% = good probe."""
         return str(self._sensor.slope())
 
+    @sila.UnobservableProperty()
+    async def temperature(self) -> float:
+        """Temperature-compensation value (deg C) currently applied to readings."""
+        return self._sensor.get_temperature()
+
+    @sila.UnobservableCommand()
+    async def set_temperature(self, temperature: float) -> None:
+        """Set the temperature-compensation value used when computing pH.
+
+        Args:
+            Temperature: Solution temperature in degrees Celsius. The EZO circuit
+                assumes 25 C by default; set this to the actual buffer or sample
+                temperature so readings and calibration are not skewed by the
+                Nernstian temperature dependence of the electrode.
+        """
+        self._sensor.set_temperature(temperature)
+        self._log.log("set_temperature", temperature=temperature)
+
     @sila.UnobservableCommand()
     async def calibrate(self, point: CalibrationPoint, value: float) -> None:
         """Calibrate the probe at a known buffer value.

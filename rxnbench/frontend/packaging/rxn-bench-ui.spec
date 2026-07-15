@@ -3,8 +3,7 @@
 # Produces a onedir build. Device frontend plugins (devices/<name>/frontend/)
 # are intentionally NOT bundled here - rxn_bench_ui/devices/__init__.py loads
 # them dynamically from a devices/ folder next to the built executable at
-# runtime (see that file's docstring), so the shipped app stays a genuine
-# drop-in plugin system rather than a fixed set baked in at build time.
+# runtime
 #
 # Build with: make dist   (from software/frontend/)
 import os

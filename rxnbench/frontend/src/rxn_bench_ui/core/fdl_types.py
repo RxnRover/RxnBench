@@ -2,31 +2,23 @@
 Dynamic protobuf construction from SiLA FDL data types.
 
 The generic device widget (generic_device.py) talks to devices whose schema
-isn't known until runtime discovery, so there are no compiled protobuf stubs
-to import. This module builds real, typed protobuf message classes on the
-fly - one per feature, from its FDL - using google.protobuf's descriptor_pool
-and message_factory. That gives exact field types (int64 vs bool vs enum)
-instead of guessing from raw wire bytes, which is what the previous
-_collect_values()/_encode_param() heuristics did.
+isn't known until runtime, so there are no compiled protobuf stubs to import.
+This module builds typed protobuf message classes on the fly - one per feature,
+from its FDL - using google.protobuf's descriptor_pool and message_factory, so
+fields get exact types (int64 vs bool vs enum) instead of guessing from raw
+wire bytes.
 
-Wire shapes are grounded in SiLAFramework.proto (ships with unitelabs-cdk /
-sila2) and verified empirically: dumping and inspecting FDL and wire traffic
-from a running mock gantry/pH server (see docs/ai/CURRENT_STATE.md §9 for
-how this was checked). In particular:
+Wire shapes follow SiLAFramework.proto (ships with unitelabs-cdk / sila2) and
+were verified against a running mock server (see docs/ai/CURRENT_STATE.md
+section 9):
 
-- Every SiLA Basic type is wire-represented as its own one-field wrapper
-  message (e.g. Real{double value=1}, String{string value=1}), confirmed by
-  reading sila.framework.data_types.real.Real.encode()/decode() directly.
-- A Structure is a flat message with one field per element, at sequential
-  field numbers starting at 1, each itself one of these wrapper types (or a
-  nested Structure) - confirmed via sila.framework.data_types.structure.
-  Structure.encode(). There is no extra indirection layer.
-- Integer is plain proto3 int64, NOT zigzag/sint64 - this corrects a latent
-  bug in the previous hand-rolled _encode_param(), which zigzag-encoded
-  Integer values that a real SiLA server would decode as plain int64.
-- There is no "UInteger" SiLA basic type (the previous code had a dead branch
-  for one); only String, Integer, Real, Boolean, Binary, Date, Time,
-  Timestamp, and Any are real SiLA Basic types.
+- Every SiLA Basic type is a one-field wrapper message
+  (e.g. Real{double value=1}, String{string value=1}).
+- A Structure is a flat message with one field per element at sequential field
+  numbers from 1, each a wrapper type or nested Structure. No extra indirection.
+- Integer is plain proto3 int64, not zigzag/sint64.
+- There is no "UInteger" SiLA basic type; the real Basic types are String,
+  Integer, Real, Boolean, Binary, Date, Time, Timestamp, and Any.
 """
 from __future__ import annotations
 
@@ -48,14 +40,12 @@ def _txt(el, tag: str) -> str:
     return (c.text or "").strip() if c is not None else ""
 
 
-# ---------------------------------------------------------------------------
-# Structured data type info (replaces collapsing everything into a string)
-# ---------------------------------------------------------------------------
+# Structured data type info
 
 @dataclasses.dataclass
 class DataTypeInfo:
-    """Parsed FDL <DataType>, structured enough to build both a protobuf
-    message and a Qt input widget from - not just a display label."""
+    """Parsed FDL <DataType>, structured enough to build a protobuf message and
+    a Qt input widget, not just a display label."""
 
     kind: str  # "basic" | "structure" | "list" | "unsupported"
     basic: str | None = None                    # SiLA basic type name (kind == "basic")
@@ -124,7 +114,7 @@ def resolve_datatype(dt) -> DataTypeInfo:
 
 
 def format_label(info: DataTypeInfo) -> str:
-    """Human-readable type label, e.g. 'Real [0…100]' or 'String (mid | low | high | clear)'."""
+    """Human-readable type label, e.g. 'Real [0...100]' or 'String (mid | low | high | clear)'."""
     if info.kind == "unsupported":
         return info.unsupported_reason or "Unsupported"
     if info.kind == "structure":
@@ -136,14 +126,11 @@ def format_label(info: DataTypeInfo) -> str:
     if info.allowed:
         return f"{base} ({' | '.join(info.allowed)})"
     if info.min_value or info.max_value:
-        return f"{base} [{info.min_value or ''}…{info.max_value or ''}]"
+        return f"{base} [{info.min_value or ''}...{info.max_value or ''}]"
     return base
 
 
-# ---------------------------------------------------------------------------
-# Basic-type wrapper message shapes (from SiLAFramework.proto, verified
-# against sila.framework.data_types.* encode()/decode()).
-# ---------------------------------------------------------------------------
+# Basic-type wrapper message shapes (from SiLAFramework.proto)
 
 FD = descriptor_pb2.FieldDescriptorProto
 
@@ -180,13 +167,12 @@ def _sanitize_package(feature_id: str) -> str:
 
 class FeatureMessageBuilder:
     """
-    Builds a self-contained FileDescriptorProto for one feature's commands and
-    properties, then registers it in a private DescriptorPool and hands back
-    real message classes keyed by SiLA RPC message name
-    (e.g. "MoveTo_Parameters", "Subscribe_Position_Responses").
+    Builds a FileDescriptorProto for one feature's commands and properties,
+    registers it in a private DescriptorPool, and returns message classes keyed
+    by SiLA RPC message name (e.g. "MoveTo_Parameters").
 
-    One instance per (server, feature) fetch - never shared across features,
-    since message/package names are only unique within that scope.
+    Use one instance per (server, feature) fetch; message/package names are only
+    unique within that scope.
     """
 
     def __init__(self, feature_id: str) -> None:
@@ -202,7 +188,7 @@ class FeatureMessageBuilder:
         self._next_anon_id = 0
         self._finalized = False
 
-    # -- basic wrapper messages, built lazily on first use --------------------
+    # Basic wrapper messages, built lazily on first use
 
     def _ensure_basic_message(self, basic: str) -> str:
         name = basic
@@ -245,7 +231,7 @@ class FeatureMessageBuilder:
         if type_name:
             f.type_name = type_name
 
-    # -- structure/list message construction ----------------------------------
+    # Structure/list message construction
 
     def _ensure_structure_message(self, info: DataTypeInfo, hint_name: str) -> str:
         """Build (or reuse) a message type for a Structure DataTypeInfo, return its local name."""
@@ -295,15 +281,15 @@ class FeatureMessageBuilder:
         else:
             raise ValueError(f"Cannot build a field for unsupported type: {info.unsupported_reason}")
 
-    # -- observable-command framework messages (SiLAFramework.proto) ---------
+    # Observable-command framework messages (SiLAFramework.proto)
 
     def ensure_observable_command_messages(self) -> None:
         """
-        Declare CommandExecutionUUID, CommandConfirmation, Duration, and
-        ExecutionInfo (with its CommandStatus enum) - the fixed framework
-        shapes needed to drive an ObservableCommand: initiate -> get a
-        CommandExecutionUUID -> poll <Cmd>_Info for ExecutionInfo -> fetch
-        <Cmd>_Result. Shapes taken directly from SiLAFramework.proto.
+        Declare the fixed framework messages needed to drive an
+        ObservableCommand: CommandExecutionUUID, CommandConfirmation, Duration,
+        and ExecutionInfo (with its CommandStatus enum). The flow is: initiate
+        -> get a CommandExecutionUUID -> poll <Cmd>_Info for ExecutionInfo ->
+        fetch <Cmd>_Result.
         """
         if "ExecutionInfo" in self._defined:
             return
@@ -344,17 +330,16 @@ class FeatureMessageBuilder:
         self._add_field(exec_info_msg, "updatedLifetimeOfExecution", 4, FD.TYPE_MESSAGE, f".{self._package}.Duration")
         self._defined.add("ExecutionInfo")
 
-    # -- top-level command/property wrapper messages --------------------------
+    # Top-level command/property wrapper messages
 
     def declare_wrapper_message(self, name: str, fields: list[tuple[str, DataTypeInfo]]) -> None:
         """
-        Register a top-level message named *name* with one field per
-        (field_name, DataTypeInfo) pair, in order, at sequential field numbers
-        starting at 1 - matching SiLA's Parameters/Responses convention.
+        Register a top-level message named *name*, one field per
+        (field_name, DataTypeInfo) pair at sequential field numbers from 1,
+        matching SiLA's Parameters/Responses convention.
 
-        Only mutates the in-progress FileDescriptorProto; call finalize()
-        once all messages for this feature have been declared, then
-        get_message_class() to retrieve the usable class.
+        Call finalize() once all messages are declared, then
+        get_message_class() to retrieve the class.
         """
         if name in self._defined:
             return
@@ -365,8 +350,8 @@ class FeatureMessageBuilder:
         self._defined.add(name)
 
     def finalize(self) -> None:
-        """Register the fully-built FileDescriptorProto with the pool. Call exactly once,
-        after all declare_wrapper_message() calls - a pool file can't be mutated after adding."""
+        """Register the built FileDescriptorProto with the pool. Call exactly once,
+        after all declare_wrapper_message() calls; a pool file can't be mutated afterward."""
         if self._finalized:
             return
         self._pool.Add(self._file)
@@ -378,10 +363,7 @@ class FeatureMessageBuilder:
         return message_factory.GetMessageClass(descriptor)
 
 
-# ---------------------------------------------------------------------------
-# Value <-> message bridge (Qt-independent; generic_device.py's widgets sit
-# on top of this)
-# ---------------------------------------------------------------------------
+# Value <-> message bridge (Qt-independent; generic_device.py's widgets sit on top)
 
 def display_value(info: DataTypeInfo, field_msg) -> str:
     """Convert a decoded wrapper-message field into a human-readable string."""

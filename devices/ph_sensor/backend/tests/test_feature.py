@@ -17,7 +17,9 @@ class _FakeSensor:
     def __init__(self, value: float = 7.0, slope=(99.7, 100.3)):
         self._value = value
         self._slope = slope
+        self._temperature = 25.0
         self.calibrate_calls: list[tuple[str, float]] = []
+        self.set_temperature_calls: list[float] = []
         self.raise_on_calibrate: Exception | None = None
 
     def read(self) -> SensorReading:
@@ -30,6 +32,13 @@ class _FakeSensor:
 
     def slope(self) -> tuple[float, float]:
         return self._slope
+
+    def set_temperature(self, temp: float) -> None:
+        self.set_temperature_calls.append(temp)
+        self._temperature = temp
+
+    def get_temperature(self) -> float:
+        return self._temperature
 
 
 async def _first_ph_value(feature: PHSensor) -> float:
@@ -65,3 +74,18 @@ def test_calibrate_reraises_sensor_errors():
     feature = PHSensor(sensor=sensor)
     with pytest.raises(RuntimeError, match="probe not responding"):
         asyncio.run(feature.calibrate(CalibrationPoint.LOW, 4.0))
+
+
+def test_temperature_property_returns_sensor_value():
+    sensor = _FakeSensor()
+    sensor.set_temperature(30.0)
+    feature = PHSensor(sensor=sensor)
+    assert asyncio.run(feature.temperature()) == 30.0
+
+
+def test_set_temperature_forwards_to_sensor():
+    sensor = _FakeSensor()
+    feature = PHSensor(sensor=sensor)
+    asyncio.run(feature.set_temperature(18.5))
+    assert sensor.set_temperature_calls == [18.5]
+    assert asyncio.run(feature.temperature()) == 18.5
