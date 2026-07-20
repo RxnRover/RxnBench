@@ -40,7 +40,7 @@ async def create_app(config):
         else:
             host = machine.moonraker_fallback_host
             log.warning("Moonraker not discovered - falling back to %s", host)
-        motion_client = MoonrakerClient(host, default_speed=4000)
+        motion_client = MoonrakerClient(host, default_speed=4500)
 
     # get_axis_limits() gives the starting *size* of each axis (Klipper's
     # configured travel range, or the mock's fixed bed). Only the span

@@ -2,7 +2,7 @@
 
 Blocking Python client for writing experiment scripts that run on the backend machine. Wraps `sila2.SilaClient` connections to instrument servers (gantry on port 50051, pH sensor on port 50052) and exposes common operations as simple method calls through per-instrument strategy classes.
 
-This is a library, not a server — it has no entry point and no SiLA server of its own.
+This is a library, not a server - it has no entry point and no SiLA server of its own.
 
 ---
 
@@ -104,7 +104,7 @@ Use as a context manager (`with RxnBenchClient() as bench:`) to ensure connectio
 |--------|-------------|
 | `read()` | Single pH reading. |
 | `read_avg(n=5, interval=1.0)` | Average of `n` readings, `interval` seconds apart. |
-| `read_stable(tolerance=0.05, timeout=60.0, interval=2.0, samples=3)` | Read until `samples` consecutive readings all agree within `tolerance`. |
+| `read_stable()` | Uses a Regression Slope model to find a stable reading over a floating window. |
 | `wait_for(*, above=None, below=None, timeout=300.0, interval=5.0)` | Block until pH crosses a threshold. |
 | `calibrate(point, value)` | Calibrate at `"low"`/`"mid"`/`"high"` with a known buffer `value`. |
 | `set_temperature(celsius)` | Set temperature compensation (deg C) applied to pH readings. |
@@ -117,4 +117,4 @@ The client is a library meant to be imported in scripts that run **on the backen
 
 - **`scp`** — copy the script file and run it over SSH
 - **Git pull** — keep experiment scripts in a repo and pull on the backend
-- **Script Runner SiLA service** — a planned future device package that accepts a script as a string and runs it server-side (Phase 2+ roadmap item)
+- **Script Runner SiLA service** — a planned future device package that accepts a script as a string and runs it server-side

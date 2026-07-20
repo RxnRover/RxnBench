@@ -12,7 +12,6 @@ def main() -> None:
         # Tell the bench which instruments you're using and where to find them.
         # Server names are discovered automatically on the local network.
         bench.connect("gantry", Gantry, server="Gantry")
-        bench.connect("ph", PHProbe, server="pH")
 
         # Tell the bench where to save your results.
         bench.set_log_output("results/test_positioning.csv")

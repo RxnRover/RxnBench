@@ -166,13 +166,13 @@ class RxnBenchClient:
             h, p = _discover_sila_server(server)
         else:
             h = host or self._host
-            p = port or 50052
+            p = port or 50052 # just the default instrument SiLA port
         sila = SilaClient(h, p, insecure=True)
         self._instrument_clients.append(sila)
         instrument = cls(sila)
         setattr(self, name, instrument)
         if self._lock_holder is None and hasattr(instrument, "acquire_experiment_lock"):
-            instrument.acquire_experiment_lock()
+            instrument.acquire_experiment_lock() # aquire a lock on the instrument to prevent other clients from competing for control
             self._lock_holder = instrument
 
     def check_pause_stop(self) -> None:

@@ -35,7 +35,7 @@ SAMPLE_INTERVAL = 1.0
 # Directory (relative to the working dir) to write one CSV per well.
 OUTPUT_DIR = "ph_traces"
 
-# Optional DI-water well to rinse between samples so carryover doesn't
+# DI-water well to rinse between samples so carryover doesn't
 # contaminate the next trace's equilibrium. Set to None to skip.
 RINSE_WELL = "Wash-Station/A1"
 RINSE_SECONDS = 30.0
