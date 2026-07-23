@@ -68,7 +68,7 @@ def calibrate_point(bench, point: str, well: str, known_ph: float) -> None:
     bench.ph.calibrate(point, known_ph)
 
     # A correctly-calibrated point should now read close to the buffer value.
-    after = bench.ph.read_stable(timeout=120)
+    after = bench.ph.read_stable(timeout=300)
     bench.log(
         point=point,
         buffer_ph=known_ph,

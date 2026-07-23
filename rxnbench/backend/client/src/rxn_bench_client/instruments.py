@@ -437,7 +437,7 @@ class PHProbe:
         max_drift: float = 0.002,
         max_range: float = 0.02,
         stable_checks: int = 3,
-        timeout: float = 60.0,
+        timeout: float = 300.0,
         interval: float = 1.0,
     ) -> float:
         """Wait for the probe to settle, then return the settled pH.
