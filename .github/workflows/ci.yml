@@ -20,6 +20,12 @@ jobs:
       - name: pH tests
         working-directory: rxnbench/backend
         run: make test-ph
+      - name: Camera tests
+        working-directory: rxnbench/backend
+        run: make test-camera
+      - name: Dosing pump tests
+        working-directory: rxnbench/backend
+        run: make test-pump
       - name: Client tests
         working-directory: rxnbench/backend
         run: make test-client

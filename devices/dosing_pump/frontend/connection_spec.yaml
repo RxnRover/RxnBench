@@ -1,0 +1,86 @@
+# Manifest for the rxn-bench-dosing-pump SiLA feature (see ../backend).
+# Run from rxnbench/frontend/:
+#   python scripts/gen_connections.py \
+#     ../../devices/dosing_pump/frontend/connection_spec.yaml \
+#     --out ../../devices/dosing_pump/frontend/generated_connection.py
+#
+# Protobuf stubs come from the backend manifest: `dosing_pump` in _DEVICES in
+# rxnbench/backend/scripts/gen_proto.py, then `make gen-proto` (from
+# rxnbench/backend) to produce proto/dosing_pump_pb2.py next to this file.
+
+meta:
+  package: sila2.edu.iastate.ames.rxnbench.dosingpump.v1
+  service: DosingPump
+  class_name: DosingPumpConnectionBase
+  proto_module: rxn_bench_ui.devices.dosing_pump.proto.dosing_pump_pb2
+
+streams:
+  - rpc: Subscribe_VolumeDispensed
+    decode_type: Subscribe_VolumeDispensed_Responses
+    signal: volume_dispensed_updated
+    signal_args: [float]
+    emit: ["r.VolumeDispensed.value"]
+
+  - rpc: Subscribe_Dispensing
+    decode_type: Subscribe_Dispensing_Responses
+    signal: dispensing_updated
+    signal_args: [bool]
+    emit: ["r.Dispensing.value"]
+
+commands:
+  - method: dispense
+    rpc: Dispense
+    params: Dispense_Parameters
+    args:
+      - {name: volume, field: volume, type: float}
+
+  - method: dose_over_time
+    rpc: DoseOverTime
+    params: DoseOverTime_Parameters
+    args:
+      - {name: volume, field: volume, type: float}
+      - {name: minutes, field: minutes, type: float}
+
+  - method: dispense_continuously
+    rpc: DispenseContinuously
+    params: DispenseContinuously_Parameters
+    args:
+      - {name: reverse, field: reverse, type: bool, default: "False"}
+
+  - method: set_flow_rate
+    rpc: SetFlowRate
+    params: SetFlowRate_Parameters
+    args:
+      - {name: rate, field: rate, type: float}
+      - {name: minutes, field: minutes, type: float, default: "0.0"}
+
+  - method: set_paused
+    rpc: SetPaused
+    params: SetPaused_Parameters
+    args:
+      - {name: paused, field: paused, type: bool}
+
+  - method: set_inverted
+    rpc: SetInverted
+    params: SetInverted_Parameters
+    args:
+      - {name: inverted, field: inverted, type: bool}
+
+  - method: calibrate
+    rpc: Calibrate
+    params: Calibrate_Parameters
+    args:
+      - {name: volume, field: volume, type: float}
+
+  - method: clear_calibration
+    rpc: ClearCalibration
+
+  - method: clear_total_volume
+    rpc: ClearTotalVolume
+
+# Commands needing a response are implemented by hand in connection.py using
+# the same generated stubs:
+#
+#   stop()         → unary_unary Stop, emits stopped(float) with the volume dispensed
+#   fetch_totals() → Get_TotalVolume + Get_AbsoluteTotalVolume, emits totals_ready(float, float)
+#   fetch_limits() → Get_MaxFlowRate + Get_PumpVoltage, emits limits_ready(float, float)

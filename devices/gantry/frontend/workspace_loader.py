@@ -112,6 +112,16 @@ def _compute_bounds(
 
 
 _WELL_LABEL_RE = re.compile(r'^([A-Za-z])(\d+)$')
+_ROTATED_ORIENTATIONS = ("rotated_90", "rotated_270")
+
+
+def _apply_orientation(dx: float, dy: float, orientation: str | None) -> tuple[float, float]:
+    """Rotate plate-local (dx, dy) into gantry XY. Mirrors backend _apply_orientation."""
+    if orientation == "rotated_90":
+        return -dy, dx
+    if orientation == "rotated_270":
+        return dy, -dx
+    return dx, dy
 
 
 def plate_xy_extent(plate: dict, spec: _PlateSpec) -> tuple[float, float, float, float]:
@@ -131,7 +141,7 @@ def plate_xy_extent(plate: dict, spec: _PlateSpec) -> tuple[float, float, float,
     origin = plate.get("origin") or {}
     ox_ = origin.get("x") or 0.0
     oy_ = origin.get("y") or 0.0
-    if plate.get("orientation") == "rotated_90":
+    if plate.get("orientation") in _ROTATED_ORIENTATIONS:
         hw, hh = spec.height / 2, spec.width / 2
     else:
         hw, hh = spec.width / 2, spec.height / 2
@@ -166,9 +176,8 @@ def resolve_well_gxy(plate: dict, spec: _PlateSpec, well_label: str) -> tuple[fl
     pdy = spec.a1y + row * spec.spacing_y
     cdx = pdx - spec.width / 2
     cdy = pdy - spec.height / 2
-    if plate.get("orientation") == "rotated_90":
-        return ox_ - cdy, oy_ + cdx
-    return ox_ + cdx, oy_ + cdy
+    gdx, gdy = _apply_orientation(cdx, cdy, plate.get("orientation"))
+    return ox_ + gdx, oy_ + gdy
 
 
 def resolve_reference_plate_height(workspace_yaml: str, labware: dict) -> tuple[str, float] | None:
@@ -400,7 +409,8 @@ class WorkspaceCanvas(QWidget):
             origin      = plate.get("origin") or {}
             ox          = origin.get("x") or 0.0
             oy          = origin.get("y") or 0.0
-            rotated     = plate.get("orientation") == "rotated_90"
+            orientation = plate.get("orientation")
+            rotated     = orientation in _ROTATED_ORIENTATIONS
             color       = QColor(_PALETTE[i % len(_PALETTE)])
 
             def _well_gxy(pdx: float, pdy: float) -> tuple[float, float]:
@@ -409,9 +419,8 @@ class WorkspaceCanvas(QWidget):
                 # coords are re-centred before rotating around it.
                 cdx = pdx - spec.width / 2
                 cdy = pdy - spec.height / 2
-                if rotated:
-                    return ox - cdy, oy + cdx
-                return ox + cdx, oy + cdy
+                gdx, gdy = _apply_orientation(cdx, cdy, orientation)
+                return ox + gdx, oy + gdy
 
             # Plate rectangle corners
             if rotated:

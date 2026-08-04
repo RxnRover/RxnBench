@@ -2,6 +2,7 @@
 # Gantry hovers over each well in the workspace
 
 import time
+from datetime import datetime
 from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
 
 
@@ -14,11 +15,11 @@ def main() -> None:
         bench.connect("gantry", Gantry, server="Gantry")
 
         # Tell the bench where to save your results.
-        bench.set_log_output("results/test_positioning.csv")
+        date = datetime.now().strftime("%m-%d-%y")
+        bench.set_log_output("results/gantry_test_positioning" + date + ".csv")
 
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()
-
 
         # Get the labels of all wells in the workspace
         wells: list[str] = bench.gantry.get_workspace_wells()

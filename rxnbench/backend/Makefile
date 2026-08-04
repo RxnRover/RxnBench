@@ -1,13 +1,14 @@
-.PHONY: install start-gantry start-ph start-camera start-mock test-gantry test-ph test-camera test-client test gen-proto check-proto
+.PHONY: install start-gantry start-ph start-camera start-pump start-mock test-gantry test-ph test-camera test-pump test-client test gen-proto check-proto
 
 # device-key:proto-stem pairs consumed by gen-proto/check-proto below.
 # Keys must match _DEVICES in scripts/gen_proto.py; stubs land in
 # devices/<key>/frontend/proto/<stem>.proto (+ compiled _pb2.py).
-PROTO_DEVICES := gantry:motion_platform ph_sensor:ph_sensor device_template:my_device camera:camera
+PROTO_DEVICES := gantry:motion_platform ph_sensor:ph_sensor device_template:my_device camera:camera dosing_pump:dosing_pump
 
 GANTRY_DIR    := ../../devices/gantry/backend
 PH_SENSOR_DIR := ../../devices/ph_sensor/backend
 CAMERA_DIR    := ../../devices/camera/backend
+PUMP_DIR      := ../../devices/dosing_pump/backend
 
 # Set only when running from inside an extracted build_offline_bundle.sh
 # tarball, which ships a wheelhouse/ at its root (sibling to devices/,
@@ -44,9 +45,19 @@ start-camera:
 		cd $(CAMERA_DIR) && uv run rxn-bench-camera; \
 	fi
 
+start-pump:
+	@if [ -d "$(WHEELHOUSE)" ]; then \
+		uv venv --no-project $(PUMP_DIR)/.venv --allow-existing && \
+		uv pip install --python $(PUMP_DIR)/.venv/bin/python --no-index --find-links $(WHEELHOUSE) -e "$(PUMP_DIR)[rpi]" && \
+		$(PUMP_DIR)/.venv/bin/rxn-bench-dosing-pump; \
+	else \
+		cd $(PUMP_DIR) && uv run --extra rpi rxn-bench-dosing-pump; \
+	fi
+
 start-mock:
 	RXN_BENCH_MOCK=1 uv run --package rxn-bench-gantry rxn-bench-gantry &
 	RXN_BENCH_MOCK=1 uv run --package rxn-bench-ph rxn-bench-ph &
+	RXN_BENCH_MOCK=1 uv run --package rxn-bench-dosing-pump rxn-bench-dosing-pump &
 	RXN_BENCH_MOCK=1 uv run --package rxn-bench-camera rxn-bench-camera
 
 
@@ -60,10 +71,13 @@ test-ph:
 test-camera:
 	PYTHONPATH="" uv run --package rxn-bench-camera pytest $(CAMERA_DIR)/tests/ -v
 
+test-pump:
+	PYTHONPATH="" uv run --package rxn-bench-dosing-pump pytest $(PUMP_DIR)/tests/ -v
+
 test-client:
 	PYTHONPATH="" uv run --package rxn-bench-client pytest client/tests/ -v
 
-test: test-gantry test-ph test-camera test-client
+test: test-gantry test-ph test-camera test-pump test-client
 
 gen-proto:
 	@for pair in $(PROTO_DEVICES); do \

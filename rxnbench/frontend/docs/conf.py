@@ -51,6 +51,8 @@ autodoc_mock_imports = [
     "rxn_bench_ui.proto.sila_service_pb2",
     "rxn_bench_ui.devices.gantry.proto.motion_platform_pb2",
     "rxn_bench_ui.devices.ph_sensor.proto.ph_sensor_pb2",
+    "rxn_bench_ui.devices.camera.proto.camera_pb2",
+    "rxn_bench_ui.devices.dosing_pump.proto.dosing_pump_pb2",
     # other deps
     "zeroconf",
     "yaml",

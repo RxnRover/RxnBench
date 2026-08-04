@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x63\x61mera.proto\x12)sila2.edu.iastate.ames.rxnbench.camera.v1\"\x15\n\x04Real\x12\r\n\x05value\x18\x01 \x01(\x01\"\x18\n\x07\x42oolean\x12\r\n\x05value\x18\x01 \x01(\x08\"\x18\n\x07SString\x12\r\n\x05value\x18\x01 \x01(\t\"\x17\n\x06\x42inary\x12\r\n\x05value\x18\x01 \x01(\x0c\"\x07\n\x05\x45mpty\"\"\n Subscribe_LatestImage_Parameters\"i\n\x1fSubscribe_LatestImage_Responses\x12\x46\n\x0bLatestImage\x18\x01 \x01(\x0b\x32\x31.sila2.edu.iastate.ames.rxnbench.camera.v1.Binary\"a\n\x1dSetCaptureInterval_Parameters\x12@\n\x07seconds\x18\x01 \x01(\x0b\x32/.sila2.edu.iastate.ames.rxnbench.camera.v1.Real2\xd0\x02\n\x06\x43\x61mera\x12\xb2\x01\n\x15Subscribe_LatestImage\x12K.sila2.edu.iastate.ames.rxnbench.camera.v1.Subscribe_LatestImage_Parameters\x1aJ.sila2.edu.iastate.ames.rxnbench.camera.v1.Subscribe_LatestImage_Responses0\x01\x12\x90\x01\n\x12SetCaptureInterval\x12H.sila2.edu.iastate.ames.rxnbench.camera.v1.SetCaptureInterval_Parameters\x1a\x30.sila2.edu.iastate.ames.rxnbench.camera.v1.Emptyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x63\x61mera.proto\x12)sila2.edu.iastate.ames.rxnbench.camera.v1\"\x15\n\x04Real\x12\r\n\x05value\x18\x01 \x01(\x01\"\x18\n\x07\x42oolean\x12\r\n\x05value\x18\x01 \x01(\x08\"\x18\n\x07Integer\x12\r\n\x05value\x18\x01 \x01(\x03\"\x18\n\x07SString\x12\r\n\x05value\x18\x01 \x01(\t\"\x17\n\x06\x42inary\x12\r\n\x05value\x18\x01 \x01(\x0c\"\x07\n\x05\x45mpty\"\"\n Subscribe_LatestImage_Parameters\"i\n\x1fSubscribe_LatestImage_Responses\x12\x46\n\x0bLatestImage\x18\x01 \x01(\x0b\x32\x31.sila2.edu.iastate.ames.rxnbench.camera.v1.Binary\"a\n\x1dSetCaptureInterval_Parameters\x12@\n\x07seconds\x18\x01 \x01(\x0b\x32/.sila2.edu.iastate.ames.rxnbench.camera.v1.Real2\xd0\x02\n\x06\x43\x61mera\x12\xb2\x01\n\x15Subscribe_LatestImage\x12K.sila2.edu.iastate.ames.rxnbench.camera.v1.Subscribe_LatestImage_Parameters\x1aJ.sila2.edu.iastate.ames.rxnbench.camera.v1.Subscribe_LatestImage_Responses0\x01\x12\x90\x01\n\x12SetCaptureInterval\x12H.sila2.edu.iastate.ames.rxnbench.camera.v1.SetCaptureInterval_Parameters\x1a\x30.sila2.edu.iastate.ames.rxnbench.camera.v1.Emptyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,18 +35,20 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_REAL']._serialized_end=80
   _globals['_BOOLEAN']._serialized_start=82
   _globals['_BOOLEAN']._serialized_end=106
-  _globals['_SSTRING']._serialized_start=108
-  _globals['_SSTRING']._serialized_end=132
-  _globals['_BINARY']._serialized_start=134
-  _globals['_BINARY']._serialized_end=157
-  _globals['_EMPTY']._serialized_start=159
-  _globals['_EMPTY']._serialized_end=166
-  _globals['_SUBSCRIBE_LATESTIMAGE_PARAMETERS']._serialized_start=168
-  _globals['_SUBSCRIBE_LATESTIMAGE_PARAMETERS']._serialized_end=202
-  _globals['_SUBSCRIBE_LATESTIMAGE_RESPONSES']._serialized_start=204
-  _globals['_SUBSCRIBE_LATESTIMAGE_RESPONSES']._serialized_end=309
-  _globals['_SETCAPTUREINTERVAL_PARAMETERS']._serialized_start=311
-  _globals['_SETCAPTUREINTERVAL_PARAMETERS']._serialized_end=408
-  _globals['_CAMERA']._serialized_start=411
-  _globals['_CAMERA']._serialized_end=747
+  _globals['_INTEGER']._serialized_start=108
+  _globals['_INTEGER']._serialized_end=132
+  _globals['_SSTRING']._serialized_start=134
+  _globals['_SSTRING']._serialized_end=158
+  _globals['_BINARY']._serialized_start=160
+  _globals['_BINARY']._serialized_end=183
+  _globals['_EMPTY']._serialized_start=185
+  _globals['_EMPTY']._serialized_end=192
+  _globals['_SUBSCRIBE_LATESTIMAGE_PARAMETERS']._serialized_start=194
+  _globals['_SUBSCRIBE_LATESTIMAGE_PARAMETERS']._serialized_end=228
+  _globals['_SUBSCRIBE_LATESTIMAGE_RESPONSES']._serialized_start=230
+  _globals['_SUBSCRIBE_LATESTIMAGE_RESPONSES']._serialized_end=335
+  _globals['_SETCAPTUREINTERVAL_PARAMETERS']._serialized_start=337
+  _globals['_SETCAPTUREINTERVAL_PARAMETERS']._serialized_end=434
+  _globals['_CAMERA']._serialized_start=437
+  _globals['_CAMERA']._serialized_end=773
 # @@protoc_insertion_point(module_scope)

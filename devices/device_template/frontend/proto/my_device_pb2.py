@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0fmy_device.proto\x12+sila2.edu.iastate.ames.rxnbench.mydevice.v1\"\x15\n\x04Real\x12\r\n\x05value\x18\x01 \x01(\x01\"\x18\n\x07\x42oolean\x12\r\n\x05value\x18\x01 \x01(\x08\"\x18\n\x07SString\x12\r\n\x05value\x18\x01 \x01(\t\"\x17\n\x06\x42inary\x12\r\n\x05value\x18\x01 \x01(\x0c\"\x07\n\x05\x45mpty\"\"\n Subscribe_Measurement_Parameters\"i\n\x1fSubscribe_Measurement_Responses\x12\x46\n\x0bMeasurement\x18\x01 \x01(\x0b\x32\x31.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Real\"`\n\x18PerformAction_Parameters\x12\x44\n\tparameter\x18\x01 \x01(\x0b\x32\x31.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Real2\xd0\x02\n\x08MyDevice\x12\xb6\x01\n\x15Subscribe_Measurement\x12M.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Subscribe_Measurement_Parameters\x1aL.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Subscribe_Measurement_Responses0\x01\x12\x8a\x01\n\rPerformAction\x12\x45.sila2.edu.iastate.ames.rxnbench.mydevice.v1.PerformAction_Parameters\x1a\x32.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Emptyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0fmy_device.proto\x12+sila2.edu.iastate.ames.rxnbench.mydevice.v1\"\x15\n\x04Real\x12\r\n\x05value\x18\x01 \x01(\x01\"\x18\n\x07\x42oolean\x12\r\n\x05value\x18\x01 \x01(\x08\"\x18\n\x07Integer\x12\r\n\x05value\x18\x01 \x01(\x03\"\x18\n\x07SString\x12\r\n\x05value\x18\x01 \x01(\t\"\x17\n\x06\x42inary\x12\r\n\x05value\x18\x01 \x01(\x0c\"\x07\n\x05\x45mpty\"\"\n Subscribe_Measurement_Parameters\"i\n\x1fSubscribe_Measurement_Responses\x12\x46\n\x0bMeasurement\x18\x01 \x01(\x0b\x32\x31.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Real\"`\n\x18PerformAction_Parameters\x12\x44\n\tparameter\x18\x01 \x01(\x0b\x32\x31.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Real2\xd0\x02\n\x08MyDevice\x12\xb6\x01\n\x15Subscribe_Measurement\x12M.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Subscribe_Measurement_Parameters\x1aL.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Subscribe_Measurement_Responses0\x01\x12\x8a\x01\n\rPerformAction\x12\x45.sila2.edu.iastate.ames.rxnbench.mydevice.v1.PerformAction_Parameters\x1a\x32.sila2.edu.iastate.ames.rxnbench.mydevice.v1.Emptyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,18 +35,20 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_REAL']._serialized_end=85
   _globals['_BOOLEAN']._serialized_start=87
   _globals['_BOOLEAN']._serialized_end=111
-  _globals['_SSTRING']._serialized_start=113
-  _globals['_SSTRING']._serialized_end=137
-  _globals['_BINARY']._serialized_start=139
-  _globals['_BINARY']._serialized_end=162
-  _globals['_EMPTY']._serialized_start=164
-  _globals['_EMPTY']._serialized_end=171
-  _globals['_SUBSCRIBE_MEASUREMENT_PARAMETERS']._serialized_start=173
-  _globals['_SUBSCRIBE_MEASUREMENT_PARAMETERS']._serialized_end=207
-  _globals['_SUBSCRIBE_MEASUREMENT_RESPONSES']._serialized_start=209
-  _globals['_SUBSCRIBE_MEASUREMENT_RESPONSES']._serialized_end=314
-  _globals['_PERFORMACTION_PARAMETERS']._serialized_start=316
-  _globals['_PERFORMACTION_PARAMETERS']._serialized_end=412
-  _globals['_MYDEVICE']._serialized_start=415
-  _globals['_MYDEVICE']._serialized_end=751
+  _globals['_INTEGER']._serialized_start=113
+  _globals['_INTEGER']._serialized_end=137
+  _globals['_SSTRING']._serialized_start=139
+  _globals['_SSTRING']._serialized_end=163
+  _globals['_BINARY']._serialized_start=165
+  _globals['_BINARY']._serialized_end=188
+  _globals['_EMPTY']._serialized_start=190
+  _globals['_EMPTY']._serialized_end=197
+  _globals['_SUBSCRIBE_MEASUREMENT_PARAMETERS']._serialized_start=199
+  _globals['_SUBSCRIBE_MEASUREMENT_PARAMETERS']._serialized_end=233
+  _globals['_SUBSCRIBE_MEASUREMENT_RESPONSES']._serialized_start=235
+  _globals['_SUBSCRIBE_MEASUREMENT_RESPONSES']._serialized_end=340
+  _globals['_PERFORMACTION_PARAMETERS']._serialized_start=342
+  _globals['_PERFORMACTION_PARAMETERS']._serialized_end=438
+  _globals['_MYDEVICE']._serialized_start=441
+  _globals['_MYDEVICE']._serialized_end=777
 # @@protoc_insertion_point(module_scope)

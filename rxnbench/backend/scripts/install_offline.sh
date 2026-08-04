@@ -47,7 +47,7 @@ _PACKAGE_DIR_OF() {
     esac
 }
 
-DEVICES="gantry,ph,camera"
+DEVICES="gantry,ph,camera,pump"
 ADVERTISE_IP=""
 NO_PIN=""
 while [[ $# -gt 0 ]]; do
@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            echo "Usage: $0 [--devices gantry,ph] [--advertise-ip <IP> | --no-pin]"
+            echo "Usage: $0 [--devices gantry,ph,camera,pump] [--advertise-ip <IP> | --no-pin]"
             exit 1
             ;;
     esac

@@ -29,6 +29,7 @@ import typing
 _SILA_TYPE: dict[type, str] = {
     float: "Real",
     bool:  "Boolean",
+    int:   "Integer",
     str:   "SString",
     bytes: "Binary",
 }
@@ -51,6 +52,8 @@ package {package};
 // SiLA primitive wrappers
 message Real    {{ double value = 1; }}
 message Boolean {{ bool   value = 1; }}
+// SiLA's Integer basic type is a signed 64-bit integer.
+message Integer {{ int64  value = 1; }}
 message SString {{ string value = 1; }}
 // Binary carries the SiLA Binary type's inline payload only (field 1).
 // The CDK's Binary basic type falls back to a chunked binary-transfer UUID
@@ -175,6 +178,36 @@ _DEVICES: dict[str, _DeviceSpec] = {
         ),
         commands=(
             ("SetCaptureInterval", (("seconds", "Real"),), ()),
+        ),
+    ),
+    "dosing_pump": _DeviceSpec(
+        package="sila2.edu.iastate.ames.rxnbench.dosingpump.v1",
+        service="DosingPump",
+        proto_name="dosing_pump",
+        streams=(
+            ("VolumeDispensed", "Real"),
+            ("Dispensing",      "Boolean"),
+        ),
+        commands=(
+            ("Dispense",              (("volume", "Real"),), ()),
+            ("DoseOverTime",          (("volume", "Real"), ("minutes", "Real")), ()),
+            ("DispenseContinuously",  (("reverse", "Boolean"),), ()),
+            ("SetFlowRate",           (("rate", "Real"), ("minutes", "Real")), ()),
+            ("Stop",                  (), (("VolumeDispensed", "Real"),)),
+            ("SetPaused",             (("paused", "Boolean"),), ()),
+            ("SetInverted",           (("inverted", "Boolean"),), ()),
+            ("ClearTotalVolume",      (), ()),
+            ("Calibrate",             (("volume", "Real"),), ()),
+            ("ClearCalibration",      (), ()),
+            ("GetCalibrationStatus",  (), (("CalibrationStatus", "Integer"),)),
+
+            # Unobservable properties - served under the Get_ prefix.
+            ("Get_TotalVolume",         (), (("TotalVolume", "Real"),)),
+            ("Get_AbsoluteTotalVolume", (), (("AbsoluteTotalVolume", "Real"),)),
+            ("Get_PumpVoltage",         (), (("PumpVoltage", "Real"),)),
+            ("Get_MaxFlowRate",         (), (("MaxFlowRate", "Real"),)),
+            ("Get_Paused",              (), (("Paused", "Boolean"),)),
+            ("Get_Inverted",            (), (("Inverted", "Boolean"),)),
         ),
     ),
 }

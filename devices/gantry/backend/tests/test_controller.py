@@ -403,7 +403,7 @@ def test_move_to_well_override_unvalidated_still_allows_the_move(ctrl, client):
         calibration_reference_well: plate1/A1
         plates:
           - id: plate1
-            plate_type: 24_well_standard
+            plate_type: 24_well_15ml
             origin: {x: 100.0, y: 100.0, z: 15.0}
             orientation: standard
     """))
@@ -420,7 +420,7 @@ def test_move_to_well_bare_carriage_has_no_engagement_blend(ctrl):
         calibration_reference_well: plate1/A1
         plates:
           - id: plate1
-            plate_type: 24_well_standard
+            plate_type: 24_well_15ml
             origin: {x: 100.0, y: 100.0, z: 15.0}
             orientation: standard
     """))

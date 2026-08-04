@@ -44,10 +44,10 @@ class EndpointConfig:
     """One point in the tuning grid - mirrors read_stable()'s keyword args."""
 
     name: str
-    window: int = 5
+    window: int = 10
     min_settle: float = 5.0
     max_drift: float = 0.002
-    max_range: float = 0.02
+    max_range: float = 0.03
     stable_checks: int = 3
     timeout: float = 60.0
 
@@ -209,7 +209,8 @@ def load_traces(dir_path: str) -> list[Trace]:
             for record in csv.DictReader(f):
                 try:
                     trace.append((float(record["t"]), float(record["ph"])))
-                except (KeyError, ValueError):
+                except (KeyError, ValueError, TypeError):
+                    # TypeError: a truncated row leaves a column as None (float(None)).
                     continue
         if trace:
             traces.append(trace)

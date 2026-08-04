@@ -1,6 +1,6 @@
 # Automatic calibration / sampling script for the Atlas Scientific EZO-pH probe.
 #
-# Runs a clean 3-point calibration in the order the EZO-pH circuit requires:
+# Runs a clean 2 or 3-point calibration in the order the EZO-pH circuit requires:
 # the mid (pH 7) point resets any prior calibration and must be taken first,
 # then the low (pH 4) and high (pH 10) points refine the acid/base slope.
 # After which the script reads every designated well and logs the pH values.

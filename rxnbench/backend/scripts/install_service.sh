@@ -28,11 +28,16 @@
 
 set -e
 
-# key:package_dir:bin_name:description:arm_only_extra (last field may be empty)
+# key:package_dir:bin_name:description:arm_only_extra:env_vars (last two fields may be empty)
+# env_vars is a semicolon-separated list of KEY=VALUE pairs written into the
+# unit as `Environment=` lines. The pump defaults to the bench's second PL011
+# (dtoverlay=uart2-pi5 on GPIO4/5 -> /dev/ttyAMA2) so it doesn't collide with
+# the pH probe on the primary UART (/dev/serial0) - see CURRENT_STATE.md §6.
 _DEVICE_REGISTRY=(
-    "gantry:gantry:rxn-bench-gantry:Rxn Bench Gantry SiLA server:"
-    "ph:ph_sensor:rxn-bench-ph:Rxn Bench pH Sensor SiLA server:rpi"
-    "camera:camera:rxn-bench-camera:Rxn Bench Camera SiLA server:"
+    "gantry:gantry:rxn-bench-gantry:Rxn Bench Gantry SiLA server::"
+    "ph:ph_sensor:rxn-bench-ph:Rxn Bench pH Sensor SiLA server:rpi:"
+    "camera:camera:rxn-bench-camera:Rxn Bench Camera SiLA server::"
+    "pump:dosing_pump:rxn-bench-dosing-pump:Rxn Bench Dosing Pump SiLA server:rpi:RXN_BENCH_PUMP_SERIAL_PORT=/dev/ttyAMA2"
 )
 
 _usage() {
@@ -87,7 +92,7 @@ RUN_USER="$(whoami)"
 
 for KEY in "${DEVICE_KEYS[@]}"; do
     ENTRY="$(_lookup "$KEY")" || { echo "Unknown device: $KEY"; _usage; }
-    IFS=':' read -r _ PACKAGE_DIR BIN_NAME DESCRIPTION ARM_EXTRA <<< "$ENTRY"
+    IFS=':' read -r _ PACKAGE_DIR BIN_NAME DESCRIPTION ARM_EXTRA ENV_VARS <<< "$ENTRY"
 
     EXTRA=""
     if [[ -n "$ARM_EXTRA" && ( "$(uname -m)" == "aarch64" || "$(uname -m)" == "armv7l" ) ]]; then
@@ -156,11 +161,20 @@ PY
         fi
     fi
 
+    ENV_LINES=""
+    if [[ -n "$ENV_VARS" ]]; then
+        IFS=';' read -ra _ENV_PAIRS <<< "$ENV_VARS"
+        for pair in "${_ENV_PAIRS[@]}"; do
+            ENV_LINES+=$'\n'"Environment=${pair}"
+        done
+    fi
+
     echo ""
     echo "Installing systemd service: $SERVICE_NAME"
     echo "  Working dir : $WORKING_DIR"
     echo "  Venv        : $VENV_DIR"
     echo "  Running as  : $RUN_USER"
+    [[ -n "$ENV_VARS" ]] && echo "  Env vars    : $ENV_VARS"
     echo ""
 
     sudo tee "$SERVICE_FILE" > /dev/null <<EOF
@@ -175,7 +189,7 @@ After=network-online.target
 [Service]
 Type=simple
 User=${RUN_USER}
-WorkingDirectory=${WORKING_DIR}
+WorkingDirectory=${WORKING_DIR}${ENV_LINES}
 ExecStart=${BIN_PATH}
 Restart=on-failure
 RestartSec=5

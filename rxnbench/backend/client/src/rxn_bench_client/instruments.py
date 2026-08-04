@@ -432,14 +432,21 @@ class PHProbe:
     def read_stable(
         self,
         *,
-        window: int = 5,
+        window: int = 10,
         min_settle: float = 5.0,
         max_drift: float = 0.002,
-        max_range: float = 0.02,
+        max_range: float = 0.03,
         stable_checks: int = 3,
         timeout: float = 300.0,
         interval: float = 1.0,
     ) -> float:
+        # window=10 (not 5): the OLS slope's standard error is sigma/sqrt(Sum (t-tbar)^2),
+        # ~sigma/3.2 at window=5 vs ~sigma/9 at window=10. With this probe's measured
+        # per-reading noise sigma~=0.007 pH, a 5-sample window puts the slope SE (~0.0022)
+        # ABOVE max_drift, so a settled probe fails the drift gate ~35% of the time on
+        # noise alone; at window=10 the SE (~0.0008) sits well below it. max_range is 0.03
+        # (not 0.02) because peak-to-peak grows with window size (E[ptp]~=3.1*sigma at
+        # window=10 ~= 0.021), so the old 0.02 would reject settled windows outright.
         """Wait for the probe to settle, then return the settled pH.
 
         A reading is taken every
@@ -564,3 +571,138 @@ class Camera:
     def set_capture_interval(self, seconds: float) -> None:
         """Change how often the server captures (and archives) a new frame."""
         self._c.Camera.SetCaptureInterval(Seconds=seconds)
+
+
+class DosingPump:
+    """Peristaltic dosing pump. Attach via bench.connect("pump", DosingPump, server=...).
+
+    Dispense commands return as soon as the pump accepts them - the pump keeps
+    running in the background. Use :meth:`dispense_and_wait` (or poll
+    :meth:`is_dispensing`) when the script must not continue until the liquid
+    is actually delivered.
+
+    Examples::
+
+        bench.connect("pump", DosingPump, server="Dosing Pump")
+
+        bench.pump.dispense_and_wait(5.0)        # 5ml, blocks until delivered
+        bench.pump.dose_over_time(50.0, 30.0)    # 50ml spread over 30 min
+        bench.pump.set_flow_rate(2.0)            # hold 2 ml/min until stopped
+        bench.pump.stop()
+        bench.log(dispensed=bench.pump.total_volume())
+    """
+
+    def __init__(self, sila: SilaClient) -> None:
+        """
+        Args:
+            sila: Connected SilaClient pointed at the dosing pump server.
+        """
+        self._p = sila
+
+    # Readings
+
+    def volume_dispensed(self) -> float:
+        """Volume delivered by the current or last dispense, in ml."""
+        return _once(self._p.DosingPump.VolumeDispensed)
+
+    def is_dispensing(self) -> bool:
+        """True while the pump is running."""
+        return _once(self._p.DosingPump.Dispensing)
+
+    def total_volume(self) -> float:
+        """Net total volume pumped since the last clear, in ml. Reverse subtracts."""
+        return self._p.DosingPump.TotalVolume.get()
+
+    def absolute_total_volume(self) -> float:
+        """Total volume pumped since the last clear ignoring direction, in ml."""
+        return self._p.DosingPump.AbsoluteTotalVolume.get()
+
+    def max_flow_rate(self) -> float:
+        """Fastest flow rate in ml/min that :meth:`set_flow_rate` can hold steady.
+
+        Determined after calibration. Not the pump's top speed:
+        :meth:`dispense_continuously` runs open-loop at ~105 ml/min, well above
+        this. Asking :meth:`set_flow_rate` for more is rejected.
+        """
+        return self._p.DosingPump.MaxFlowRate.get()
+
+    def pump_voltage(self) -> float:
+        """Motor supply voltage in volts."""
+        return self._p.DosingPump.PumpVoltage.get()
+
+    # Dispensing
+
+    def dispense(self, volume: float) -> None:
+        """Dispense a fixed volume in ml (minimum 0.5). Negative dispenses in reverse.
+
+        Returns as soon as the pump accepts the command.
+        """
+        self._p.DosingPump.Dispense(Volume=volume)
+
+    def dispense_and_wait(self, volume: float, timeout: float = 600.0,
+                          poll: float = 0.5) -> float:
+        """Dispense a fixed volume and block until the pump reports it finished.
+
+        Args:
+            volume: Volume to dispense in ml. Negative dispenses in reverse.
+            timeout: Seconds to wait before giving up.
+            poll: Seconds between progress checks.
+
+        Returns:
+            The volume actually delivered, in ml.
+
+        Raises:
+            TimeoutError: The pump was still running when *timeout* elapsed.
+        """
+        self.dispense(volume)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not self.is_dispensing():
+                return self.volume_dispensed()
+            time.sleep(poll)
+        raise TimeoutError(
+            f"Pump still dispensing after {timeout}s (requested {volume}ml, "
+            f"delivered {self.volume_dispensed()}ml so far)"
+        )
+
+    def dose_over_time(self, volume: float, minutes: float) -> None:
+        """Dispense a volume in ml spread evenly over the given number of minutes."""
+        self._p.DosingPump.DoseOverTime(Volume=volume, Minutes=minutes)
+
+    def dispense_continuously(self, reverse: bool = False) -> None:
+        """Run at maximum rate until stop() is called."""
+        self._p.DosingPump.DispenseContinuously(Reverse=reverse)
+
+    def set_flow_rate(self, rate: float, minutes: float = 0.0) -> None:
+        """Hold a constant flow rate in ml/min; zero minutes runs until stop()."""
+        self._p.DosingPump.SetFlowRate(Rate=rate, Minutes=minutes)
+
+    def stop(self) -> float:
+        """Stop dispensing immediately and return the volume delivered, in ml."""
+        return self._p.DosingPump.Stop().VolumeDispensed
+
+    def set_paused(self, paused: bool) -> None:
+        """Pause or resume the dispense in progress. Idempotent."""
+        self._p.DosingPump.SetPaused(Paused=paused)
+
+    def set_inverted(self, inverted: bool) -> None:
+        """Flip or unflip the dispensing direction. Retained across power loss."""
+        self._p.DosingPump.SetInverted(Inverted=inverted)
+
+    # Totals and calibration
+
+    def clear_total_volume(self) -> None:
+        """Reset both total-volume counters to zero."""
+        self._p.DosingPump.ClearTotalVolume()
+
+    def calibrate(self, volume: float) -> None:
+        """Calibrate against the volume actually delivered by the last dispense, in ml."""
+        self._p.DosingPump.Calibrate(Volume=volume)
+
+    def clear_calibration(self) -> None:
+        """Erase all stored calibration data."""
+        self._p.DosingPump.ClearCalibration()
+
+    def calibration_status(self) -> int:
+        """Return 0 uncalibrated, 1 fixed volume, 2 volume over time, or 3 both."""
+        return self._p.DosingPump.GetCalibrationStatus().CalibrationStatus

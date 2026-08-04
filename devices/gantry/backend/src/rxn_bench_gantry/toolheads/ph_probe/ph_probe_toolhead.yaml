@@ -12,5 +12,9 @@ geometry:
   tip_x: 0              # mm
   tip_y: 0              # mm
   tip_offset_z: 0 #110     # mm, below carriage mount
-  z_engage: 40          # mm, depth into well
+  z_engage: 65          # mm, requested descent into a well. Actual descent is
+                        # min((z_engage + well_depth)/2, well_depth - engage_bottom_margin),
+                        # so this is blended with each well's depth and capped 2mm above
+                        # its bottom. 65 keeps the probe junction submerged in the 25mL
+                        # tubes (~71mm) and near the bottom of the shallower cal/wash wells.
   geometry_validated: false  # tip_x/tip_y are placeholders, not yet measured

@@ -18,14 +18,15 @@ fi
 cd "$(dirname "$0")"
 
 echo ""
-echo "Installing workspace dependencies (gantry, ph_sensor, client, device_template)..."
+echo "Installing workspace dependencies (gantry, ph_sensor, camera, dosing_pump, client, device_template)..."
 uv sync
 
 # On Raspberry Pi, also install I2C support for the pH sensor
 if [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "armv7l" ]]; then
     echo ""
-    echo "Raspberry Pi detected - installing pH sensor I2C dependencies..."
+    echo "Raspberry Pi detected - installing pH sensor I2C and dosing pump serial dependencies..."
     uv sync --package rxn-bench-ph --extra rpi
+    uv sync --package rxn-bench-dosing-pump --extra rpi
 fi
 
 echo ""
@@ -39,7 +40,9 @@ echo ""
 echo "To start against real hardware:"
 echo "  make start-gantry   # or: cd gantry && uv run rxn-bench-gantry"
 echo "  make start-ph       # or: cd ph_sensor && uv run rxn-bench-ph"
+echo "  make start-pump     # or: cd dosing_pump && uv run rxn-bench-dosing-pump"
 echo ""
 echo "To run a server as a systemd service that starts on boot:"
 echo "  scripts/install_service.sh gantry"
 echo "  scripts/install_service.sh ph"
+echo "  scripts/install_service.sh pump"

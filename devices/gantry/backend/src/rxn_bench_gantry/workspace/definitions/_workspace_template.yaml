@@ -21,7 +21,7 @@ plates:
       x: x.0  # mm, plate footprint reference point in gantry X (see origin_mode)
       y: y.0   # mm, plate footprint reference point in gantry Y (see origin_mode)
       z: z.0    # mm, thickness of the plate's footprint/mount above the deck top (see deck_height_mm)
-    orientation: standard          # standard | rotated_90
+    orientation: standard          # standard | rotated_90 | rotated_270
     origin_mode: center            # center (default, rotates in place) | corner (origin = A1 corner, rotates around it)
 
   - id: plate2

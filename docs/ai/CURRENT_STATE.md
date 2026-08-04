@@ -12,10 +12,10 @@ Rxn Bench is a modular lab automation stack built around separate SiLA device se
 ```text
 Operator Machine
 └── rxn_bench_ui  ── gRPC/SiLA ── Device Host (Raspberry Pi in the reference deployment)
-    ├── core shell              ├── rxn-bench-gantry :50051 ── Moonraker/Klipper motion platform
-    ├── device plugins          ├── rxn-bench-ph     :50052 ── pH sensor stack
-    └── experiment scripts      └── rxn-bench-camera :50053 ── Crowsnest webcam stream
-        └── rxn_bench_client
+    ├── core shell              ├── rxn-bench-gantry      :50051 ── Moonraker/Klipper motion platform
+    ├── device plugins          ├── rxn-bench-ph          :50052 ── pH sensor stack
+    └── experiment scripts      ├── rxn-bench-camera      :50053 ── Crowsnest webcam stream
+        └── rxn_bench_client    └── rxn-bench-dosing-pump :50054 ── Atlas EZO-PMP peristaltic pump
 ```
 
 The backend is split into independently deployable packages:
@@ -25,6 +25,7 @@ The backend is split into independently deployable packages:
 | `rxn_bench_gantry` | Gantry SiLA server | Motion, homing, workspace/well movement, toolhead management, Moonraker bridge |
 | `rxn_bench_ph` | pH SiLA server | pH readings, calibration, slope reporting, mock pH path |
 | `rxn_bench_camera` | Camera SiLA server | Periodic image capture/streaming and archiving, Crowsnest HTTP bridge, mock camera path |
+| `rxn_bench_dosing_pump` | Dosing pump SiLA server | Volume/timed/continuous dispensing, flow-rate control, calibration, Atlas EZO-PMP UART bridge, mock pump path |
 | `rxn_bench_client` | Experiment script client | Script-friendly session manager and instrument wrappers |
 | `rxn_bench_template` | Device template | Reference package for adding future device servers |
 
@@ -47,6 +48,9 @@ devices/
 ├── camera/
 │   ├── backend/    ← rxn_bench_camera SiLA server package
 │   └── frontend/   ← camera device plugin
+├── dosing_pump/
+│   ├── backend/    ← rxn_bench_dosing_pump SiLA server package
+│   └── frontend/   ← dosing pump device plugin
 └── device_template/
     ├── backend/    ← reference backend package for new devices
     └── frontend/   ← reference frontend plugin for new devices
@@ -117,6 +121,18 @@ devices/camera/frontend/
 └── proto/
     ├── camera.proto
     └── camera_pb2.py
+
+devices/dosing_pump/frontend/
+├── __init__.py
+├── connection_spec.yaml
+├── generated_connection.py
+├── connection.py
+├── widget.py
+├── proto/
+│   ├── dosing_pump.proto
+│   └── dosing_pump_pb2.py
+└── ui/
+    └── dosing_pump_widget.ui
 ```
 
 `devices/device_template/frontend/` mirrors the same shape, including its own
@@ -276,6 +292,64 @@ Main responsibilities:
 - Archive every capture to `logs/images/` (`image_log.ImageLog`, pruned after 7 days - shorter than the 30-day JSONL default since binary frames are heavier) alongside the usual JSONL event log.
 - SiLA's `Binary` basic type (`bytes` Python annotation) is used for the image property; `gen_proto.py`/`gen_connections.py` gained generic support for it (a `message Binary { bytes value = 1; }` wrapper, matching the CDK's own inline-payload wire encoding for payloads under its 2**21-byte binary-transfer threshold) - the first non-Real/Boolean/SString primitive type used by any device.
 
+### Dosing pump package
+
+```text
+devices/dosing_pump/backend/src/rxn_bench_dosing_pump/
+├── server.py
+├── _cli.py
+├── feature.py
+├── interfaces.py
+├── atlas_dosing_pump.py             ← DosingPumpProtocol impl over a command driver
+├── ezo_pmp_commands.py              ← transport-agnostic EZO-PMP command set
+├── atlas_scientific_uart_driver.py  ← EZO-PMP over UART/serial
+├── mock_uart.py                     ← EZO-PMP protocol emulator (simulates dispensing)
+├── mock_device.py                   ← MockDosingPump: real driver stack over the emulator
+└── session_log.py
+```
+
+Main responsibilities:
+
+- Expose the DosingPump SiLA feature (`VolumeDispensed`/`Dispensing` observable properties;
+  `Dispense`, `DoseOverTime`, `SetFlowRate`, `DispenseContinuously`, `Stop`, `SetPaused`,
+  `SetInverted`, calibration and total-volume commands).
+- Keep feature logic decoupled from the concrete pump through `DosingPumpProtocol`.
+- Speak the Atlas EZO-PMP command protocol over UART, split the same way as the pH package:
+  `ezo_pmp_commands.EZOPumpCommandSet` holds the transport-agnostic commands and
+  `AtlasScientificEZOPumpUart` supplies the byte-level send/receive. This is a *deliberate
+  duplicate* of the pH package's shape, not shared code — see the per-device duplication
+  decision in §8. Only UART is implemented (the reference bench is UART-only); the command
+  set stays transport-agnostic so an I2C driver could be added without rework.
+- Handle two EZO-PMP protocol quirks the pH circuit doesn't have: `*DONE` is both the reply to
+  `X` (stop) *and* an unsolicited interrupt when a dispense finishes on its own (the driver only
+  accepts it as a reply when the in-flight command expects one, so a dose completing mid-query
+  can't corrupt an unrelated reading), and `*MINVOL`/`*TOOFAST` are command rejections distinct
+  from plain `*ER`.
+- Turn the pump's two *toggle* commands (`P` pause, `Invert`) into idempotent setters by reading
+  current state first, so scripts assert a desired state instead of tracking parity.
+- Keep the device interface **minimal, with opt-in capability protocols for the rest**.
+  `DosingPumpProtocol` is 12 methods every dosing pump has; `SupportsCalibration`,
+  `SupportsDirectionInvert`, and `SupportsDiagnostics` are separate `runtime_checkable`
+  protocols the feature probes with `isinstance`, rejecting just those commands (naming what
+  is missing) on hardware that lacks them. This is what makes the frontend reusable: plugins
+  are matched to a **SiLA feature identifier**, not a model, so any server advertising
+  `DosingPump` gets the same widget/connection/proto/client with no new frontend code — a
+  second pump model is one driver class plus one line in `server.py`'s `_DRIVERS` registry
+  (selected by `RXN_BENCH_PUMP_DRIVER`). Correspondingly, **no model-specific numbers live in
+  the widget**: the Rate ceiling comes from the server's `MaxFlowRate` at runtime and per-pump
+  minimums are enforced by the device and surfaced as errors, rather than hardcoding one
+  pump's limits into shared UI.
+- Keep circuit housekeeping (`find`, LED, `sleep`/`wake`, protocol lock) driver-level only, *not*
+  on the SiLA feature — same split as `rxn_bench_ph`. `sleep()` requires a paired `wake()`: the
+  byte that wakes a sleeping EZO is consumed doing so and is not executed (the circuit answers
+  `*WA`), so the command is silently lost; `wake()` absorbs that throwaway exchange. `sleep()`
+  powers down the control system only, not the 12-24V motor supply. `Baud`/`Factory`/`Name`/
+  I2C-switch, `O` (output-parameter selection, which would change the string `R` parsing depends
+  on), and `Dstart` (dispense-at-startup) are intentionally unimplemented.
+- Support a mock pump (`MockDosingPump`) built on `MockEZOPumpUart`, a protocol emulator that
+  runs the *real* driver stack without hardware and simulates dispensing against an injectable
+  clock, so a dose really does progress and complete over its requested duration.
+
 ### Client package
 
 ```text
@@ -346,6 +420,7 @@ Main responsibilities:
 | `motion_platform` proto stubs live under `devices/gantry/frontend/proto/` | Done, moved out of the shared `proto/` tree, which now only holds `sila_service_pb2` (framework-level, genuinely shared). `gen_proto.py`, the `rxnbench/backend/Makefile` proto targets, and `connection_spec.yaml`'s `proto_module` all point at the new location; `make check-proto` still passes |
 | Frozen-build-aware frontend plugin discovery + PyInstaller onedir packaging (Linux) | Done (groundwork for TODO-AI.md §1.2) — `rxn_bench_ui/devices/__init__.py` now resolves `devices/` from `sys.executable`'s directory when `sys.frozen` is set, instead of always walking up from `__file__`; dev-mode behavior is unchanged. `rxnbench/frontend/packaging/` (spec, entrypoint, `copy_device_plugins.py`) plus `make dist` produce a onedir build and stage `devices/*/frontend/` next to the executable. First pass looked fine (launched headlessly, discovery found the right modules) but only actually loading a device widget in the frozen build surfaced two `ModuleNotFoundError`s (`yaml`, `rxn_bench_ui.connections.base`) invisible to both PyInstaller's static analysis and that first verification pass — fixed via `collect_submodules("rxn_bench_ui")` + explicit `yaml` in the spec's `hiddenimports`. `make dist-check` (new) now actually constructs every discovered device widget inside the real frozen build and confirms no ImportError — all 4 pass. See "Standalone executable packaging" above. |
 | `new-device` dev-agent skill (TODO-AI.md §2.2) | Done — `.claude/skills/new-device/SKILL.md`, alongside the existing `debug`/`feature`/`review-design` skills. Before scaffolding anything, it requires reading every existing device's backend `Protocol`/feature and frontend widget/connection layer to check whether the new hardware fits an existing interface (e.g. a second pH-style probe should reuse `rxn_bench_ph`, not get its own package); only a genuine misfit walks the `device_template` copy/rename checklist. Explicitly caps generated complexity at `device_template`'s Protocol+mock+feature shape and treats falling back to `GenericDeviceWidget` (no custom frontend widget) as a valid outcome, not a shortcut to avoid. |
+| Dosing pump device (Atlas EZO-PMP) | Done — `rxn_bench_dosing_pump` SiLA server (port 50054) exposing all four datasheet dispensing modes (fixed volume, dose over time, constant flow rate, continuous) plus pause/stop/invert, single-point calibration, and net/absolute total-volume counters. `DosingPumpProtocol` is a new interface: the pump is an *actuator*, with no overlap with `PHSensorProtocol` (read/calibrate/slope), `CameraProtocol` (`capture()`), or the gantry's motion protocol — so it got its own device rather than reusing one. The Atlas EZO UART wire protocol *is* shared with `rxn_bench_ph`, but is deliberately duplicated per the per-device self-containment rule in §8. Frontend plugin (`devices/dosing_pump/frontend/`) has a hand-built widget with dispense/dose/flow-rate controls, live volume, and totals; `rxn_bench_client.DosingPump` adds `dispense_and_wait()` alongside the raw commands. Required extending `gen_proto.py` with an `Integer` primitive wrapper (SiLA `Integer` = int64) for `GetCalibrationStatus` — the second generic generator addition after the camera's `Binary`, and verified to decode correctly against a live server. Verified end-to-end against a real mock server: progressive dispensing over gRPC, `Stop`'s float return, unobservable-property reads, error propagation for `*MINVOL`/`*TOOFAST`, and the real Qt widget constructed and driven headlessly. See the gap below re: unverified real hardware and the serial-port conflict with the pH probe. |
 | Camera device (TODO-AI.md §2.1) | Done — `rxn_bench_camera` SiLA server (port 50053) streams a `LatestImage` observable property (SiLA `Binary`/`bytes`) captured from a Crowsnest-managed webcam stream via a plain-HTTP `CrowsnestCamera` driver, with a runtime-adjustable `SetCaptureInterval` command, mock camera path (dependency-free placeholder PPM image), and per-capture archiving to `logs/images/` alongside the usual JSONL event log. `CameraProtocol` is a single `capture() -> bytes` method, so Crowsnest is one implementation, not the whole abstraction, per the TODO's acceptance criteria. Frontend plugin (`devices/camera/frontend/`) shows the live image plus an interval control. `rxn_bench_client.Camera` adds `snapshot()`/`save_snapshot()`/`set_capture_interval()`. Required extending the shared `gen_proto.py`/`gen_connections.py` generators with a `Binary` primitive wrapper (`bytes` → SiLA's native `Binary` basic type) — the first non-Real/Boolean/SString primitive any device has needed; verified end-to-end against a live mock server (real gRPC subscribe + command call, not just unit tests). See the gap below re: unverified real Crowsnest wiring. |
 
 ---
@@ -363,11 +438,14 @@ These are the active issues worth tracking now.
 | Verify sample-holder labware dimensions | `labware/6_well_sample_holder.yaml` (+ header comment in `3_well_sample_holder.yaml` still says "6-Well") | Medium | The 6-well file was scaffolded with standard 6-well *plate* dimensions as placeholders — caliper-verify spacing/offsets against the physical holder before running wells on it. The 15-well and 3-well holders already carry measured-looking values. |
 | Verify `plate_height_mm` across all labware types | `labware/*.yaml` | Medium | New field (deck to plate top surface) added to every bundled labware file to drive dynamic safe clearance-travel height. All 6 are currently `well_depth_mm + ~3mm` estimates, not measured — caliper-verify before trusting them for collision safety, same as the existing well-geometry gap above. |
 | Measure pH probe `tip_x` / `tip_y` | `toolheads/ph_probe/ph_probe_toolhead.yaml` | Low | Current values are still placeholders — the physical measurement itself hasn't happened. The guard is implemented: `ToolheadGeometry.geometry_validated` (default `True`, `False` for `ph_probe`) logs a warning on `set_toolhead()` and `GantryController.move_to_well()` refuses to run with a `UnvalidatedGeometryError` unless `override_unvalidated=True` is passed. Plain `move_to()`/`jog()` are unaffected — only well-targeted moves are gated. |
+| Verify the dosing pump against the real EZO-PMP circuit | `rxn_bench_dosing_pump/atlas_scientific_uart_driver.py` + physical bench | Medium | **Serial port resolved 2026-08-04:** the bench Pi 5 runs `dtoverlay=uart2` (config.txt), which brings up UART2 on GPIO4/5 as `/dev/ttyAMA2` — confirmed against the real EZO-PMP (`?I,PMP,1.06`, `?STATUS`, and `PV,?` → 11.99 V motor supply all responded correctly over that port). `install_service.sh` now sets `RXN_BENCH_PUMP_SERIAL_PORT=/dev/ttyAMA2` for the `pump` device automatically, so it no longer collides with the pH probe's `/dev/serial0`. **Concurrency bug found and fixed 2026-08-04:** the info/status smoke test surfaced a real race — `VolumeDispensed` and `Dispensing` are two separately-polled observable streams (1Hz each, `asyncio.to_thread`), plus any in-flight command, all sharing one unguarded serial port; interleaved writes/reads on real hardware produced garbled replies (`'D,100,'`, `'O'`, `'OK?-.0,0*'`). Fixed with a `threading.Lock` + `_transact()` atomic send/read helper on `EZOPumpCommandSet`, used by every command method. Re-verified with 30 concurrent calls across two threads against the real pump: zero errors. See the 2026-08-04 CHANGELOG `Fixed` entry. Still unconfirmed on hardware: the `*DONE` interrupt behaviour when a dispense completes mid-query (the emulator reproduces the ordering the driver guards against, but real firmware timing may differ), whether `Invert,?`/`P,?` reply exactly as the datasheet's tables show, and the real `DC,?` max rate. The pump also supports I2C (default address 103/0x67) as an alternative to UART; no I2C driver is written (deliberately, not speculatively). |
+| Calibrate the dosing pump | physical bench | Medium | Volumes are nominal until a single-point calibration is done (`Dispense` a known amount, measure it, send `Calibrate(measured)`); the datasheet's ±1% accuracy assumes it. `MaxFlowRate` is only meaningful post-calibration, and the widget uses it to cap its rate input. |
 | Verify Crowsnest wiring on the real SV08 | `rxn_bench_camera/crowsnest_camera.py` + physical bench | High | The HTTP client, config loading, feature, and mock path are complete and tested, but `crowsnest_base_url`/`crowsnest_snapshot_path` defaults (ustreamer's `/snapshot`) have not been confirmed against a live Crowsnest deployment - verify on a bench session and adjust `~/.rxn_bench/machine.yaml` if the SV08's `crowsnest.conf` uses mjpg-streamer instead. |
 | Tune camera image-log retention for the deployment's storage budget | `rxn_bench_camera/image_log.py`, `~/.rxn_bench/machine.yaml` | Medium | Default is `capture_interval_s=30`, 7-day retention on `logs/images/`; this can still add up to several GB on a Pi's SD card at higher capture rates. No pressure to change until a real bench session shows it's a problem. |
 | Activate the X-gantry crossbar collision check on the bench | `~/.rxn_bench/machine.yaml` | Medium-High (safety) | The check is implemented and tested but **inert until configured**: `MachineConfig.crossbar_clearance_above_tip_mm` (crossbar underside height above the tip, in the workspace Z frame) and `crossbar_y_thickness_mm` (the bar's Y extent) are both `None` by default. `GantryController` refuses a well dock / `engage_tool` descent that would drive the full-X crossbar into a taller plate sharing the target's Y-row (`WorkspaceManager.max_top_in_y_band`); the X span is assumed full. The bar is also **visualized** in the workspace viewer's X/Z + Y/Z side views under "show more details" (`GetLimits` gained two trailing crossbar fields, still one SString). Needs the operator's two crossbar measurements written into `machine.yaml` to switch on (see the 2026-07-13 CHANGELOG entry). The gantry SiLA feature was also bumped **v0 → v1** (`Gantry/v1`, matching pH/camera) — frontend and backend must be deployed together at the same version. |
 | Windows installer — confirm the `.exe` artifact | `.github/workflows/windows-installer.yml` | Medium for TODO-AI.md §1.2 | A `windows-latest` workflow (tag `v*` / manual dispatch) installs Inno Setup, runs the PyInstaller onedir build + `copy_device_plugins.py` + `iscc packaging/installer.iss`, and uploads `Rxn-Bench-Setup-<version>.exe`. **First real run (2026-07-13) confirmed the Windows PyInstaller build works** — onedir build, plugin staging, and the frozen self-test all passed on the runner (the big unknown is answered). Only the `iscc` step failed, on a Git-Bash/MSYS quirk that rewrote the `/DMyAppVersion=` option into a path ("more than one script filename"); fixed by running that step in PowerShell. Re-run (new tag) still pending to confirm the installer `.exe` actually builds + uploads end-to-end. |
 | Verify installer's auto-pin + multicast-route service on a from-scratch reinstall | `rxnbench/backend/scripts/install_offline.sh` (+ `install_service.sh`) | Medium | On the gatewayless bench network discovery silently fails despite healthy services, two independent causes (see the 2026-07-13 CHANGELOG entry): the CDK auto-detect advertises `127.0.0.1`, and multicast can't egress with no default route. Fixed: `install_offline.sh` auto-detects the host's primary IPv4 (`hostname -I`) and (a) pins `sila_server.hostname` via a `~/.rxn_bench/<device>.json` override (new `--advertise-ip <IP>` flag to `install_service.sh`; `--no-pin` opts out), and (b) when the multicast group isn't already routable, installs a boot-time `rxn-bench-mcast-route.service` oneshot (`ip route replace 224.0.0.0/4 dev <iface>`). Device systemd units now wait on `network-online.target` since they bind a specific IP. **Note:** `discovery.network_interfaces` is a no-op — the CDK connector (`unitelabs/cdk/connector.py`) never forwards the discovery config to its multicast socket, so `IP_MULTICAST_IF` is never set; the route is the only lever (confirmed empirically). The pin/route logic was validated in isolation and applied by hand to the live Pi (discovery confirmed working), but the full installer path hasn't been re-run end-to-end on a from-scratch reinstall yet. Repo config templates intentionally keep `hostname: "0.0.0.0"` — the correct *generic* default; the pin/route are deployment-time only. |
+| Experiment script hangs forever on a dropped network link | `rxn_bench_client/client.py` (`RxnBenchClient.connect`), `sila2`'s `SilaClient` | Medium | Confirmed 2026-08-04: unplugging the operator machine's ethernet mid-run freezes the script indefinitely instead of erroring. Root cause: `sila2.client.SilaClient` builds its channel with plain `grpc.insecure_channel(target)` (no options), and `sila2.client.utils.call_rpc_function` never passes a per-call `timeout=`, so a call blocks forever on a connection that goes silent (no RST/FIN from an unplugged cable) — there's no deadline anywhere in the call path to catch. `bench.log()` was hardened the same day to skip a row it can't write (`OSError`) instead of raising, but that only helps once a call *returns*; it doesn't unblock a hung SiLA call. Fix requires gRPC channel keepalive options, which `SilaClient.__init__` doesn't expose (would need a scoped monkeypatch of `grpc.insecure_channel` around the `SilaClient(...)` construction in `connect()`). A client-only fix bounds the freeze to ~5 min by matching the SiLA servers' *default* (unconfigured) ping-abuse tolerance (`GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS` = 5 min) — going faster than that requires also loosening server-side ping tolerance in all four device backends (gantry/ph/pump/camera) and redeploying+restarting every service on the Pi. Deliberately not implemented yet — pending a decision on which tradeoff (see chat 2026-08-04). |
 
 ---
 
@@ -399,7 +477,8 @@ These are the active issues worth tracking now.
 - Keep toolhead and labware definitions YAML/config-driven.
 - Keep experiment scripts using `rxn_bench_client` rather than directly depending on frontend code.
 - Keep the shared uv workspace venv for local dev/test only. Production deployment gives gantry and ph_sensor their own standalone venv each (via `scripts/install_service.sh`), so either service can be updated/restarted without affecting the other.
-- Duplicate small utilities per device rather than extracting a shared common package. `rxn_bench_gantry/session_log.py` and `rxn_bench_ph/session_log.py` are functionally identical (byte-for-byte except one docstring word) — this is intentional, not drift to fix. Keeping each device's backend self-contained (no shared runtime dependency between otherwise-independent device packages) outweighs de-duplicating ~70 lines. (Build scripts are the exception: `rxnbench/backend/scripts/gen_proto.py` is one generator with a per-device manifest, because generated wire formats must not drift between devices.)
+- Duplicate small utilities per device rather than extracting a shared common package. `rxn_bench_gantry/session_log.py` and `rxn_bench_ph/session_log.py` are functionally identical (byte-for-byte except one docstring word) — this is intentional, not drift to fix. Keeping each device's backend self-contained (no shared runtime dependency between otherwise-independent device packages) outweighs de-duplicating ~70 lines. (Build scripts are the exception: `rxnbench/backend/scripts/gen_proto.py` is one generator with a per-device manifest, because generated wire formats must not drift between devices.) This extends to *vendor protocol* code, not just utilities: `rxn_bench_dosing_pump` re-implements the Atlas EZO UART framing that `rxn_bench_ph` already has, because the two devices share a protocol *family* (Atlas EZO circuits) but not a command set — and importing across device packages would put the pH package on every machine running only the pump. The shape is copied (transport-agnostic command set + one transport class), the code is not.
+- A shared-generator addition is preferred over a per-device carve-out when a device needs a wire type the generators don't cover yet. Two have been added this way: `Binary` (camera images) and `Integer` (the dosing pump's calibration status). Both are real SiLA basic types with a single obvious protobuf mapping, so they generalize; a device-specific escape hatch in `gen_proto.py` would not.
 - Both drift checks (`make check-proto`, `make check-connections`) and all test suites now run in CI (`.github/workflows/ci.yml`) on every push/PR, in addition to being runnable locally before a PR.
 - Experiment lock uses a **token**, not caller identity: `AcquireExperimentLock` returns a secret; state-changing commands take an optional `Token` parameter checked backend-side. The UI never sends a token (so it is locked out during runs, except Pause/Resume/Stop); `rxn_bench_client.Gantry` attaches its token automatically. This is coordination between cooperating clients, not authentication (see the TLS gap in §6).
 - Plate/labware geometry is served by the gantry backend (`GetLabware`, YAML) and consumed by the frontend canvases and the experiment client. Never hardcode plate dimensions outside `rxn_bench_gantry/labware/*.yaml` — the frontend's former hardcoded table had already drifted ~9 mm from the backend on the 24-well plate. `PlateGeometry.plate_height_mm` is now part of that same single source of truth and drives `GantryController`'s clearance-travel math — a labware YAML's dimensions are never duplicated into a second, separately maintained safety constant. (Tests must also derive plate dimensions from `PlateGeometry`, not hardcode them — five `test_controller.py` tests hardcoding `96_well`/`24_well` numbers silently broke when the labware was re-measured; fixed to load from the source.)

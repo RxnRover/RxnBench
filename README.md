@@ -2,9 +2,41 @@
 
 ![Rxn Bench logo](docs/images/resized/logo.png)
 
+## Table of Contents
+
 ## Overview
 
 Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform, with a Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor; a separate operator machine runs a frontend application [Rxn Bench](TODO: Eventually include repo link) that talks to those servers over gRPC/SiLA, and experiment scripts drive the bench through a Python client [Rxn Bench Client](TODO: Eventually include repo link).
+
+### The Inspiration
+
+#### Discovery increasingly runs on data
+
+Modern science depends on it;
+machine learning, high-throughput screening, and AI-assisted discovery all
+require large, reliable experimental datasets. Generating that data by
+hand is slow, inconsistent, and labor-intensive, making automated data
+collection a growing bottleneck for research.
+
+### The Problem
+
+#### Automation is the answer - but it's expensive and rigid
+
+Automated platforms improve repeatability, cut manual workload, and generate data
+at scale, but most remain costly, specialized, and locked to specific
+hardware and workflows. This puts automated experimentation out of
+reach for many labs.
+
+### The Solution
+
+#### Rxn Bench: accessible automation
+
+A low-cost, modular platform
+combining accessible hardware, modern lab software frameworks, and
+customizable 3D-printable components - letting labs integrate diverse
+devices, adapt workflows, and generate data at scale for under $1000.
+
+## Navigating this repository
 
 ## Requirements
 
@@ -18,7 +50,26 @@ See [docs/usage.md](docs/usage.md) for commands to install dependencies and star
 
 ## Implementation and design
 
-![Rxn Bench high-level system block diagram: operator UI talks to the Raspberry Pi's SILA server, which drives the Sovol SV08 MCU (XYZ motion), an onboard camera, and the EZO pH circuit/probe](docs/images/resized/system-block-diagram.jpg)
+![Rxn Bench high-level system block diagram: operator UI talks to the Raspberry Pi's SILA server, which drives the Sovol SV08 MCU (XYZ motion), and the EZO pH circuit/probe](docs/images/resized/system-block-diagram.jpg)
+
+Rxn Bench is a modular lab-automation platform for programmable scientific workflows, built from a repurposed SOVOL SV08 3D printer with
+custom 3D-printed components and open software interfaces.
+
+### Capability-based hardware abstraction.
+
+Devices are represented through
+SiLA2 feature servers running on a backend computer (e.g., a Raspberry Pi),
+which expose standardized commands and properties for each capability:
+pH sensor, gantry, pump, etc. New hardware plugs into the same feature
+interface, so a device can be swapped or added with minimal frontend
+and backend changes. If it walks like a duck and talks like a duck, it's
+treated as a duck.
+
+### Desktop control + Python API
+
+[Rxn Bench]() provides a desktop
+interface for configuration and direct device control, while a [Rxn Bench Client]() API
+enables headless operation and experiment scripting
 
 ### Component List
 
@@ -39,7 +90,17 @@ See [docs/usage.md](docs/usage.md) for commands to install dependencies and star
 | Half-Cell pH Isolation Board      | [Atlas Scientific](https://atlas-scientific.com/carrier-boards/half-cell/)                                     | Carrier board for half-cell pH probe configurations                                                 |
 | Spear Tip pH Probe                | [Atlas Scientific](https://atlas-scientific.com/probes/spear-tip-ph-probe/)                                    | Soil/spear-tip combination electrode; male SMA connector, mates directly to isolation carrier board |
 
-#### Liquid Handler
+#### Labware
+
+##### Workspace
+
+##### Sample-Plates
+
+##### Footprints
+
+##### Washing-Station
+
+###### Liquid Handler (In-progress)
 
 | Name                    | Link                                                                                                              | Purpose                                                |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -82,6 +143,16 @@ The gantry docks multiple toolheads via a 3D-printed mount with linear-rails, in
 | CAD design                                                                                                       | Assembled                                                                                       |
 | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | ![CAD render of the toolhead docking mount with linear rail bearings](docs/images/resized/docking-mount-cad.jpg) | ![Assembled 3D-printed toolhead docking mount](docs/images/resized/docking-mount-assembled.jpg) |
+
+### Labware
+
+#### Workspace
+
+#### Sample-Plates
+
+#### Footprints
+
+#### Washing-Station
 
 ### Rxn Bench UI
 

@@ -1,4 +1,8 @@
 Assembly,Part,Qty,3D Printed,Link
+Rxn Bench Computer,Raspberry Pi 5,1,No,
+Rxn Bench Computer,Raspberry Pi 5 Case,1,Yes,
+Rxn Bench Computer,Rxn Bench Case,1,Yes
+Rxn Bench Computer,
 pH Probe Assembly,pH Probe Mount,1,Yes,../hardware_models/ph-probe_assembly/pH Probe Mount.stl
 pH Probe Assembly,pH Probe Lid,1,Yes,../hardware_models/ph-probe_assembly/pH Probe Lid.stl
 pH Probe Assembly,EZO pH Circuit,1,No,https://atlas-scientific.com/embedded-solutions/ezo-ph-circuit/
@@ -6,6 +10,11 @@ pH Probe Assembly,EZO Carrier Board (5-pin),1,No,https://atlas-scientific.com/ca
 pH Probe Assembly,Spear Tip / Soil pH Probe,1,No,https://atlas-scientific.com/probes/spear-tip-ph-probe/
 pH Probe Assembly,M3x6mm Threaded Heat Insert,4,No,
 pH Probe Assembly,6x2mm Neodymium Magnet,4,No,
+Washing Station,EZO-PMP Basic Kit, 1, No, https://atlas-scientific.com/kits/ezo-pmp-kit/
+Washing Station,EZO-PMP Case, 1, Yes, 
+Washing Station,
+Washing Station,
+Washing Station,
 Liquid Handler Assembly,Pipette Cone Assembly,1,No,https://www.pipettesupplies.com/product/e1-clip-tip-tip-cone-assembly-single-channel-1250-l-t/
 Liquid Handler Assembly,Stepper Linear Actuator,1,No,https://www.haydonkerkpittman.com/products/linear-actuators/can-stack-stepper
 Single Tool Mount,Toolhead Mount w/ Magnets for MGN12 Carriage,1,Yes,../hardware_models/platform/Toolhead Mount For MGN12 Carriage.stl

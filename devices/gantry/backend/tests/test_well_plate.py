@@ -11,13 +11,13 @@ def plate_96():
 
 @pytest.fixture
 def plate_24():
-    return PlateGeometry.load("24_well_standard")
+    return PlateGeometry.load("24_well_15ml")
 
 
 def test_list_available_includes_bundled():
     available = PlateGeometry.list_available()
     assert "96_well_standard" in available
-    assert "24_well_standard" in available
+    assert "24_well_15ml" in available
 
 
 def test_96_well_count(plate_96):
@@ -116,9 +116,12 @@ def test_24_a1_position(plate_24):
 
 
 def test_24_d6_position(plate_24):
+    # Uses the per-axis accessors, not the raw spacing_mm field: this plate
+    # defines spacing_mm_x/_y separately and leaves spacing_mm unset, so the
+    # bare field is None.
     x, y = plate_24.well_position("D6")
-    assert x == pytest.approx(plate_24.a1_offset_x + 5 * plate_24.spacing_mm)
-    assert y == pytest.approx(plate_24.a1_offset_y + 3 * plate_24.spacing_mm)
+    assert x == pytest.approx(plate_24.a1_offset_x + 5 * plate_24.effective_spacing_x)
+    assert y == pytest.approx(plate_24.a1_offset_y + 3 * plate_24.effective_spacing_y)
 
 
 def test_24_unknown_plate_raises():

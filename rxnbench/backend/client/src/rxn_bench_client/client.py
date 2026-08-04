@@ -307,6 +307,11 @@ class RxnBenchClient:
         discovered from the keyword argument names on the first call::
 
             bench.log(ph=7.21, temp=22.1)
+
+        A row that can't actually be written (e.g. the results folder is on a
+        network share that just dropped) is skipped with a printed warning
+        instead of raising - a logging hiccup shouldn't take down an
+        otherwise-healthy experiment run.
         """
         if self._log_file is None:
             raise RuntimeError(
@@ -316,19 +321,22 @@ class RxnBenchClient:
         if self._current_well is not None and "well" not in kwargs:
             kwargs = {"well": self._current_well, **kwargs}
 
-        if self._log_writer is None:
-            self._log_columns = list(kwargs.keys())
-            self._log_writer = csv.DictWriter(
-                self._log_file,
-                fieldnames=["timestamp"] + self._log_columns,
-                extrasaction="ignore",
-            )
-            self._log_writer.writeheader()
+        try:
+            if self._log_writer is None:
+                self._log_columns = list(kwargs.keys())
+                self._log_writer = csv.DictWriter(
+                    self._log_file,
+                    fieldnames=["timestamp"] + self._log_columns,
+                    extrasaction="ignore",
+                )
+                self._log_writer.writeheader()
 
-        self._log_writer.writerow(
-            {
-                "timestamp": datetime.datetime.now().isoformat(timespec="milliseconds"),
-                **kwargs,
-            }
-        )
-        self._log_file.flush()
+            self._log_writer.writerow(
+                {
+                    "timestamp": datetime.datetime.now().isoformat(timespec="milliseconds"),
+                    **kwargs,
+                }
+            )
+            self._log_file.flush()
+        except OSError as e:
+            print(f"[bench.log] Could not write log row, skipping: {e}", flush=True)

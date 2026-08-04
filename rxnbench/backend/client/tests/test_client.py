@@ -163,6 +163,41 @@ def test_log_with_explicit_columns_writes_header_up_front(bench, tmp_path):
     assert rows[0]["ph"] == "6.5" and "ignored" not in rows[0]
 
 
+def test_log_skips_row_when_write_fails(bench, tmp_path, capsys):
+    """A dropped network share or similar I/O failure must not kill the run."""
+    out = tmp_path / "results.csv"
+    bench.set_log_output(out, columns=["ph"])
+
+    def _boom(*_a, **_kw):
+        raise OSError("disk gone")
+    bench._log_writer.writerow = _boom
+
+    bench.log(ph=7.0)  # must not raise
+
+    assert "Could not write log row, skipping" in capsys.readouterr().out
+
+
+def test_log_recovers_once_writes_work_again(bench, tmp_path):
+    out = tmp_path / "results.csv"
+    bench.set_log_output(out, columns=["ph"])
+
+    real_writerow = bench._log_writer.writerow
+    calls = {"n": 0}
+
+    def _flaky(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("disk gone")
+        return real_writerow(*a, **kw)
+    bench._log_writer.writerow = _flaky
+
+    bench.log(ph=7.0)  # dropped
+    bench.log(ph=7.1)  # succeeds
+
+    rows = list(csv.DictReader(out.open()))
+    assert [r["ph"] for r in rows] == ["7.1"]
+
+
 def test_log_inside_at_well_includes_well_column(bench, tmp_path):
     _attach_gantry(bench)
     out = tmp_path / "results.csv"

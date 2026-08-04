@@ -15,6 +15,8 @@ package sila2.edu.iastate.ames.rxnbench.camera.v1;
 // SiLA primitive wrappers
 message Real    { double value = 1; }
 message Boolean { bool   value = 1; }
+// SiLA's Integer basic type is a signed 64-bit integer.
+message Integer { int64  value = 1; }
 message SString { string value = 1; }
 // Binary carries the SiLA Binary type's inline payload only (field 1).
 // The CDK's Binary basic type falls back to a chunked binary-transfer UUID

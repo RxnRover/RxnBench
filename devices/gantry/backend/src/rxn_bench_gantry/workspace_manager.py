@@ -267,6 +267,8 @@ class WorkspaceManager:
             return plate_dx, plate_dy
         if orientation is Orientation.ROTATED_90:
             return -plate_dy, plate_dx
+        if orientation is Orientation.ROTATED_270:
+            return plate_dy, -plate_dx
         raise ValueError(f"Unknown orientation: {orientation!r}")
 
     @staticmethod

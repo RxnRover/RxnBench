@@ -12,7 +12,8 @@ _DEFINITIONS_DIR = Path(__file__).parent / "workspace" / "definitions"
 
 class Orientation(str, Enum):
     STANDARD = "standard"
-    ROTATED_90 = "rotated_90"
+    ROTATED_90 = "rotated_90"    # 90 deg counter-clockwise
+    ROTATED_270 = "rotated_270"  # 90 deg clockwise
 
 
 class OriginMode(str, Enum):
