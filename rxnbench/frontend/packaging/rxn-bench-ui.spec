@@ -1,14 +1,21 @@
 # PyInstaller spec for the Rxn Bench desktop UI.
 #
-# Produces a onedir build. Device frontend plugins (devices/<name>/frontend/)
-# are intentionally NOT bundled here - rxn_bench_ui/devices/__init__.py loads
-# them dynamically from a devices/ folder next to the built executable at
-# runtime
+# Produces a onedir build. The five first-party device frontend plugins
+# (gantry, ph_sensor, camera, dosing_pump, device_template) are now real
+# installed dependencies of rxn-bench-ui (each its own package/repo, declaring
+# a "rxn_bench.devices" entry point - see rxn_bench_ui/devices/__init__.py)
+# rather than a devices/ folder copied next to the exe, so they're baked into
+# the bundle at build time below. Adding one of these five to a build now
+# requires a rebuild, not just dropping a folder next to the exe - the
+# devices/*/frontend/ directory-scan fallback in rxn_bench_ui/devices/__init__.py
+# still exists for that zero-rebuild drop-in case (e.g. an experimental device
+# not yet packaged as a formal dependency), and copy_device_plugins.py still
+# stages any such folders next to the executable.
 #
 # Build with: make dist   (from software/frontend/)
 import os
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 block_cipher = None
 
@@ -25,8 +32,34 @@ _CLIENT_SRC = os.path.join(SPECPATH, "..", "..", "backend", "client", "src")
 # frozen build throws ModuleNotFoundError the first time a plugin loads.
 # collect_submodules("rxn_bench_ui") only walks the real installed package
 # tree (software/frontend/src/rxn_bench_ui/), not devices/*/frontend/, so this
-# stays consistent with keeping device plugin code out of the bundle.
+# stays consistent with keeping ad-hoc, non-packaged device plugin code out of
+# the bundle - the five first-party device packages are collected explicitly
+# below instead.
 _HIDDEN_IMPORTS = collect_submodules("rxn_bench_ui") + ["yaml"]
+
+# The five first-party device packages are only ever reached at runtime via
+# importlib.metadata.entry_points() (see all_devices()), which is invisible to
+# PyInstaller's static analysis just like the dynamic imports above - so their
+# code needs collect_submodules/collect_all, same as everything else here.
+# entry_points() itself works by scanning *.dist-info metadata on sys.path,
+# which collect_all does NOT bundle (that's a separate PyInstaller concept) -
+# copy_metadata() is required too, or the frozen build finds zero entry points
+# and silently shows no devices at all.
+_DEVICE_PACKAGES = [
+    ("rxn_bench_gantry_frontend", "rxn-bench-gantry-frontend"),
+    ("rxn_bench_ph_sensor_frontend", "rxn-bench-ph-sensor-frontend"),
+    ("rxn_bench_camera_frontend", "rxn-bench-camera-frontend"),
+    ("rxn_bench_dosing_pump_frontend", "rxn-bench-dosing-pump-frontend"),
+    ("rxn_bench_device_template_frontend", "rxn-bench-device-template-frontend"),
+]
+_device_datas, _device_binaries, _device_hidden = [], [], []
+for _import_name, _dist_name in _DEVICE_PACKAGES:
+    _d, _b, _h = collect_all(_import_name)
+    _device_datas += _d
+    _device_binaries += _b
+    _device_hidden += _h
+    _device_datas += copy_metadata(_dist_name)
+_HIDDEN_IMPORTS += _device_hidden
 
 # The Experiment Runner runs user scripts inside this frozen bundle (see
 # entrypoint._run_script), and those scripts import rxn_bench_client, which in
@@ -51,14 +84,15 @@ _HIDDEN_IMPORTS += _client_hidden + _sila_hidden + _grpctools_hidden
 a = Analysis(
     [os.path.join(SPECPATH, "entrypoint.py")],
     pathex=[_SRC, _CLIENT_SRC],
-    binaries=_client_binaries + _sila_binaries + _grpctools_binaries,
+    binaries=_client_binaries + _sila_binaries + _grpctools_binaries + _device_binaries,
     datas=[
         (os.path.join(_SRC, "rxn_bench_ui", "core", "ui"), os.path.join("rxn_bench_ui", "core", "ui")),
         (os.path.join(_SRC, "rxn_bench_ui", "assets"), os.path.join("rxn_bench_ui", "assets")),
     ]
     + _client_datas
     + _sila_datas
-    + _grpctools_datas,
+    + _grpctools_datas
+    + _device_datas,
     hiddenimports=_HIDDEN_IMPORTS,
     hookspath=[],
     excludes=[],

@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
-copy_device_plugins.py - stage devices/<name>/frontend/ next to a built exe.
+copy_device_plugins.py - stage ad-hoc devices/<name>/frontend/ next to a built exe.
 
-rxn_bench_ui/devices/__init__.py discovers device plugins from a devices/
-folder beside the executable when frozen (see that file's docstring). This
-script populates that folder from the repo's devices/<name>/frontend/ dirs so
-a fresh build ships with the same devices it has today - backend/ and
+The five first-party devices (gantry, ph_sensor, camera, dosing_pump,
+device_template) are entry-point packages baked into the bundle at build time
+by packaging/rxn-bench-ui.spec now, not staged here - each one's flat
+devices/<name>/frontend/__init__.py no longer exists (their code lives under
+devices/<name>/frontend/src/rxn_bench_<name>_frontend/ instead), so this
+script's scan naturally skips them.
+
+What's left is the zero-rebuild drop-in path: rxn_bench_ui/devices/__init__.py
+also scans a devices/ folder beside the executable when frozen, for any
+device that isn't packaged as a formal dependency (e.g. an experimental
+device someone drops into a deployed install). This script populates that
+folder from the repo's devices/<name>/frontend/ dirs - backend/ and
 __pycache__ are left out since the frontend never bundles backend code.
 
 Run from rxnbench/frontend/: python packaging/copy_device_plugins.py "dist/Rxn Bench"

@@ -24,6 +24,8 @@ jobs:
         working-directory: rxnbench/frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: astral-sh/setup-uv@v5
 
       - name: Install Inno Setup
