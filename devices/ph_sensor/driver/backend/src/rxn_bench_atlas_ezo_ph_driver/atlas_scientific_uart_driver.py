@@ -1,7 +1,7 @@
 r"""Low-level UART/serial driver for the Atlas Scientific EZO-pH circuit.
 
 Shares the EZO command protocol with the I2C driver via
-:class:`~rxn_bench_ph.ezo_commands.EZOCommandSet`; this class supplies the
+:class:`~rxn_bench_atlas_ezo_ph_driver.ezo_commands.EZOCommandSet`; this class supplies the
 serial transport. Where the I2C protocol prefixes a status byte, the UART
 protocol is line-oriented ASCII:
 
@@ -15,7 +15,7 @@ protocol is line-oriented ASCII:
 
 The driver talks to a minimal port object exposing ``write(bytes)`` and
 ``read_until(expected) -> bytes`` (pyserial's ``serial.Serial`` satisfies this,
-as does :class:`~rxn_bench_ph.mock_uart.MockEZOUart` for tests). This mirrors
+as does :class:`~rxn_bench_atlas_ezo_ph_driver.mock_uart.MockEZOUart` for tests). This mirrors
 how the I2C driver depends only on a small ``write``/``read`` bus interface.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import time
 
-from rxn_bench_ph.ezo_commands import EZOCommandSet
+from rxn_bench_atlas_ezo_ph_driver.ezo_commands import EZOCommandSet
 
 log = logging.getLogger(__name__)
 

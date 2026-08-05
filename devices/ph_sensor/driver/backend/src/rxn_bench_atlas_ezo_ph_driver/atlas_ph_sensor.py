@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from rxn_bench_ph.base_sensor import BaseSensor, SensorReading
-from rxn_bench_ph.atlas_scientific_driver import AtlasScientificEZO, DEFAULT_I2C_ADDRESS
+from rxn_bench_atlas_ezo_ph_driver.atlas_scientific_driver import AtlasScientificEZO, DEFAULT_I2C_ADDRESS
 
 
 @dataclass

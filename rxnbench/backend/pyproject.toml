@@ -1,7 +1,8 @@
 [tool.uv.workspace]
 members = [
     "../../devices/gantry/backend",
-    "../../devices/ph_sensor/backend",
+    "../../devices/ph_sensor/capability/backend",
+    "../../devices/ph_sensor/driver/backend",
     "../../devices/camera/backend",
     "../../devices/dosing_pump/backend",
     "../../devices/device_template/backend",

@@ -4,8 +4,8 @@ Lets the real driver stack (AtlasScientificEZO -> AtlasPHSensor) run end-to-end
 without hardware: MockI2CBus answers the same ASCII commands a physical EZO
 circuit would, with the standard status byte prefix and null padding.
 
-    from rxn_bench_ph.atlas_ph_sensor import AtlasPHSensor
-    from rxn_bench_ph.mock_i2c import MockI2CBus
+    from rxn_bench_atlas_ezo_ph_driver.atlas_ph_sensor import AtlasPHSensor
+    from rxn_bench_atlas_ezo_ph_driver.mock_i2c import MockI2CBus
 
     sensor = AtlasPHSensor(MockI2CBus(ph=7.2))
     sensor.read().value  # 7.2

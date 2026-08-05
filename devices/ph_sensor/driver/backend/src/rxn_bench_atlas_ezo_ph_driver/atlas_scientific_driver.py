@@ -1,12 +1,12 @@
 """Low-level I2C driver for the Atlas Scientific EZO-pH circuit.
 
-The EZO command protocol lives in :class:`~rxn_bench_ph.ezo_commands.EZOCommandSet`
+The EZO command protocol lives in :class:`~rxn_bench_atlas_ezo_ph_driver.ezo_commands.EZOCommandSet`
 (shared with the UART driver); this class supplies the I2C transport (via
-:class:`~rxn_bench_ph.base_driver.AbstractI2CDriver`) and the I2C-specific
+:class:`~rxn_bench_atlas_ezo_ph_driver.base_driver.AbstractI2CDriver`) and the I2C-specific
 status-byte response parsing.
 """
-from rxn_bench_ph.base_driver import AbstractI2CDriver
-from rxn_bench_ph.ezo_commands import EZOCommandSet
+from rxn_bench_atlas_ezo_ph_driver.base_driver import AbstractI2CDriver
+from rxn_bench_atlas_ezo_ph_driver.ezo_commands import EZOCommandSet
 
 
 DEFAULT_I2C_ADDRESS = 0x63

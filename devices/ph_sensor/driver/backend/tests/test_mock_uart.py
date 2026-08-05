@@ -4,7 +4,7 @@ Mirrors test_mock_i2c.py: checks the emulator answers the ASCII commands a
 physical EZO circuit would over serial (CR-terminated data lines framed by
 ``*OK``/``*ER``) behind the write/read_until port interface.
 """
-from rxn_bench_ph.mock_uart import MockEZOUart
+from rxn_bench_atlas_ezo_ph_driver.mock_uart import MockEZOUart
 
 
 def _drain(port) -> list[bytes]:

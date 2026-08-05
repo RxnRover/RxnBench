@@ -1,16 +1,22 @@
 [project]
 name = "rxn-bench-ph"
 version = "0.1.0"
-description = "Atlas Scientific pH sensor SiLA2 server for the Ames Lab rxn bench."
+description = "pH sensor SiLA2 server capability for the Ames Lab rxn bench - hardware-agnostic; see rxn-bench-atlas-ezo-ph-driver for the reference driver."
 requires-python = ">=3.10"
 dependencies = [
     "unitelabs-cdk",
+    "rxn-bench-atlas-ezo-ph-driver",
 ]
 
 [project.optional-dependencies]
-# Real-hardware transports on the Pi: smbus2 for the I2C path, pyserial for the
-# UART path. Both are pure Python and small, so they're bundled together.
-rpi = ["smbus2>=0.4.3", "pyserial>=3.5"]
+# Passthrough to the default driver's own rpi extra - keeps
+# `pip install rxn-bench-ph[rpi]` working unchanged for anyone/anything
+# (e.g. install_service.sh) that installed this capability package directly
+# before the driver was split out.
+rpi = ["rxn-bench-atlas-ezo-ph-driver[rpi]"]
+
+[tool.uv.sources]
+rxn-bench-atlas-ezo-ph-driver = { workspace = true }
 
 [project.scripts]
 rxn-bench-ph = "rxn_bench_ph._cli:main"
@@ -63,5 +69,5 @@ disallow_untyped_defs = true
 exclude = ["tests/", "docs/"]
 
 [[tool.mypy.overrides]]
-module = ["unitelabs.*", "smbus2.*", "serial.*"]
+module = ["unitelabs.*"]
 ignore_missing_imports = true

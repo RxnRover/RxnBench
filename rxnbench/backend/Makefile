@@ -17,6 +17,7 @@ PUMP_DIR      := ../../devices/dosing_pump/backend
 WHEELHOUSE := $(abspath ../../wheelhouse)
 
 install:
+	python3 scripts/aggregate_toolheads.py
 	uv sync
 
 start-gantry:

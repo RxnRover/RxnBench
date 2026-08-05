@@ -6,8 +6,8 @@ dict shape) is what these tests care about.
 """
 import pytest
 
-import rxn_bench_ph.base_driver as base_driver
-from rxn_bench_ph.atlas_ph_sensor import AtlasPHSensor
+import rxn_bench_atlas_ezo_ph_driver.base_driver as base_driver
+from rxn_bench_atlas_ezo_ph_driver.atlas_ph_sensor import AtlasPHSensor
 
 
 class _FakeI2CBus:
@@ -85,8 +85,8 @@ def test_status_handles_short_response():
 
 def test_sensor_accepts_injected_uart_driver():
     """The driver= keyword lets the sensor run over UART instead of I2C."""
-    from rxn_bench_ph.atlas_scientific_uart_driver import AtlasScientificEZOUart
-    from rxn_bench_ph.mock_uart import MockEZOUart
+    from rxn_bench_atlas_ezo_ph_driver.atlas_scientific_uart_driver import AtlasScientificEZOUart
+    from rxn_bench_atlas_ezo_ph_driver.mock_uart import MockEZOUart
 
     sensor = AtlasPHSensor(driver=AtlasScientificEZOUart(MockEZOUart(ph=7.2)), sensor_id="uart_ph")
     reading = sensor.read()

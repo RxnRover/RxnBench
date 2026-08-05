@@ -7,9 +7,9 @@ minus the physical bus.
 """
 import pytest
 
-import rxn_bench_ph.base_driver as base_driver
-from rxn_bench_ph.atlas_ph_sensor import AtlasPHSensor
-from rxn_bench_ph.mock_i2c import MockI2CBus
+import rxn_bench_atlas_ezo_ph_driver.base_driver as base_driver
+from rxn_bench_atlas_ezo_ph_driver.atlas_ph_sensor import AtlasPHSensor
+from rxn_bench_atlas_ezo_ph_driver.mock_i2c import MockI2CBus
 
 
 @pytest.fixture(autouse=True)

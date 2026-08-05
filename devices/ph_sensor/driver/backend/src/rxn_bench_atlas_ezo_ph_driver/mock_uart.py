@@ -1,14 +1,14 @@
 r"""In-memory mock serial port emulating the Atlas Scientific EZO-pH UART protocol.
 
-The UART counterpart to :mod:`rxn_bench_ph.mock_i2c`: it lets the real driver
+The UART counterpart to :mod:`rxn_bench_atlas_ezo_ph_driver.mock_i2c`: it lets the real driver
 stack (AtlasScientificEZOUart -> AtlasPHSensor) run end-to-end without hardware.
 It answers the same ASCII commands a physical EZO circuit would over serial -
 CR-terminated data lines framed by ``*OK`` / ``*ER`` response codes - behind the
 minimal ``write`` / ``read_until`` port interface the driver depends on.
 
-    from rxn_bench_ph.atlas_ph_sensor import AtlasPHSensor
-    from rxn_bench_ph.atlas_scientific_uart_driver import AtlasScientificEZOUart
-    from rxn_bench_ph.mock_uart import MockEZOUart
+    from rxn_bench_atlas_ezo_ph_driver.atlas_ph_sensor import AtlasPHSensor
+    from rxn_bench_atlas_ezo_ph_driver.atlas_scientific_uart_driver import AtlasScientificEZOUart
+    from rxn_bench_atlas_ezo_ph_driver.mock_uart import MockEZOUart
 
     sensor = AtlasPHSensor(driver=AtlasScientificEZOUart(MockEZOUart(ph=7.2)))
     sensor.read().value  # 7.2

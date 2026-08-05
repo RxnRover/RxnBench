@@ -6,8 +6,8 @@ test here, not actual I2C timing.
 """
 import pytest
 
-import rxn_bench_ph.base_driver as base_driver
-from rxn_bench_ph.atlas_scientific_driver import AtlasScientificEZO
+import rxn_bench_atlas_ezo_ph_driver.base_driver as base_driver
+from rxn_bench_atlas_ezo_ph_driver.atlas_scientific_driver import AtlasScientificEZO
 
 
 class _FakeI2CBus:
