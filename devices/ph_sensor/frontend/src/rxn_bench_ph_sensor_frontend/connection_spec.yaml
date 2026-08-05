@@ -1,0 +1,27 @@
+# Manifest for the rxn-bench-ph SiLA feature.
+# Run from rxnbench/frontend/:
+#   python scripts/gen_connections.py \
+#     ../../devices/ph_sensor/frontend/connection_spec.yaml \
+#     --out ../../devices/ph_sensor/frontend/generated_connection.py
+#
+# Protobuf stubs are generated from the backend manifest (rxnbench/backend:
+# make gen-proto) into proto/ph_sensor_pb2.py.
+
+meta:
+  package: sila2.edu.iastate.ames.rxnbench.phsensor.v1
+  service: PHSensor
+  class_name: PHConnectionBase
+  proto_module: rxn_bench_ph_sensor_frontend.proto.ph_sensor_pb2
+
+streams:
+  - rpc: Subscribe_Ph
+    decode_type: Subscribe_Ph_Responses
+    signal: ph_updated
+    signal_args: [float]
+    emit: ["r.Ph.value"]
+
+# Commands needing a response or a longer timeout are implemented by hand in
+# connection.py using the same generated stubs:
+#
+#   fetch_slope()           → unary_unary Get_ProbeSlope, emits slope_ready(str)
+#   calibrate(point, value) → unary_unary Calibrate (30s timeout, then re-fetch slope)

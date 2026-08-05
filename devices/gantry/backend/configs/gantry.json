@@ -1,0 +1,24 @@
+{
+  "sila_server": {
+    "hostname": "0.0.0.0",
+    "port": 50051,
+    "tls": false,
+    "require_client_auth": false,
+    "root_certificates": null,
+    "certificate_chain": null,
+    "private_key": null,
+    "options": {},
+    "uuid": "a9a1052f-64e0-4108-bb32-361c2facb4fb",
+    "name": "Gantry",
+    "type": "LabAutomation",
+    "description": "Gantry motion controller for the Ames Lab automated chemistry bench.",
+    "version": "0.1",
+    "vendor_url": "https://github.com",
+    "default_lifetime": 3600.0
+  },
+  "discovery": {
+    "ip_version": "ipv4",
+    "network_interfaces": []
+  },
+  "logging": null
+}

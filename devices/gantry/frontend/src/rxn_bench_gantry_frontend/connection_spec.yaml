@@ -1,0 +1,158 @@
+# Manifest for the rxn-bench-gantry SiLA feature.
+# Run from rxnbench/frontend/:
+#   python scripts/gen_connections.py \
+#     ../../devices/gantry/frontend/connection_spec.yaml \
+#     --out ../../devices/gantry/frontend/generated_connection.py
+
+meta:
+  package: sila2.edu.iastate.ames.rxnbench.gantry.v1
+  service: Gantry
+  class_name: GantryConnectionBase
+  proto_module: rxn_bench_gantry_frontend.proto.motion_platform_pb2
+
+# Streams — each becomes a _spawn_stream() call in _on_connected().
+# Use "emit" for simple lambda extraction; "handler" for a custom method
+# that must be implemented in the human subclass.
+streams:
+  - rpc: Subscribe_Position
+    decode_type: Subscribe_Position_Responses
+    signal: position_updated
+    signal_args: [float, float, float]
+    emit: ["r.Position.x.value", "r.Position.y.value", "r.Position.z.value"]
+
+  - rpc: Subscribe_State
+    decode_type: Subscribe_State_Responses
+    signal: state_updated
+    signal_args: [str]
+    emit: ["r.State.value"]
+
+  - rpc: Subscribe_ToolheadInfo
+    decode_type: Subscribe_ToolheadInfo_Responses
+    signal: toolhead_updated
+    signal_args: [object]
+    handler: _handle_toolhead   # custom: builds ToolheadInfo dataclass
+
+  - rpc: Subscribe_HasSavedState
+    decode_type: Subscribe_HasSavedState_Responses
+    signal: saved_state_updated
+    signal_args: [bool]
+    emit: ["r.HasSavedState.value"]
+
+  - rpc: Subscribe_CurrentWell
+    decode_type: Subscribe_CurrentWell_Responses
+    signal: well_changed
+    signal_args: [str]
+    emit: ["r.CurrentWell.value"]
+
+  - rpc: Subscribe_CurrentAction
+    decode_type: Subscribe_CurrentAction_Responses
+    signal: action_changed
+    signal_args: [str]
+    handler: _handle_action   # custom: also emits error_occurred on "Error:" prefix
+
+  - rpc: Subscribe_CurrentWorkspaceYaml
+    decode_type: Subscribe_CurrentWorkspaceYaml_Responses
+    signal: workspace_yaml_changed
+    signal_args: [str]
+    emit: ["r.CurrentWorkspaceYaml.value"]
+
+  - rpc: Subscribe_ExperimentActive
+    decode_type: Subscribe_ExperimentActive_Responses
+    signal: experiment_active_changed
+    signal_args: [bool]
+    emit: ["r.ExperimentActive.value"]
+
+# Commands — fire-and-forget over gRPC.
+# "params" names the protobuf message class; omit for no-arg commands.
+# SiLA wraps every primitive field in a typed container — "field" is the
+# proto field name, and the generator writes _p.<field>.value = <arg>.
+commands:
+  - method: jog
+    rpc: Jog
+    params: Jog_Parameters
+    args:
+      - {name: dx, field: dx, type: float, default: 0.0}
+      - {name: dy, field: dy, type: float, default: 0.0}
+      - {name: dz, field: dz, type: float, default: 0.0}
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: move_to
+    rpc: MoveTo
+    params: MoveTo_Parameters
+    args:
+      - {name: x, field: x, type: float}
+      - {name: y, field: y, type: float}
+      - {name: z, field: z, type: float}
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: move_to_well
+    rpc: MoveToWell
+    params: MoveToWell_Parameters
+    args:
+      - {name: label, field: label, type: str}
+      - {name: override_unvalidated, field: override_unvalidated, type: bool, default: False}
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: set_toolhead
+    rpc: SetToolhead
+    params: SetToolhead_Parameters
+    args:
+      - {name: name, field: name, type: str}
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: set_workspace
+    rpc: SetWorkspace
+    params: SetWorkspace_Parameters
+    args:
+      - {name: name, field: name, type: str}
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: confirm_toolhead_mounted
+    rpc: ConfirmToolheadMounted
+    params: ConfirmToolheadMounted_Parameters
+    args:
+      - {name: token, field: token, type: str, default: '""'}
+
+  - method: clear_toolhead_mounted
+    rpc: ClearToolheadMounted
+    params: ClearToolheadMounted_Parameters
+    args:
+      - {name: token, field: token, type: str, default: '""'}
+
+  # calibrate_toolhead_tip is hand-written in connection.py (blocking, needs
+  # the parsed nominal/tip result back) - not generated here.
+
+  - method: calibrate_toolhead_tip_z
+    rpc: CalibrateToolheadTipZ
+    params: CalibrateToolheadTipZ_Parameters
+    args:
+      - {name: measured_z, field: measured_z, type: float}
+      - {name: token, field: token, type: str, default: '""'}
+
+  # No token: set_z is a homing-adjacent command, always rejected while an
+  # experiment holds the lock, same as confirm_z_reference/confirm_x_min/etc.
+  - method: set_z
+    rpc: SetZ
+    params: SetZ_Parameters
+    args:
+      - {name: z, field: z, type: float}
+
+  - method: save_and_park
+    rpc: SaveAndPark
+    params: SaveAndPark_Parameters
+    args:
+      - {name: token, field: token, type: str, default: '""'}
+
+  # No-arg commands
+  - {method: clear_toolhead,           rpc: ClearToolhead}
+  - {method: start_manual_homing,      rpc: StartManualHoming}
+  - {method: finish_homing,            rpc: FinishHoming}
+  - {method: confirm_x_min,            rpc: ConfirmXMin}
+  - {method: confirm_x_max,            rpc: ConfirmXMax}
+  - {method: confirm_y_min,            rpc: ConfirmYMin}
+  - {method: confirm_y_max,            rpc: ConfirmYMax}
+  - {method: confirm_z_reference,      rpc: ConfirmZReference}
+  - {method: pause_experiment,         rpc: PauseExperiment}
+  - {method: resume_experiment,        rpc: ResumeExperiment}
+  - {method: stop_experiment,          rpc: StopExperiment}
+  - {method: force_release_experiment_lock, rpc: ForceReleaseExperimentLock}

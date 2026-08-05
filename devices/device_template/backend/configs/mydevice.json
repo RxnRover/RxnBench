@@ -1,0 +1,24 @@
+{
+  "sila_server": {
+    "hostname": "0.0.0.0",
+    "port": 50099,
+    "tls": false,
+    "require_client_auth": false,
+    "root_certificates": null,
+    "certificate_chain": null,
+    "private_key": null,
+    "options": {},
+    "uuid": "e84897da-4f6c-4991-bd7a-709f03e7d73e",
+    "name": "My Device",
+    "type": "LabAutomation",
+    "description": "TODO: describe your device.",
+    "version": "0.1",
+    "vendor_url": "https://github.com",
+    "default_lifetime": 3600.0
+  },
+  "discovery": {
+    "ip_version": "ipv4",
+    "network_interfaces": []
+  },
+  "logging": null
+}
