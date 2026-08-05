@@ -4,6 +4,10 @@ All notable changes to Rxn Bench are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- `devices` (2026-08-05): all 5 device frontends (gantry, ph_sensor, camera, dosing_pump, device_template) restructured from a flat `devices/<name>/frontend/*.py` tree into a pip-installable `src/rxn_bench_<name>_frontend/` package declaring a `rxn_bench.devices` entry point, matching the `src/` layout backend device packages already use. `rxn_bench_ui/devices/__init__.py`'s `all_devices()` now merges entry-point discovery with the previous `devices/*/frontend/` directory scan (kept as a zero-rebuild drop-in fallback for devices not packaged as a formal dependency). Each of the 10 device folders (5 frontend, 5 backend) is now also its own git repo, wired in as a submodule (`.gitmodules`) — first step towards a master-repo layout for the JOSS publication. `.gitmodules` currently points at local repo paths pending GitHub hosting. PyInstaller packaging (`rxn-bench-ui.spec`) now bundles the 5 device packages' code and entry-point metadata (`collect_all` + `copy_metadata`) at build time instead of staging their folders next to the executable; CI checkout steps gained `submodules: true`. Verified end-to-end: all 5 widgets construct via entry points both in dev and inside a real PyInstaller-frozen build (`make dist-check`), full backend + frontend test suites pass, `make check-proto`/`make check-connections` are clean.
+
 ## [v0.1.5] - 2026-08-05
 
 Packaged install now ships example scripts and workspace templates, results logging no longer silently overwrites a previous run, and a new 24-well 5mL rack labware/workspace update.
