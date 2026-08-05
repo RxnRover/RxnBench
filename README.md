@@ -4,6 +4,15 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
+- [Navigating this repository](#navigating-this-repository)
+- [Requirements](#requirements)
+- [Usage](#usage)
+- [Implementation and design](#implementation-and-design)
+- [Gallery](#gallery)
+- [References and helpful material](#references-and-helpful-material)
+- [Authors and Contributors](#authors-and-contributors)
+
 ## Overview
 
 Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform, with a Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor; a separate operator machine runs a frontend application [Rxn Bench](TODO: Eventually include repo link) that talks to those servers over gRPC/SiLA, and experiment scripts drive the bench through a Python client [Rxn Bench Client](TODO: Eventually include repo link).
@@ -37,6 +46,14 @@ customizable 3D-printable components - letting labs integrate diverse
 devices, adapt workflows, and generate data at scale for under $1000.
 
 ## Navigating this repository
+
+- [`rxnbench/`](rxnbench/) - app code that isn't specific to one device: `frontend/` (the desktop UI shell, discovery, device selection, generic fallback UI) and `backend/` (the uv workspace root, the shared `client/` Python API, install scripts).
+- [`devices/`](devices/) - one self-contained plugin per physical device (`gantry`, `ph_sensor`, `camera`, `dosing_pump`), each split into `backend/` (the SiLA2 server that ships to the device host, e.g. the Raspberry Pi) and `frontend/` (the widget + connection layer that ships with the operator UI). A device folder can be dropped in or removed without touching the app shell.
+- [`hardware_models/`](hardware_models/) - 3D-printable CAD/STL sources for the motion platform, toolheads, and peripherals.
+- [`docs/`](docs/) - usage/deployment guides, architecture and design docs, datasheets, and the images used throughout this README.
+- [`notes/`](notes/) - working notes.
+
+See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the full architecture snapshot, package layout, and active design decisions.
 
 ## Requirements
 
@@ -94,11 +111,31 @@ enables headless operation and experiment scripting
 
 ##### Workspace
 
+A workspace is a YAML-defined deck layout ([`devices/gantry/backend/src/rxn_bench_gantry/workspace/`](devices/gantry/backend/src/rxn_bench_gantry/workspace/)) that tells the gantry backend which labware sits where: sample plates, wash/waste beakers, a calibration station, and the washing station can all be mixed in whatever arrangement fits the deck and the experiment. Swapping workspaces (or editing one in the desktop UI's workspace editor) is a config change, not a rebuild - see [docs/usage.md](docs/usage.md) for how to load one.
+
 ##### Sample-Plates
+
+3D-printed plate/tube holders that snap onto the deck's footprint grid. Each is a YAML labware definition under [`devices/gantry/backend/src/rxn_bench_gantry/labware/`](devices/gantry/backend/src/rxn_bench_gantry/labware/), the single source of truth for well geometry, plate height, and the gantry's clearance/engagement-depth math.
+
+| Name                           | Wells | Purpose                           |
+| ------------------------------ | ----- | --------------------------------- |
+| 96-Well Standard Plate         | 8x12  | High-density standard well plate  |
+| 24-Well Standard Plate         | 4x6   | Square-well standard plate        |
+| 24-Well Sample Holder (5 mL)   | 4x6   | Holds 5 mL vials                  |
+| 24-Well Sample Holder (15 mL)  | 4x6   | Holds 15 mL vials                 |
+| 15-Well Sample Holder          | 3x5   | Holds large-format samples        |
+| 6-Well Sample Holder (25 mL)   | 2x3   | Holds 25 mL vials                 |
+| 6-Well Sample Holder (50 mL)   | 2x3   | Holds 50 mL vials                 |
+| 3-Well Sample Holder           | 1x3   | Holds large-diameter samples      |
+| 100 mL Beaker Holder           | 1x1   | Wash/waste reservoir              |
 
 ##### Footprints
 
+Every piece of labware shares the same footprint (127.76 x 85.48 mm - the ANSI/SBS standard microplate footprint), so any plate, tube holder, beaker, or the washing station locks into the same modular grid of mounting tiles on the deck. Swapping a 6-well tube rack for a 96-well plate is a matter of physically swapping footprints and pointing the workspace YAML at the new labware, not redesigning the deck.
+
 ##### Washing-Station
+
+A 3D-printed cup, routed to waste through tubing, used to rinse the pH probe (or future pipette tips) between wells. It is defined as its own labware footprint ([`washing_station.yaml`](devices/gantry/backend/src/rxn_bench_gantry/labware/washing_station.yaml)) so it slots into a workspace exactly like any other plate.
 
 ###### Liquid Handler (In-progress)
 
@@ -148,11 +185,23 @@ The gantry docks multiple toolheads via a 3D-printed mount with linear-rails, in
 
 #### Workspace
 
+| Planned layout                                                                                                                                                                                               | Assembled deck                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![Example workspace layout diagram showing sample plates, wash/waste beakers, a calibration station, and a pipette-tip disposal zone arranged on the deck](docs/images/resized/labware-workspace-layout.jpg) | ![Assembled deck with sample holders, a 96-well plate, and a beaker mounted on the footprint grid](docs/images/resized/labware-workspace-assembled.jpg) |
+
 #### Sample-Plates
+
+| 24-Well Sample Holder                                                                                  | 15-Well Sample Holder                                                                                         |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| ![CAD render of the 24-well sample holder block](docs/images/resized/labware-sample-plates-24well.jpg) | ![Dimensioned CAD drawing of the 15-well sample holder](docs/images/resized/labware-sample-plates-15well.jpg) |
 
 #### Footprints
 
+![CAD render of the modular footprint tiles that labware mounts onto, shown apart from the deck](docs/images/resized/labware-footprints.jpg)
+
 #### Washing-Station
+
+![The pH probe toolhead docked over the washing station cup, flanked by sample holders on the deck](docs/images/resized/labware-washing-station.jpg)
 
 ### Rxn Bench UI
 

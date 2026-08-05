@@ -22,7 +22,7 @@ TRIPLE_WIDTH = 230
 DEFAULT_WIDTH = 400
 
 CURATED: dict[str, tuple[str, int]] = {
-    "docs/images/rxn-bench_logo.png": ("logo.png", LOGO_WIDTH),
+    "docs/images/logos/rxn-bench_logo.png": ("logo.png", LOGO_WIDTH),
     "docs/design/diagrams/high-level_block_diagram/ALH_System-Block-Diagram.png": (
         "system-block-diagram.jpg",
         HERO_WIDTH,
@@ -38,6 +38,12 @@ CURATED: dict[str, tuple[str, int]] = {
     "docs/images/rxn_bench_ui/RxnBenchpHProbe.png": ("ui-ph-probe.jpg", TRIPLE_WIDTH),
     "docs/images/rxn_bench_ui/RxnBenchExperimentRunner.png": ("ui-experiment-runner.jpg", TRIPLE_WIDTH),
     "docs/images/rxn_bench_ui/RxnBenchAddDevice.png": ("ui-add-device.jpg", HERO_WIDTH),
+    "docs/images/the-making-of/Screenshot 2026-06-19 153343.png": ("labware-workspace-layout.jpg", PAIR_WIDTH),
+    "docs/images/the-making-of/IMG_0397.png": ("labware-workspace-assembled.jpg", PAIR_WIDTH),
+    "docs/images/the-making-of/24-well.png": ("labware-sample-plates-24well.jpg", PAIR_WIDTH),
+    "docs/images/the-making-of/15-well_sample-holder.png": ("labware-sample-plates-15well.jpg", PAIR_WIDTH),
+    "docs/images/the-making-of/workspace collection v2.png": ("labware-footprints.jpg", HERO_WIDTH),
+    "docs/images/the-making-of/IMG_1125.PNG": ("labware-washing-station.jpg", HERO_WIDTH),
 }
 
 
