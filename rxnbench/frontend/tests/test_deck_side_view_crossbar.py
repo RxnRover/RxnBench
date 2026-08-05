@@ -13,7 +13,7 @@ import rxn_bench_ui.devices as _devices
 from rxn_bench_ui.themes import get as get_theme
 
 _devices.all_devices()
-workspace_loader = importlib.import_module("rxn_bench_ui.devices.gantry.workspace_loader")
+workspace_loader = importlib.import_module("rxn_bench_gantry_frontend.workspace_loader")
 
 _app = QApplication.instance() or QApplication([])
 _THEME = get_theme("light")

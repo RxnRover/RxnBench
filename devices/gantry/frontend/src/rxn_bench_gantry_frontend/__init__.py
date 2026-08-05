@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
-    from ...discovery import DiscoveredServer
+    from rxn_bench_ui.discovery import DiscoveredServer
 
 # Only our own feature identifier: this widget drives the rxnbench Gantry
 # feature's specific RPCs, so matching generic SiLA motion features

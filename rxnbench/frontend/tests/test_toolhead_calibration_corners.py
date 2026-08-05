@@ -5,7 +5,7 @@ import textwrap
 import rxn_bench_ui.devices as _devices
 
 _devices.all_devices()
-_dialog = importlib.import_module("rxn_bench_ui.devices.gantry.toolhead_calibration_dialog")
+_dialog = importlib.import_module("rxn_bench_gantry_frontend.toolhead_calibration_dialog")
 _corner_wells_for = _dialog._corner_wells_for
 
 _WORKSPACE_96_WELL = textwrap.dedent("""\

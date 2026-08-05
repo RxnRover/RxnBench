@@ -12,7 +12,7 @@ import pytest
 import rxn_bench_ui.devices as _devices
 
 _devices.all_devices()
-workspace_loader = importlib.import_module("rxn_bench_ui.devices.gantry.workspace_loader")
+workspace_loader = importlib.import_module("rxn_bench_gantry_frontend.workspace_loader")
 
 
 _SERVER_96_WELL = {

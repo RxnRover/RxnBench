@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout, QWidget,
 )
 
-from ...discovery import DiscoveredServer
+from rxn_bench_ui.discovery import DiscoveredServer
 from .connection import PHConnection
 
 _UI_DIR = Path(__file__).parent / "ui"

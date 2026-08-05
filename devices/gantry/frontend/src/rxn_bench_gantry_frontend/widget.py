@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtUiTools import QUiLoader
 
-from ...discovery import DiscoveredServer
+from rxn_bench_ui.discovery import DiscoveredServer
 from .connection import GantryConnection
 from .workspace_loader import DeckViewPanel, WorkspaceLoaderWidget
 

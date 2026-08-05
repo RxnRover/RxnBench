@@ -12,7 +12,7 @@ meta:
   package: sila2.edu.iastate.ames.rxnbench.dosingpump.v1
   service: DosingPump
   class_name: DosingPumpConnectionBase
-  proto_module: rxn_bench_ui.devices.dosing_pump.proto.dosing_pump_pb2
+  proto_module: rxn_bench_dosing_pump_frontend.proto.dosing_pump_pb2
 
 streams:
   - rpc: Subscribe_VolumeDispensed

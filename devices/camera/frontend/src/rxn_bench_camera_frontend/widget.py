@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 
-from ...discovery import DiscoveredServer
+from rxn_bench_ui.discovery import DiscoveredServer
 from .connection import CameraConnection
 
 

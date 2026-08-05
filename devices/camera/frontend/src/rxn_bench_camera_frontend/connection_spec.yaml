@@ -12,7 +12,7 @@ meta:
   package: sila2.edu.iastate.ames.rxnbench.camera.v1
   service: Camera
   class_name: CameraConnectionBase
-  proto_module: rxn_bench_ui.devices.camera.proto.camera_pb2
+  proto_module: rxn_bench_camera_frontend.proto.camera_pb2
 
 streams:
   - rpc: Subscribe_LatestImage

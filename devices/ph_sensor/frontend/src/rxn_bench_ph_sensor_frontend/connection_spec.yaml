@@ -11,7 +11,7 @@ meta:
   package: sila2.edu.iastate.ames.rxnbench.phsensor.v1
   service: PHSensor
   class_name: PHConnectionBase
-  proto_module: rxn_bench_ui.devices.ph_sensor.proto.ph_sensor_pb2
+  proto_module: rxn_bench_ph_sensor_frontend.proto.ph_sensor_pb2
 
 streams:
   - rpc: Subscribe_Ph

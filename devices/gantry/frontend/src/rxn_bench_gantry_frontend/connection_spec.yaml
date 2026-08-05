@@ -8,7 +8,7 @@ meta:
   package: sila2.edu.iastate.ames.rxnbench.gantry.v1
   service: Gantry
   class_name: GantryConnectionBase
-  proto_module: rxn_bench_ui.devices.gantry.proto.motion_platform_pb2
+  proto_module: rxn_bench_gantry_frontend.proto.motion_platform_pb2
 
 # Streams — each becomes a _spawn_stream() call in _on_connected().
 # Use "emit" for simple lambda extraction; "handler" for a custom method

@@ -13,7 +13,7 @@ meta:
   package: sila2.edu.iastate.ames.rxnbench.mydevice.v1
   service: MyDevice
   class_name: MyDeviceConnectionBase
-  proto_module: rxn_bench_ui.devices.device_template.proto.my_device_pb2
+  proto_module: rxn_bench_device_template_frontend.proto.my_device_pb2
 
 streams:
   - rpc: Subscribe_Measurement
