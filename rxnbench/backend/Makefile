@@ -2,7 +2,8 @@
 
 # device-key:proto-stem pairs consumed by gen-proto/check-proto below.
 # Keys must match _DEVICES in scripts/gen_proto.py; stubs land in
-# devices/<key>/frontend/proto/<stem>.proto (+ compiled _pb2.py).
+# devices/<key>/frontend/src/rxn_bench_<key>_frontend/proto/<stem>.proto
+# (+ compiled _pb2.py).
 PROTO_DEVICES := gantry:motion_platform ph_sensor:ph_sensor device_template:my_device camera:camera dosing_pump:dosing_pump
 
 GANTRY_DIR    := ../../devices/gantry/backend
@@ -82,7 +83,7 @@ test: test-gantry test-ph test-camera test-pump test-client
 gen-proto:
 	@for pair in $(PROTO_DEVICES); do \
 		dev=$${pair%%:*}; stem=$${pair##*:}; \
-		dir=../../devices/$$dev/frontend/proto; \
+		dir=../../devices/$$dev/frontend/src/rxn_bench_$${dev}_frontend/proto; \
 		mkdir -p $$dir; touch $$dir/__init__.py; \
 		uv run python scripts/gen_proto.py $$dev > $$dir/$$stem.proto; \
 		uv run python -m grpc_tools.protoc -I $$dir --python_out=$$dir $$dir/$$stem.proto; \
@@ -93,7 +94,7 @@ check-proto:
 	@status=0; \
 	for pair in $(PROTO_DEVICES); do \
 		dev=$${pair%%:*}; stem=$${pair##*:}; \
-		proto=../../devices/$$dev/frontend/proto/$$stem.proto; \
+		proto=../../devices/$$dev/frontend/src/rxn_bench_$${dev}_frontend/proto/$$stem.proto; \
 		if ! uv run python scripts/gen_proto.py $$dev | diff -q - $$proto > /dev/null 2>&1; then \
 			echo "ERROR: $$proto is out of date. Run 'make gen-proto'."; \
 			status=1; \
