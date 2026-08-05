@@ -35,10 +35,11 @@ jobs:
       - name: Install frontend deps (incl. the 'package' group for PyInstaller)
         run: uv sync --group package
 
-      - name: Build onedir executable + stage device plugins
+      - name: Build onedir executable + stage device plugins, scripts, and example workspaces
         run: |
           uv run --group package pyinstaller --noconfirm --distpath dist --workpath build packaging/rxn-bench-ui.spec
           uv run python packaging/copy_device_plugins.py "dist/Rxn Bench"
+          uv run python packaging/copy_workflows.py "dist/Rxn Bench"
 
       # Best-effort: constructs every device widget inside the real frozen build
       # (same check make dist-check runs on Linux). Non-blocking because Qt's

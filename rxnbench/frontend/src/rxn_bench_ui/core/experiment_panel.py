@@ -33,6 +33,19 @@ def _default_results_dir() -> Path:
     return base / "results"
 
 
+def _default_scripts_dir() -> Path:
+    """Where the "Browse" dialog opens to find example experiment scripts.
+
+    Frozen build: the `Scripts/` folder staged next to the executable by
+    packaging/copy_workflows.py. Source checkout: the repo's
+    rxnbench/backend/client/scripts/ directly, so devs see the same scripts
+    without needing a build.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent / "Scripts"
+    return Path(__file__).resolve().parents[4] / "backend" / "client" / "scripts"
+
+
 class _ScriptRunner(QThread):
     """Runs a script in a subprocess and streams its output line by line."""
 
@@ -203,8 +216,17 @@ class ExperimentPanel(QWidget):
 
 
     def _browse(self) -> None:
+        # Prefer the currently-set script's folder (so re-browsing stays put),
+        # then fall back to the bundled example scripts.
+        current = self._path_edit.text().strip()
+        if current and Path(current).parent.is_dir():
+            start_dir = str(Path(current).parent)
+        elif _default_scripts_dir().is_dir():
+            start_dir = str(_default_scripts_dir())
+        else:
+            start_dir = ""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open Experiment Script", "",
+            self, "Open Experiment Script", start_dir,
             "Python scripts (*.py);;All files (*)",
         )
         if path:

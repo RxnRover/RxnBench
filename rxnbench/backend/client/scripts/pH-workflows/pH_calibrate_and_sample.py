@@ -1,13 +1,31 @@
-# Automatic calibration / sampling script for the Atlas Scientific EZO-pH probe.
-#
-# Runs a clean 3-point calibration in the order the EZO-pH circuit requires:
-# the mid (pH 7) point resets any prior calibration and must be taken first,
-# then the low (pH 4) and high (pH 10) points refine the acid/base slope.
-# After which the script reads every designated well and logs the pH values.
+# Automatic calibration / sampling script for the pH toolhead on Rxn Bench
 
+import re
 import time
 
 from rxn_bench_client import RxnBenchClient, Gantry, PHProbe, DosingPump
+
+_WELL_RE = re.compile(r'^[^/]+/([A-Za-z])(\d+)$')
+
+
+def _filter_wells(wells: list[str], *, rows: set[str] | None = None, min_col: int = 1) -> list[str]:
+    """Keep only wells with a row in *rows* (None = any row) and column >= *min_col*.
+
+    Used to skip wells that physically have no sample in them - e.g. an
+    unfilled column 1, or unfilled rows on a partially-loaded plate.
+    """
+    kept = []
+    for well in wells:
+        m = _WELL_RE.match(well)
+        if not m:
+            continue
+        row, col = m.group(1).upper(), int(m.group(2))
+        if rows is not None and row not in rows:
+            continue
+        if col < min_col:
+            continue
+        kept.append(well)
+    return kept
 
 # --- Calibration setup -------------------------------------------------------
 # Wells holding each buffer, as "plate/well" labels in the active workspace.
@@ -39,10 +57,10 @@ SAMPLE_PLATE_NAME3 = "24-well3"
 RINSE_WELL = "Wash-Station/A1"  # e.g. "Calibration/A4"
 
 # General wait times
-SETTLE_SECONDS = 30
+SETTLE_SECONDS = 5
 
 # Volume of DI water the pump dispenses into the wash well once the probe is engaged.
-WASH_VOLUME_ML = 10.0
+WASH_VOLUME_ML = 5.0
 
 # Temperature of the calibration buffers, in degrees C. The EZO assumes 25 C by
 # default;
@@ -135,9 +153,13 @@ def main() -> None:
 
         # Read every well in the 24-Well plate now that the probe is calibrated.
         bench.set_log_output(SAMPLE_LOG_FILE, columns=["well", "ph"])
-        sample_wells = bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME)
-        sample_wells2 = bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME2)
-        sample_wells3 = bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME3)
+        # Plate 1 is only loaded in A2-A6 and B2-B6 (column 1 and rows C/D are
+        # empty); plates 2 and 3 are fully loaded except for column 1.
+        sample_wells = _filter_wells(
+            bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME), rows={"A", "B"}, min_col=2
+        )
+        sample_wells2 = _filter_wells(bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME2), min_col=2)
+        sample_wells3 = _filter_wells(bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME3), min_col=2)
 
         print(f"Reading pH of {len(sample_wells)} wells in the {SAMPLE_PLATE_NAME} plate...")
 
@@ -158,7 +180,7 @@ def main() -> None:
             # Wash between wells to avoid carryover from the previous sample.
             rinse_probe(bench)
 
-        print(f"Reading pH of {len(sample_wells)} wells in the {SAMPLE_PLATE_NAME2} plate...")
+        print(f"Reading pH of {len(sample_wells2)} wells in the {SAMPLE_PLATE_NAME2} plate...")
 
         for well in sample_wells2:
             bench.check_pause_stop()  # honor the UI pause/stop button
@@ -178,7 +200,7 @@ def main() -> None:
             rinse_probe(bench)
 
 
-        print(f"Reading pH of {len(sample_wells)} wells in the {SAMPLE_PLATE_NAME3} plate...")
+        print(f"Reading pH of {len(sample_wells3)} wells in the {SAMPLE_PLATE_NAME3} plate...")
 
         for well in sample_wells3:
             bench.check_pause_stop()  # honor the UI pause/stop button

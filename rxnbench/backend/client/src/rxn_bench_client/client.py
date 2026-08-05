@@ -47,6 +47,21 @@ class ExperimentStopped(Exception):
     """Raised by check_pause_stop() when the UI stop button has been pressed."""
 
 
+def _next_available_path(path: pathlib.Path) -> pathlib.Path:
+    """Return *path*, or the first ``<stem>_<n><suffix>`` that doesn't exist yet.
+
+    Used so a re-run never silently overwrites a previous run's results.
+    """
+    if not path.exists():
+        return path
+    n = 1
+    while True:
+        candidate = path.with_name(f"{path.stem}_{n}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
 def _once(prop) -> object:
     """Subscribe to a SiLA observable property, take one value, and cancel."""
     sub = prop.subscribe()
@@ -275,6 +290,9 @@ class RxnBenchClient:
                      working directory - so bench.set_log_output("results.csv")
                      lands somewhere predictable instead of wherever the app
                      happened to be launched from. Parent dirs are created.
+                     If the resolved file already exists (e.g. a previous run
+                     used the same name), ``_1``, ``_2``, ... is appended to
+                     the stem instead of overwriting it.
             columns: Column names in order. When omitted, discovered from the
                      first bench.log() call.
         """
@@ -286,6 +304,7 @@ class RxnBenchClient:
             base = os.environ.get("RXN_BENCH_RESULTS_DIR")
             out = (pathlib.Path(base) if base else pathlib.Path.cwd()) / out
         out.parent.mkdir(parents=True, exist_ok=True)
+        out = _next_available_path(out)
         self._log_file = open(out, "w", newline="", encoding="utf-8")
         print(f"Logging results to {out}", flush=True)
         self._log_columns = list(columns) if columns is not None else None

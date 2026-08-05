@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,6 +26,20 @@ if TYPE_CHECKING:
     from .connection import GantryConnection
 
 _UI_DIR = Path(__file__).parent / "ui"
+
+
+def _default_workspaces_dir() -> Path:
+    """Where the "Import Workspace YAML" dialog opens to find example workspaces.
+
+    Frozen build: the `Workspaces/` folder staged next to the executable by
+    rxnbench/frontend/packaging/copy_workflows.py. Source checkout: this
+    device's own workspace/definitions/ directly, so devs see the same
+    examples without needing a build. These are starting templates to import
+    and edit - not the live config the gantry backend loads by name.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent / "Workspaces"
+    return Path(__file__).resolve().parent.parent / "backend" / "src" / "rxn_bench_gantry" / "workspace" / "definitions"
 
 
 @dataclass(frozen=True)
@@ -1153,8 +1168,9 @@ class WorkspaceLoaderWidget(QWidget):
             pass  # Keep showing last valid render
 
     def _on_import(self) -> None:
+        start_dir = str(_default_workspaces_dir()) if _default_workspaces_dir().is_dir() else ""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Import Workspace YAML", "", "YAML files (*.yaml *.yml);;All files (*)"
+            self, "Import Workspace YAML", start_dir, "YAML files (*.yaml *.yml);;All files (*)"
         )
         if not path:
             return

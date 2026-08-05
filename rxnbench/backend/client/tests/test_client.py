@@ -154,6 +154,33 @@ def test_log_discovers_columns_from_first_call(bench, tmp_path):
     assert rows[0]["ph"] == "7.21" and rows[1]["temp"] == "22.3"
 
 
+def test_set_log_output_does_not_overwrite_existing_file(bench, tmp_path):
+    """A results.csv from a previous run must survive a re-run with the same name."""
+    out = tmp_path / "results.csv"
+    out.write_text("previous run's data\n")
+
+    bench.set_log_output(out)
+    bench.log(ph=7.0)
+
+    assert out.read_text() == "previous run's data\n"
+    new_out = tmp_path / "results_1.csv"
+    assert new_out.exists()
+    rows = list(csv.DictReader(new_out.open()))
+    assert rows[0]["ph"] == "7.0"
+
+
+def test_set_log_output_increments_past_multiple_existing_files(bench, tmp_path):
+    (tmp_path / "results.csv").write_text("run 1\n")
+    (tmp_path / "results_1.csv").write_text("run 2\n")
+
+    bench.set_log_output(tmp_path / "results.csv")
+    bench.log(ph=7.0)
+
+    assert (tmp_path / "results.csv").read_text() == "run 1\n"
+    assert (tmp_path / "results_1.csv").read_text() == "run 2\n"
+    assert (tmp_path / "results_2.csv").exists()
+
+
 def test_log_with_explicit_columns_writes_header_up_front(bench, tmp_path):
     out = tmp_path / "results.csv"
     bench.set_log_output(out, columns=["ph"])

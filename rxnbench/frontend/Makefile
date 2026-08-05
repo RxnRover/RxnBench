@@ -31,12 +31,13 @@ check-connections:
 	exit $$status
 
 # Build a standalone onedir executable (packaging/rxn-bench-ui.spec) and stage
-# devices/*/frontend/ next to it.
+# devices/*/frontend/, example scripts, and example workspace configs next to it.
 # PyInstaller does not cross-compile: run this on the target OS (Windows for
 # the required target) to get a native build.
 dist:
 	uv run --group package pyinstaller --noconfirm --distpath dist --workpath build packaging/rxn-bench-ui.spec
 	uv run python packaging/copy_device_plugins.py "dist/Rxn Bench"
+	uv run python packaging/copy_workflows.py "dist/Rxn Bench"
 
 # Build-verification pass against the real frozen exe:
 dist-check: dist

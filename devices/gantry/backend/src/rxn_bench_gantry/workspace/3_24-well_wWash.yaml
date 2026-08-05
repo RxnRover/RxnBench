@@ -17,7 +17,7 @@ deck_height_mm: 5.0
 plates:
 
   - id: 24-well1
-    plate_type: 24_well_15ml
+    plate_type: 24_well_5ml
     origin:
       x: 79.54
       y: 175.0 
@@ -26,7 +26,7 @@ plates:
     origin_mode: center
 
   - id: 24-well2                     # unique id used in well labels, e.g. "plate1/A3"
-    plate_type: 24_well_15ml   # must match a file in labware/
+    plate_type: 24_well_5ml   # must match a file in labware/
     origin:
       x: 175.0  # mm, plate footprint reference point in gantry X (see origin_mode)
       y: 175.0   # mm, plate footprint reference point in gantry Y (see origin_mode)
@@ -35,7 +35,7 @@ plates:
     origin_mode: center            # center (default, rotates in place) | corner (origin = A1 corner, rotates around it)
 
   - id: 24-well3
-    plate_type: 24_well_15ml
+    plate_type: 24_well_5ml
     origin:
       x: 270.46
       y: 175.0

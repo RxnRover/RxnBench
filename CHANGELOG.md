@@ -4,6 +4,22 @@ All notable changes to Rxn Bench are recorded here.
 
 ## [Unreleased]
 
+## [v0.1.5] - 2026-08-05
+
+Packaged install now ships example scripts and workspace templates, results logging no longer silently overwrites a previous run, and a new 24-well 5mL rack labware/workspace update.
+
+### Added
+
+- `frontend` (2026-08-05): packaging now stages `Scripts/` and `Workspaces/` folders next to the built executable (`packaging/copy_workflows.py`, mirroring the existing `copy_device_plugins.py` pattern) - `Scripts/` from `rxnbench/backend/client/scripts/`, `Workspaces/` from the gantry's `workspace/definitions/*.yaml`. The Experiment Runner's "Browse" dialog and the gantry plugin's "Import Workspace YAML" dialog both default to these folders (falling back to the equivalent source-tree paths in a dev checkout), so a fresh install ships ready-to-run examples instead of requiring an operator to find them in a source checkout. `Workspaces/` is explicitly import-and-edit examples, not live device config - the gantry backend loads named workspaces from its own copy on the bench Pi. Wired into both build paths (`make dist` and the CI Windows build, which invokes the packaging steps directly rather than via `make dist`).
+
+### Changed
+
+- `gantry` (2026-08-05): added `24_well_5ml` labware (24-well rack sized for 5ml vials, `well_depth_mm=60`) and switched the `3_24-well_wWash` workspace's three 24-well plates from `24_well_15ml` to it. `washing_station` well depth 45 -> 40mm and footprint `height_mm` 85.48 -> 93.58mm.
+
+### Fixed
+
+- `client` (2026-08-05): `RxnBenchClient.set_log_output()` no longer silently overwrites an existing results file with the same name - if the resolved path already exists, `_1`, `_2`, ... is appended to the filename stem until an unused one is found. A re-run of a script with the same log filename (e.g. `ph_sample.csv`) now produces `ph_sample_1.csv` instead of clobbering the previous run's data.
+
 ## [v0.1.4] - 2026-08-04
 
 Dosing pump device added and verified against real hardware (UART smoke test + a fixed concurrency bug), gantry labware/rotation fixes for the new 24-well 15mL rack, and client-side logging resilience.
