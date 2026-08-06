@@ -49,10 +49,13 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR/wheelhouse" "$STAGE_DIR/bin"
 
 # --- 1. Export locked requirements for every installable device + client ---
-# Each device package itself is installed later via editable install from the
-# source tree already in the bundle (step 4 + install_service.sh) - only its
-# *dependencies* need to come from the wheelhouse, so the "-e <local path>"
-# line uv export emits for the workspace member itself is filtered out below.
+# Each device's capability package AND its driver package (a plain editable
+# path dependency, not a workspace member - see e.g. rxn-bench-ph's
+# pyproject.toml) are installed later via editable install from the source
+# tree already in the bundle (step 4 + install_service.sh) - only their
+# *dependencies* need to come from the wheelhouse, so every "-e <local path>"
+# line uv export emits (one for the capability package, one for its driver)
+# is filtered out below.
 cd "$BACKEND_DIR"
 REQS_DIR="$(mktemp -d)"
 uv export --package rxn-bench-gantry --format requirements-txt --no-header --no-annotate --no-hashes > "${REQS_DIR}/gantry.txt"
@@ -99,7 +102,7 @@ echo "Copying repo source (devices/, rxnbench/backend/)..."
 tar -C "$REPO_ROOT" \
     --exclude='.venv' --exclude='__pycache__' --exclude='.pytest_cache' \
     --exclude='.mypy_cache' --exclude='*.pyc' --exclude='logs/*.jsonl' \
-    --exclude='devices/*/frontend' --exclude='rxnbench/backend/dist' \
+    --exclude='devices/*/capability/frontend' --exclude='rxnbench/backend/dist' \
     -cf - devices rxnbench/backend \
     | tar -C "$STAGE_DIR" -xf -
 

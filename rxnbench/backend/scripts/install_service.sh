@@ -99,7 +99,8 @@ for KEY in "${DEVICE_KEYS[@]}"; do
         EXTRA="[${ARM_EXTRA}]"
     fi
 
-    WORKING_DIR="${REPO_ROOT}/devices/${PACKAGE_DIR}/backend"
+    WORKING_DIR="${REPO_ROOT}/devices/${PACKAGE_DIR}/capability/backend"
+    DRIVER_DIR="${REPO_ROOT}/devices/${PACKAGE_DIR}/driver/backend"
     VENV_DIR="${WORKING_DIR}/.venv"
     BIN_PATH="${VENV_DIR}/bin/${BIN_NAME}"
     SERVICE_NAME="${BIN_NAME}"
@@ -122,7 +123,7 @@ for KEY in "${DEVICE_KEYS[@]}"; do
         exit 1
     fi
 
-    DRIVER_HOOK="${WORKING_DIR}/install/setup_drivers.sh"
+    DRIVER_HOOK="${DRIVER_DIR}/install/setup_drivers.sh"
     if [[ -x "$DRIVER_HOOK" ]]; then
         echo "Running driver setup for ${PACKAGE_DIR}..."
         "$DRIVER_HOOK"

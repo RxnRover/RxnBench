@@ -8,7 +8,7 @@ an operator having to find them in a source checkout.
 
 - Scripts/     <- rxnbench/backend/client/scripts/ (the experiment workflows
                    the Experiment Runner's "Browse" dialog defaults to)
-- Workspaces/  <- devices/gantry/backend/src/rxn_bench_gantry/workspace/definitions/
+- Workspaces/  <- devices/gantry/capability/backend/src/rxn_bench_gantry/workspace/definitions/
                    (*.yaml only). These are EXAMPLES to import and edit, not
                    live device config - the gantry backend has its own copy on
                    the Pi that it actually loads workspaces from by name.
@@ -22,7 +22,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPTS_SRC = _REPO_ROOT / "rxnbench" / "backend" / "client" / "scripts"
 _WORKSPACES_SRC = (
-    _REPO_ROOT / "devices" / "gantry" / "backend" / "src" / "rxn_bench_gantry"
+    _REPO_ROOT / "devices" / "gantry" / "capability" / "backend" / "src" / "rxn_bench_gantry"
     / "workspace" / "definitions"
 )
 _IGNORE_SCRIPTS = shutil.ignore_patterns("__pycache__", "*.pyc")

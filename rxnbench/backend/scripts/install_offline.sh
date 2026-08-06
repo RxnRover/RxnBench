@@ -132,6 +132,12 @@ if [[ -z "$NO_PIN" ]]; then
     fi
 fi
 
+# Aggregate device-driver toolhead configs (e.g. the pH probe's mount/engage
+# geometry) into gantry's bundled toolheads/ directory before gantry's venv is
+# built below (it's an editable install, so the aggregated file has to exist
+# in the source tree first) - see rxnbench/backend/scripts/aggregate_toolheads.py.
+python3 "${SCRIPT_DIR}/aggregate_toolheads.py"
+
 "${SCRIPT_DIR}/install_service.sh" "${DEVICE_LIST[@]}" "${OFFLINE_ARGS[@]}" "${PIN_ARGS[@]}"
 
 # --- Step 2c: multicast route for mDNS discovery on a gatewayless network ---
