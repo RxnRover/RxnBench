@@ -10,9 +10,9 @@ Dispensing is simulated against an injectable clock, so a test can advance time
 and watch a dose progress and complete rather than only checking that the right
 bytes went out:
 
-    from rxn_bench_dosing_pump.atlas_dosing_pump import AtlasDosingPump
-    from rxn_bench_dosing_pump.atlas_scientific_uart_driver import AtlasScientificEZOPumpUart
-    from rxn_bench_dosing_pump.mock_uart import MockEZOPumpUart
+    from rxn_bench_atlas_ezo_pmp_driver.atlas_dosing_pump import AtlasDosingPump
+    from rxn_bench_atlas_ezo_pmp_driver.atlas_scientific_uart_driver import AtlasScientificEZOPumpUart
+    from rxn_bench_atlas_ezo_pmp_driver.mock_uart import MockEZOPumpUart
 
     clock = [0.0]
     port = MockEZOPumpUart(clock=lambda: clock[0])
@@ -26,7 +26,7 @@ from __future__ import annotations
 import time
 from collections import deque
 
-from rxn_bench_dosing_pump.ezo_pmp_commands import MIN_DISPENSE_ML
+from rxn_bench_atlas_ezo_pmp_driver.ezo_pmp_commands import MIN_DISPENSE_ML
 
 _CR = b"\r"
 

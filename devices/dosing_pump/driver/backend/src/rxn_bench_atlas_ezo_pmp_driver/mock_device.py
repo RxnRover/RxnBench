@@ -11,10 +11,10 @@ Activated by: RXN_BENCH_MOCK=1 rxn-bench-dosing-pump
 """
 from __future__ import annotations
 
-from rxn_bench_dosing_pump.atlas_dosing_pump import AtlasDosingPump
-from rxn_bench_dosing_pump.atlas_scientific_uart_driver import AtlasScientificEZOPumpUart
+from rxn_bench_atlas_ezo_pmp_driver.atlas_dosing_pump import AtlasDosingPump
+from rxn_bench_atlas_ezo_pmp_driver.atlas_scientific_uart_driver import AtlasScientificEZOPumpUart
 from rxn_bench_dosing_pump.interfaces import DosingPumpProtocol
-from rxn_bench_dosing_pump.mock_uart import MockEZOPumpUart
+from rxn_bench_atlas_ezo_pmp_driver.mock_uart import MockEZOPumpUart
 
 
 class MockDosingPump(AtlasDosingPump):

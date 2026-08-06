@@ -9,9 +9,9 @@ from collections import deque
 
 import pytest
 
-import rxn_bench_dosing_pump.atlas_scientific_uart_driver as uart_mod
-from rxn_bench_dosing_pump.atlas_scientific_uart_driver import AtlasScientificEZOPumpUart
-from rxn_bench_dosing_pump.mock_uart import MockEZOPumpUart
+import rxn_bench_atlas_ezo_pmp_driver.atlas_scientific_uart_driver as uart_mod
+from rxn_bench_atlas_ezo_pmp_driver.atlas_scientific_uart_driver import AtlasScientificEZOPumpUart
+from rxn_bench_atlas_ezo_pmp_driver.mock_uart import MockEZOPumpUart
 
 
 class _ScriptedPort:

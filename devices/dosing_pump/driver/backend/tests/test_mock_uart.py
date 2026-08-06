@@ -5,7 +5,7 @@ so the driver tests can trust it as a stand-in for hardware.
 """
 import pytest
 
-from rxn_bench_dosing_pump.mock_uart import MockEZOPumpUart
+from rxn_bench_atlas_ezo_pmp_driver.mock_uart import MockEZOPumpUart
 
 _CR = b"\r"
 

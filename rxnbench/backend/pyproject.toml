@@ -3,7 +3,7 @@ members = [
     "../../devices/gantry/backend",
     "../../devices/ph_sensor/capability/backend",
     "../../devices/camera/capability/backend",
-    "../../devices/dosing_pump/backend",
+    "../../devices/dosing_pump/capability/backend",
     "../../devices/device_template/backend",
     "client",
 ]

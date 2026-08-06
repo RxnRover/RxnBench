@@ -6,7 +6,7 @@ idempotent setters.
 import pytest
 
 from rxn_bench_dosing_pump.interfaces import DosingPumpProtocol
-from rxn_bench_dosing_pump.mock_device import MockDosingPump
+from rxn_bench_atlas_ezo_pmp_driver.mock_device import MockDosingPump
 
 
 @pytest.fixture

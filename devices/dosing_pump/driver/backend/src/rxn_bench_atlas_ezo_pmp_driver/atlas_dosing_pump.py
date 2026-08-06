@@ -18,7 +18,7 @@ class AtlasDosingPump:
         """
         Args:
             driver: A ready EZO-PMP command driver, e.g.
-                :class:`~rxn_bench_dosing_pump.atlas_scientific_uart_driver.AtlasScientificEZOPumpUart`.
+                :class:`~rxn_bench_atlas_ezo_pmp_driver.atlas_scientific_uart_driver.AtlasScientificEZOPumpUart`.
         """
         self._driver = driver
 

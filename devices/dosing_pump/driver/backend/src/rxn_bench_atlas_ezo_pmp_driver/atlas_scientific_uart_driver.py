@@ -1,7 +1,7 @@
 r"""Low-level UART/serial driver for the Atlas Scientific EZO-PMP circuit.
 
 Supplies the serial transport for
-:class:`~rxn_bench_dosing_pump.ezo_pmp_commands.EZOPumpCommandSet`. The UART
+:class:`~rxn_bench_atlas_ezo_pmp_driver.ezo_pmp_commands.EZOPumpCommandSet`. The UART
 protocol is line-oriented ASCII:
 
     - commands are written terminated with a carriage return: ``D,15\r``
@@ -21,14 +21,14 @@ protocol is line-oriented ASCII:
 
 The driver talks to a minimal port object exposing ``write(bytes)`` and
 ``read_until(expected) -> bytes`` - pyserial's ``serial.Serial`` satisfies
-this, as does :class:`~rxn_bench_dosing_pump.mock_uart.MockEZOPumpUart`.
+this, as does :class:`~rxn_bench_atlas_ezo_pmp_driver.mock_uart.MockEZOPumpUart`.
 """
 from __future__ import annotations
 
 import logging
 import time
 
-from rxn_bench_dosing_pump.ezo_pmp_commands import DELAY_MS, EZOPumpCommandSet
+from rxn_bench_atlas_ezo_pmp_driver.ezo_pmp_commands import DELAY_MS, EZOPumpCommandSet
 
 log = logging.getLogger(__name__)
 
