@@ -15,7 +15,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Install workspace
         working-directory: rxnbench/backend
-        run: uv sync
+        run: make install
       - name: Gantry tests
         working-directory: rxnbench/backend
         run: make test-gantry
