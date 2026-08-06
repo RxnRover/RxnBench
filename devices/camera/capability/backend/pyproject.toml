@@ -1,26 +1,19 @@
 [project]
-name = "rxn-bench-ph"
+name = "rxn-bench-camera"
 version = "0.1.0"
-description = "pH sensor SiLA2 server capability for the Ames Lab rxn bench - hardware-agnostic; see rxn-bench-atlas-ezo-ph-driver for the reference driver."
+description = "Camera SiLA server capability for the Ames Lab automated chemistry bench - hardware-agnostic; see rxn-bench-crowsnest-camera-driver for the reference driver."
 requires-python = ">=3.10"
 dependencies = [
     "unitelabs-cdk",
-    "rxn-bench-atlas-ezo-ph-driver",
+    "pyyaml>=6.0",
+    "rxn-bench-crowsnest-camera-driver",
 ]
 
-[project.optional-dependencies]
-# Passthrough to the default driver's own rpi extra - keeps
-# `pip install rxn-bench-ph[rpi]` working unchanged.
-rpi = ["rxn-bench-atlas-ezo-ph-driver[rpi]"]
-
 [tool.uv.sources]
-# Not a workspace member (see rxn_bench_atlas_ezo_ph_driver's own pyproject.toml
-# for why) - a plain editable path dependency instead, same pattern as
-# rxn-bench-client in rxnbench/frontend/pyproject.toml.
-rxn-bench-atlas-ezo-ph-driver = { path = "../../driver/backend", editable = true }
+rxn-bench-crowsnest-camera-driver = { path = "../../driver/backend", editable = true }
 
 [project.scripts]
-rxn-bench-ph = "rxn_bench_ph._cli:main"
+rxn-bench-camera = "rxn_bench_camera._cli:main"
 
 [dependency-groups]
 dev = [
@@ -32,7 +25,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/rxn_bench_ph"]
+packages = ["src/rxn_bench_camera"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -52,11 +45,11 @@ line-length = 100
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = "rxn_bench_ph"
+known_first_party = "rxn_bench_camera"
 
 [tool.coverage.run]
 branch = true
-source = ["rxn_bench_ph"]
+source = ["rxn_bench_camera"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -70,5 +63,5 @@ disallow_untyped_defs = true
 exclude = ["tests/", "docs/"]
 
 [[tool.mypy.overrides]]
-module = ["unitelabs.*"]
+module = ["unitelabs.*", "yaml.*"]
 ignore_missing_imports = true

@@ -21,7 +21,7 @@ dependencies = [
 rxn-bench-client = { path = "../backend/client", editable = true }
 rxn-bench-gantry-frontend = { path = "../../devices/gantry/frontend", editable = true }
 rxn-bench-ph-sensor-frontend = { path = "../../devices/ph_sensor/capability/frontend", editable = true }
-rxn-bench-camera-frontend = { path = "../../devices/camera/frontend", editable = true }
+rxn-bench-camera-frontend = { path = "../../devices/camera/capability/frontend", editable = true }
 rxn-bench-dosing-pump-frontend = { path = "../../devices/dosing_pump/frontend", editable = true }
 rxn-bench-device-template-frontend = { path = "../../devices/device_template/frontend", editable = true }
 

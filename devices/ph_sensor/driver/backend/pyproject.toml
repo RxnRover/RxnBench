@@ -16,7 +16,10 @@ rpi = ["smbus2>=0.4.3", "pyserial>=3.5"]
 atlas_ezo = "rxn_bench_atlas_ezo_ph_driver:build_sensor"
 
 [tool.uv.sources]
-rxn-bench-ph = { workspace = true }
+# Not a workspace member of rxnbench/backend (only the capability package is;
+# this driver is reached transitively via the capability's own editable path
+# dependency on it) - so this is a plain path reference, not workspace=true.
+rxn-bench-ph = { path = "../../capability/backend", editable = true }
 
 [dependency-groups]
 dev = [
