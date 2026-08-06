@@ -6,10 +6,10 @@
 # (+ compiled _pb2.py).
 PROTO_DEVICES := gantry:motion_platform ph_sensor:ph_sensor device_template:my_device camera:camera dosing_pump:dosing_pump
 
-GANTRY_DIR    := ../../devices/gantry/backend
-PH_SENSOR_DIR := ../../devices/ph_sensor/backend
-CAMERA_DIR    := ../../devices/camera/backend
-PUMP_DIR      := ../../devices/dosing_pump/backend
+GANTRY_DIR    := ../../devices/gantry/capability/backend
+PH_SENSOR_DIR := ../../devices/ph_sensor/capability/backend
+CAMERA_DIR    := ../../devices/camera/capability/backend
+PUMP_DIR      := ../../devices/dosing_pump/capability/backend
 
 # Set only when running from inside an extracted build_offline_bundle.sh
 # tarball, which ships a wheelhouse/ at its root (sibling to devices/,
@@ -64,17 +64,24 @@ start-mock:
 
 
 # PYTHONPATH is cleared to prevent ROS2 pytest plugins from interfering.
+# Driver packages aren't workspace members (see their pyproject.toml comments
+# for why), so their tests run without --package - they're still installed
+# into the shared workspace venv transitively, via their capability's editable
+# path dependency on them.
 test-gantry:
 	PYTHONPATH="" uv run --package rxn-bench-gantry pytest $(GANTRY_DIR)/tests/ -v
 
 test-ph:
 	PYTHONPATH="" uv run --package rxn-bench-ph pytest $(PH_SENSOR_DIR)/tests/ -v
+	PYTHONPATH="" uv run pytest ../../devices/ph_sensor/driver/backend/tests/ -v
 
 test-camera:
 	PYTHONPATH="" uv run --package rxn-bench-camera pytest $(CAMERA_DIR)/tests/ -v
+	PYTHONPATH="" uv run pytest ../../devices/camera/driver/backend/tests/ -v
 
 test-pump:
 	PYTHONPATH="" uv run --package rxn-bench-dosing-pump pytest $(PUMP_DIR)/tests/ -v
+	PYTHONPATH="" uv run pytest ../../devices/dosing_pump/driver/backend/tests/ -v
 
 test-client:
 	PYTHONPATH="" uv run --package rxn-bench-client pytest client/tests/ -v
@@ -84,7 +91,7 @@ test: test-gantry test-ph test-camera test-pump test-client
 gen-proto:
 	@for pair in $(PROTO_DEVICES); do \
 		dev=$${pair%%:*}; stem=$${pair##*:}; \
-		dir=../../devices/$$dev/frontend/src/rxn_bench_$${dev}_frontend/proto; \
+		dir=../../devices/$$dev/capability/frontend/src/rxn_bench_$${dev}_frontend/proto; \
 		mkdir -p $$dir; touch $$dir/__init__.py; \
 		uv run python scripts/gen_proto.py $$dev > $$dir/$$stem.proto; \
 		uv run python -m grpc_tools.protoc -I $$dir --python_out=$$dir $$dir/$$stem.proto; \
@@ -95,7 +102,7 @@ check-proto:
 	@status=0; \
 	for pair in $(PROTO_DEVICES); do \
 		dev=$${pair%%:*}; stem=$${pair##*:}; \
-		proto=../../devices/$$dev/frontend/src/rxn_bench_$${dev}_frontend/proto/$$stem.proto; \
+		proto=../../devices/$$dev/capability/frontend/src/rxn_bench_$${dev}_frontend/proto/$$stem.proto; \
 		if ! uv run python scripts/gen_proto.py $$dev | diff -q - $$proto > /dev/null 2>&1; then \
 			echo "ERROR: $$proto is out of date. Run 'make gen-proto'."; \
 			status=1; \

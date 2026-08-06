@@ -2,7 +2,17 @@
 SiLA server app factory - Gantry device.
 
 Start with: rxn-bench-gantry
+
+RXN_BENCH_MOCK=1 selects a simulated motion client (MockMoonrakerClient - a
+generic in-memory simulator of MotionClientProtocol, not tied to any real
+motion controller's wire format, so it stays in this capability package).
+Otherwise, the real driver is loaded via the "rxn_bench.gantry_drivers"
+entry-point group - RXN_BENCH_GANTRY_DRIVER picks which registered driver to
+use (default: "moonraker", provided by the rxn-bench-moonraker-driver
+package). This capability package has no import-time dependency on any
+concrete motion controller driver.
 """
+import importlib.metadata
 import logging
 import os
 
@@ -10,13 +20,24 @@ from unitelabs.cdk.connector import Connector
 
 from rxn_bench_gantry.machine_config import MachineConfig
 from rxn_bench_gantry.controller import GantryController
-from rxn_bench_gantry.moonraker_client import MoonrakerClient
-from rxn_bench_gantry.moonraker_discovery import find_moonraker
 from rxn_bench_gantry.feature import Gantry
 
 log = logging.getLogger(__name__)
 
 _MOCK = bool(os.environ.get("RXN_BENCH_MOCK"))
+_DRIVER_NAME = os.environ.get("RXN_BENCH_GANTRY_DRIVER", "moonraker")
+_DRIVER_GROUP = "rxn_bench.gantry_drivers"
+
+
+def _load_driver_factory(name: str):
+    for ep in importlib.metadata.entry_points(group=_DRIVER_GROUP):
+        if ep.name == name:
+            return ep.load()
+    available = sorted(ep.name for ep in importlib.metadata.entry_points(group=_DRIVER_GROUP))
+    raise RuntimeError(
+        f"No gantry driver registered as {name!r} under the {_DRIVER_GROUP!r} entry-point "
+        f"group; available: {available or '(none installed)'}"
+    )
 
 
 async def create_app(config):
@@ -33,14 +54,8 @@ async def create_app(config):
         from rxn_bench_gantry.mock_moonraker import MockMoonrakerClient
         motion_client = MockMoonrakerClient()
     else:
-        log.info("Searching for Moonraker...")
-        host = await find_moonraker(timeout=10.0)
-        if host:
-            log.info("Moonraker found at %s", host)
-        else:
-            host = machine.moonraker_fallback_host
-            log.warning("Moonraker not discovered - falling back to %s", host)
-        motion_client = MoonrakerClient(host, default_speed=4500)
+        build_motion_client = _load_driver_factory(_DRIVER_NAME)
+        motion_client = await build_motion_client(machine.moonraker_fallback_host)
 
     # get_axis_limits() gives the starting *size* of each axis (Klipper's
     # configured travel range, or the mock's fixed bed). Only the span

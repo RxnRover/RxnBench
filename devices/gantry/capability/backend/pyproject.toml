@@ -1,14 +1,16 @@
 [project]
 name = "rxn-bench-gantry"
 version = "0.1.0"
-description = "Gantry motion controller SiLA2 server for the Ames Lab rxn bench."
+description = "Gantry motion controller SiLA2 server capability - hardware-agnostic; see rxn-bench-moonraker-driver for the reference driver."
 requires-python = ">=3.10"
 dependencies = [
     "unitelabs-cdk",
-    "requests>=2.31.0",
     "pyyaml>=6.0",
-    "zeroconf>=0.131.0",
+    "rxn-bench-moonraker-driver",
 ]
+
+[tool.uv.sources]
+rxn-bench-moonraker-driver = { path = "../../driver/backend", editable = true }
 
 [project.scripts]
 rxn-bench-gantry = "rxn_bench_gantry._cli:main"
@@ -62,5 +64,5 @@ disallow_untyped_defs = true
 exclude = ["tests/", "docs/"]
 
 [[tool.mypy.overrides]]
-module = ["unitelabs.*", "requests.*", "yaml.*", "zeroconf.*"]
+module = ["unitelabs.*", "yaml.*"]
 ignore_missing_imports = true

@@ -10,7 +10,7 @@ test:
 
 # Regenerate every device's generated_connection.py from its connection_spec.yaml.
 gen-connections:
-	@for spec in $(DEVICES_DIR)/*/frontend/src/*/connection_spec.yaml; do \
+	@for spec in $(DEVICES_DIR)/*/capability/frontend/src/*/connection_spec.yaml; do \
 		out=$$(dirname $$spec)/generated_connection.py; \
 		uv run python scripts/gen_connections.py $$spec --out $$out; \
 	done
@@ -18,7 +18,7 @@ gen-connections:
 # CI drift check: fail if any generated_connection.py is stale relative to its spec.
 check-connections:
 	@status=0; \
-	for spec in $(DEVICES_DIR)/*/frontend/src/*/connection_spec.yaml; do \
+	for spec in $(DEVICES_DIR)/*/capability/frontend/src/*/connection_spec.yaml; do \
 		out=$$(dirname $$spec)/generated_connection.py; \
 		uv run python scripts/gen_connections.py $$spec --out /tmp/_check_connection.py > /dev/null; \
 		if ! diff -q /tmp/_check_connection.py $$out > /dev/null; then \
