@@ -48,8 +48,8 @@ devices, adapt workflows, and generate data at scale for under $1000.
 ## Navigating this repository
 
 - [`rxnbench/`](rxnbench/) - app code that isn't specific to one device: `frontend/` (the desktop UI shell, discovery, device selection, generic fallback UI) and `backend/` (the uv workspace root, the shared `client/` Python API, install scripts).
-- [`devices/`](devices/) - one self-contained plugin per physical device (`gantry`, `ph_sensor`, `camera`, `dosing_pump`), each split into `backend/` (the SiLA2 server that ships to the device host, e.g. the Raspberry Pi) and `frontend/` (the widget + connection layer that ships with the operator UI). A device folder can be dropped in or removed without touching the app shell.
-- [`hardware_models/`](hardware_models/) - 3D-printable CAD/STL sources for the motion platform, toolheads, and peripherals.
+- [`devices/`](devices/) - one self-contained plugin per physical device (`gantry`, `ph_sensor`, `camera`, `dosing_pump`), each split into a `capability/` (the SiLA2 server + operator-UI widget - hardware-agnostic) and a `driver/` (the actual vendor hardware code that plugs into it, plus that hardware's CAD and any mount/toolhead config). See [Supported-Devices.md](Supported-Devices.md) for which driver backs which capability. A device folder can be dropped in or removed without touching the app shell.
+- [`hardware_models/`](hardware_models/) - placeholders for future devices without hardware yet. Each existing device's CAD lives with its driver instead - see `devices/<name>/driver/hardware_models/`.
 - [`docs/`](docs/) - usage/deployment guides, architecture and design docs, datasheets, and the images used throughout this README.
 - [`notes/`](notes/) - working notes.
 
@@ -111,11 +111,11 @@ enables headless operation and experiment scripting
 
 ##### Workspace
 
-A workspace is a YAML-defined deck layout ([`devices/gantry/backend/src/rxn_bench_gantry/workspace/`](devices/gantry/backend/src/rxn_bench_gantry/workspace/)) that tells the gantry backend which labware sits where: sample plates, wash/waste beakers, a calibration station, and the washing station can all be mixed in whatever arrangement fits the deck and the experiment. Swapping workspaces (or editing one in the desktop UI's workspace editor) is a config change, not a rebuild - see [docs/usage.md](docs/usage.md) for how to load one.
+A workspace is a YAML-defined deck layout ([`devices/gantry/capability/backend/src/rxn_bench_gantry/workspace/`](devices/gantry/capability/backend/src/rxn_bench_gantry/workspace/)) that tells the gantry backend which labware sits where: sample plates, wash/waste beakers, a calibration station, and the washing station can all be mixed in whatever arrangement fits the deck and the experiment. Swapping workspaces (or editing one in the desktop UI's workspace editor) is a config change, not a rebuild - see [docs/usage.md](docs/usage.md) for how to load one.
 
 ##### Sample-Plates
 
-3D-printed plate/tube holders that snap onto the deck's footprint grid. Each is a YAML labware definition under [`devices/gantry/backend/src/rxn_bench_gantry/labware/`](devices/gantry/backend/src/rxn_bench_gantry/labware/), the single source of truth for well geometry, plate height, and the gantry's clearance/engagement-depth math.
+3D-printed plate/tube holders that snap onto the deck's footprint grid. Each is a YAML labware definition under [`devices/gantry/capability/backend/src/rxn_bench_gantry/labware/`](devices/gantry/capability/backend/src/rxn_bench_gantry/labware/), the single source of truth for well geometry, plate height, and the gantry's clearance/engagement-depth math.
 
 | Name                           | Wells | Purpose                           |
 | ------------------------------ | ----- | --------------------------------- |
@@ -135,7 +135,7 @@ Every piece of labware shares the same footprint (127.76 x 85.48 mm - the ANSI/S
 
 ##### Washing-Station
 
-A 3D-printed cup, routed to waste through tubing, used to rinse the pH probe (or future pipette tips) between wells. It is defined as its own labware footprint ([`washing_station.yaml`](devices/gantry/backend/src/rxn_bench_gantry/labware/washing_station.yaml)) so it slots into a workspace exactly like any other plate.
+A 3D-printed cup, routed to waste through tubing, used to rinse the pH probe (or future pipette tips) between wells. It is defined as its own labware footprint ([`washing_station.yaml`](devices/gantry/capability/backend/src/rxn_bench_gantry/labware/washing_station.yaml)) so it slots into a workspace exactly like any other plate.
 
 ###### Liquid Handler (In-progress)
 

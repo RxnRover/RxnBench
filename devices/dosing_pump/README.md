@@ -1,9 +1,9 @@
 # dosing_pump
 
-Atlas Scientific **EZO-PMP** embedded peristaltic dosing pump, exposed as the `DosingPump` SiLA feature on port **50054**.
+Dosing pump SiLA feature, exposed as `DosingPump` on port **50054**. Hardware-agnostic - the reference hardware is the Atlas Scientific **EZO-PMP**, but that's a driver, not baked into the feature.
 
-- **`backend/`** — `rxn_bench_dosing_pump` SiLA2 server package. See [backend/README.md](backend/README.md) for the command set, wiring, and how to run it.
-- **`frontend/`** — PySide6 device plugin: a hand-built widget with dispense / dose-over-time / flow-rate controls, live dispensed volume, and totals.
+- **`capability/`** — the SiLA feature + PySide6 widget. `capability/backend/` is `rxn-bench-dosing-pump`. `capability/frontend/` is the widget: dispense / dose-over-time / flow-rate controls, live dispensed volume, totals. See [capability/backend/README.md](capability/backend/README.md) for the command set.
+- **`driver/`** — `rxn-bench-atlas-ezo-pmp-driver`, the Atlas Scientific EZO-PMP UART driver (including its mock - see "Reusing this for a different pump" below for why the mock lives here too). Swap this for a different pump's driver without touching the SiLA feature or widget. See [Supported-Devices.md](../../Supported-Devices.md).
 
 ## Hardware at a glance
 
@@ -67,14 +67,14 @@ with RxnBenchClient() as bench:
 
 ## Reusing this for a different pump
 
-Everything except the driver is model-agnostic, because the frontend is matched to the **SiLA feature**, not the hardware: `rxn_bench_ui` discovers plugins by comparing advertised feature identifiers against `FEATURE_FRAGMENTS`. Any server advertising `DosingPump` gets this widget.
+Everything in `capability/` is model-agnostic, because the frontend is matched to the **SiLA feature**, not the hardware: `rxn_bench_ui` discovers plugins by comparing advertised feature identifiers against `FEATURE_FRAGMENTS`. Any server advertising `DosingPump` gets this widget.
 
-So a second pump model needs **one new driver class and one registry line** — no new frontend code, proto, connection layer, or client class:
+So a second pump model needs **its own driver package** — no changes to the capability (feature, proto, connection layer, client, or widget):
 
-1. Write a driver satisfying [`DosingPumpProtocol`](backend/src/rxn_bench_dosing_pump/interfaces.py) (12 methods).
-2. Register a builder for it in `_DRIVERS` in [`server.py`](backend/src/rxn_bench_dosing_pump/server.py), then select it with `RXN_BENCH_PUMP_DRIVER=<key>`.
+1. Write a driver satisfying [`DosingPumpProtocol`](capability/backend/src/rxn_bench_dosing_pump/interfaces.py) (12 methods) in a new package, e.g. `rxn_bench_<vendor>_driver`.
+2. Register it in that package's `pyproject.toml` under the `rxn_bench.dosing_pump_drivers` entry-point group, pointing at a factory function (see [`driver/backend/pyproject.toml`](driver/backend/pyproject.toml) for the exact shape). Select it at runtime with `RXN_BENCH_PUMP_DRIVER=<your-entry-point-name>` (default: `atlas_ezo_pmp`).
 
-If the new pump also happens to be a distinct physical device you want running *alongside* the EZO-PMP, give it its own `devices/<name>/` with its own port and config — but still register the same `DosingPump` feature, and it reuses the same widget automatically.
+`capability/backend/src/rxn_bench_dosing_pump/server.py` never imports a concrete driver - it just asks the entry-point registry for whichever name `RXN_BENCH_PUMP_DRIVER` names. If the new pump also happens to be a distinct physical device you want running *alongside* the EZO-PMP, give it its own `devices/<name>/` with its own capability, port, and config — but still register the same `DosingPump` feature, and it reuses the same widget automatically.
 
 ### What the core interface deliberately excludes
 

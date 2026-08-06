@@ -2,7 +2,10 @@
 
 Desktop control app for the Rxn Bench. It discovers the backend SiLA2 device
 servers (gantry, pH, camera) over mDNS on the local network and drives them over
-gRPC. Device widgets are drop-in plugins loaded from `devices/*/frontend/`.
+gRPC. Device widgets are plugins - the 5 shipped devices are installed packages
+under `devices/*/capability/frontend/`, discovered via a Python entry point;
+a flat `devices/<name>/frontend/` (no install needed) still works too, as a
+drop-in fallback for a new/experimental device. See `docs/ai/CURRENT_STATE.md` §2.
 
 Runs on a separate machine from the backend - all data goes over SiLA/gRPC.
 
@@ -33,9 +36,11 @@ make dist-check    # optional: constructs every device widget in the frozen buil
 "./dist/Rxn Bench/Rxn Bench"
 ```
 
-`make dist` also stages each `devices/<name>/frontend/` next to the executable,
-so the packaged app keeps the drop-in plugin model - no rebuild needed to add a
-device later.
+`make dist` bakes the 5 shipped devices into the build directly (they're real
+dependencies of `rxn-bench-ui`, not staged folders) - adding one of those
+needs a rebuild. It also stages any flat `devices/<name>/frontend/` (the
+fallback path above) next to the executable, so *that* kind of device still
+works as a true no-rebuild drop-in.
 
 ### Windows installer
 

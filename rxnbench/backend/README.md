@@ -59,7 +59,7 @@ make test             # all devices + client (or: make test-gantry / test-ph / t
 After changing a device's SiLA feature/command manifest:
 
 ```bash
-make gen-proto        # writes devices/<name>/frontend/proto/*.proto (+ _pb2.py)
+make gen-proto        # writes devices/<name>/capability/frontend/src/*/proto/*.proto (+ _pb2.py)
 make check-proto      # CI drift check
 ```
 

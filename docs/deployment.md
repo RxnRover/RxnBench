@@ -92,7 +92,7 @@ One command does all of the following:
    does (`raspi-config nonint do_i2c 0` to enable I2C, then an `i2cdetect`
    sanity scan for the EZO-pH circuit at `0x63`). The camera has no driver
    setup step - it only needs network access to Crowsnest (see
-   [devices/camera/backend/README.md](../devices/camera/backend/README.md)).
+   [devices/camera/capability/backend/README.md](../devices/camera/capability/backend/README.md)).
 4. Installs a systemd unit per device (`Restart=on-failure`, `RestartSec=5`,
    `WantedBy=multi-user.target`) and starts it - survives crashes and
    reboots.
@@ -163,7 +163,7 @@ a new bundle:
 ```bash
 mkdir -p ~/.rxn_bench
 for dev in gantry ph_sensor camera; do
-  src=$(ls ~/rxn-bench-backend-offline-*/devices/*/backend/configs/${dev}.json | head -1)
+  src=$(ls ~/rxn-bench-backend-offline-*/devices/*/capability/backend/configs/${dev}.json | head -1)
   python3 - "$src" ~/.rxn_bench/${dev}.json <<'PY'
 import json, sys
 src, dst = sys.argv[1], sys.argv[2]
@@ -212,5 +212,5 @@ directly - see [usage.md](usage.md).)
 Nothing in `install_offline.sh` or `build_offline_bundle.sh` needs to change
 structurally - add one line to the device registry in
 `scripts/install_service.sh`, add a driver-setup hook at
-`devices/<name>/backend/install/setup_drivers.sh` if the device needs one,
+`devices/<name>/driver/backend/install/setup_drivers.sh` if the device needs one,
 and pick the next port in the registry table above.

@@ -4,7 +4,7 @@ Device plugin package.
 Devices are discovered two ways, merged into one list:
 
 1. Entry points - installed packages that declare a "rxn_bench.devices" entry
-   point (see e.g. devices/gantry/frontend/pyproject.toml). This is how the
+   point (see e.g. devices/gantry/capability/frontend/pyproject.toml). This is how the
    first-party devices (gantry, ph_sensor, camera, dosing_pump,
    device_template) ship: each is its own pip-installable package (and its
    own git repo, wired into this checkout as a submodule), depended on by

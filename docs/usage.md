@@ -16,7 +16,7 @@ cd rxnbench/frontend && uv sync
 
 On the device host (a Raspberry Pi in the reference deployment), `rxnbench/backend/install.sh` wraps the above, installs `uv` if missing, and pulls in the pH sensor's I2C dependencies automatically when run on ARM hardware. This gives you the shared dev workspace used by `make start-mock`/`make test`/etc.
 
-For production, install each server as a systemd service. This gives each device its own standalone venv (`devices/gantry/backend/.venv`, `devices/ph_sensor/backend/.venv`, `devices/camera/backend/.venv`), separate from the shared dev workspace venv above, so any service can be updated and restarted independently:
+For production, install each server as a systemd service. This gives each device its own standalone venv (`devices/gantry/capability/backend/.venv`, `devices/ph_sensor/capability/backend/.venv`, `devices/camera/capability/backend/.venv` - the driver package installs into the same venv automatically, as a dependency of the capability), separate from the shared dev workspace venv above, so any service can be updated and restarted independently:
 
 ```bash
 #in the rxnbench/backend directory

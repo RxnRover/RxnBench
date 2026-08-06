@@ -1,10 +1,8 @@
 # pH Sensor
 
-Reads pH from an Atlas Scientific EZO-pH circuit over I2C, with mid/low/high three-point calibration and a streaming `Ph` observable property.
+Streams pH readings with mid/low/high three-point calibration. Hardware-agnostic - the actual probe driver is separate, not baked in.
 
-- **`backend/`** — `rxn-bench-ph` SiLA2 server (port 50052), runs on the device host alongside `rxn-bench-gantry` (a Raspberry Pi in the reference deployment). See [backend/README.md](backend/README.md) for the full SiLA feature list, hardware wiring, calibration workflow, and how to swap in a different pH sensor.
-- **`frontend/`** — the pH device plugin for the PySide6 UI (live reading graph, calibration controls, gRPC connection layer). Runs as part of `rxn_bench_ui` on the operator machine. See `frontend/__init__.py` for the `FEATURE_FRAGMENTS`/`create_widget` contract.
+- **`capability/`** — the SiLA feature + PySide6 widget. `capability/backend/` is `rxn-bench-ph` (port 50052, runs on the device host alongside `rxn-bench-gantry` - a Raspberry Pi in the reference deployment). `capability/frontend/` is the pH device plugin (live reading graph, calibration controls). See [capability/backend/README.md](capability/backend/README.md) for the full SiLA feature list and calibration workflow.
+- **`driver/`** — `rxn-bench-atlas-ezo-ph-driver`, the Atlas Scientific EZO-pH circuit driver (I2C or UART), plus the probe's toolhead mount CAD in `driver/hardware_models/` and its gantry toolhead config in `driver/toolhead/`. Swap this for a different pH probe's driver without touching the SiLA feature or widget. See [Supported-Devices.md](../../Supported-Devices.md).
 
-Both halves are independently deployable — the backend never runs on the operator machine, and the frontend never imports backend code directly (SiLA/gRPC only). See [docs/ai/CURRENT_STATE.md](../../docs/ai/CURRENT_STATE.md) for the full architecture.
-
-Note: `backend/tests/` currently has no real test coverage (see `docs/ai/CURRENT_STATE.md` gaps) — `devices/gantry/backend/tests/` is the model to follow.
+`capability/backend/` and `driver/backend/` both only ever run on the device host; `capability/frontend/` only ever runs on the operator machine as part of `rxn_bench_ui` (SiLA/gRPC only, no direct imports). See [docs/ai/CURRENT_STATE.md](../../docs/ai/CURRENT_STATE.md) for the full architecture.

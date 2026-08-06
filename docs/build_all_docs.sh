@@ -17,14 +17,16 @@ cd "$REPO_ROOT"
 # Every package with a docs/ dir. rxnbench/docs is the combined entry point
 # (backend client + frontend); the rest are per-package. Keep this list in sync
 # when adding a new device or package with its own docs/.
+# Driver packages (devices/<name>/driver/backend/) don't have Sphinx docs set
+# up yet - only the capability packages do.
 DOC_DIRS=(
   rxnbench/docs
   rxnbench/frontend/docs
   rxnbench/backend/client/docs
-  devices/gantry/backend/docs
-  devices/ph_sensor/backend/docs
-  devices/camera/backend/docs
-  devices/device_template/backend/docs
+  devices/gantry/capability/backend/docs
+  devices/ph_sensor/capability/backend/docs
+  devices/camera/capability/backend/docs
+  devices/device_template/capability/backend/docs
 )
 
 do_html=1

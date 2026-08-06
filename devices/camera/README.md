@@ -1,8 +1,8 @@
 # Camera
 
-Streams periodic still images from a Crowsnest-managed webcam over SiLA. Initial target is the Crowsnest stream on the SOVOL SV08, but the hardware interface (`CameraProtocol`) only requires a `capture() -> bytes` method, so a different camera backend can be swapped in without touching the SiLA feature.
+Streams periodic still images over SiLA. `CameraProtocol` only requires a `capture() -> bytes` method, so the capability doesn't care what's behind it.
 
-- **`backend/`** — `rxn-bench-camera` SiLA2 server (port 50053), runs on the device host alongside `rxn-bench-gantry`/`rxn-bench-ph` (a Raspberry Pi in the reference deployment, though the camera itself is attached to the SV08's own controller running Crowsnest). See [backend/README.md](backend/README.md) for the full SiLA feature list, Crowsnest wiring, and how to swap in a different camera source.
-- **`frontend/`** — the Camera device plugin for the PySide6 UI (live image view, capture-interval control, gRPC connection layer). Runs as part of `rxn_bench_ui` on the operator machine. See `frontend/__init__.py` for the `FEATURE_FRAGMENTS`/`create_widget` contract.
+- **`capability/`** — the SiLA feature + PySide6 widget. `capability/backend/` is `rxn-bench-camera` (port 50053, runs on the device host alongside `rxn-bench-gantry`/`rxn-bench-ph` - a Raspberry Pi in the reference deployment). `capability/frontend/` is the Camera device plugin (live image view, capture-interval control). See [capability/backend/README.md](capability/backend/README.md) for the full SiLA feature list.
+- **`driver/`** — `rxn-bench-crowsnest-camera-driver`, which pulls stills from a Crowsnest-managed webcam over HTTP (initial target: the Crowsnest stream on the SOVOL SV08's own controller). Swap this for a different camera source's driver without touching the SiLA feature or widget. See [Supported-Devices.md](../../Supported-Devices.md).
 
-Both halves are independently deployable — the backend never runs on the operator machine, and the frontend never imports backend code directly (SiLA/gRPC only). See [docs/ai/CURRENT_STATE.md](../../docs/ai/CURRENT_STATE.md) for the full architecture.
+`capability/backend/` and `driver/backend/` both only ever run on the device host; `capability/frontend/` only ever runs on the operator machine as part of `rxn_bench_ui` (SiLA/gRPC only, no direct imports). See [docs/ai/CURRENT_STATE.md](../../docs/ai/CURRENT_STATE.md) for the full architecture.
