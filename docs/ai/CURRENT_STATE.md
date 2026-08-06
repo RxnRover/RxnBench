@@ -18,16 +18,16 @@ Operator Machine
         └── rxn_bench_client    └── rxn-bench-dosing-pump :50054 ── Atlas EZO-PMP peristaltic pump
 ```
 
-The backend is split into independently deployable packages:
+Each backend device is split into a **capability** package (the SiLA feature + Protocol interface, hardware-agnostic) and one or more **driver** packages (a concrete implementation of that Protocol, plus that hardware's CAD/toolhead config) - see "Capability + driver split" below and [Supported-Devices.md](../../Supported-Devices.md) for the full capability↔driver registry:
 
-| Package | Role | Notes |
+| Capability package | Role | Reference driver package |
 |---|---|---|
-| `rxn_bench_gantry` | Gantry SiLA server | Motion, homing, workspace/well movement, toolhead management, Moonraker bridge |
-| `rxn_bench_ph` | pH SiLA server | pH readings, calibration, slope reporting, mock pH path |
-| `rxn_bench_camera` | Camera SiLA server | Periodic image capture/streaming and archiving, Crowsnest HTTP bridge, mock camera path |
-| `rxn_bench_dosing_pump` | Dosing pump SiLA server | Volume/timed/continuous dispensing, flow-rate control, calibration, Atlas EZO-PMP UART bridge, mock pump path |
-| `rxn_bench_client` | Experiment script client | Script-friendly session manager and instrument wrappers |
-| `rxn_bench_template` | Device template | Reference package for adding future device servers |
+| `rxn_bench_gantry` | Gantry SiLA server | `rxn_bench_moonraker_driver` (Moonraker/Klipper) |
+| `rxn_bench_ph` | pH SiLA server | `rxn_bench_atlas_ezo_ph_driver` (Atlas Scientific EZO-pH, I2C or UART) |
+| `rxn_bench_camera` | Camera SiLA server | `rxn_bench_crowsnest_camera_driver` (Crowsnest webcam stream) |
+| `rxn_bench_dosing_pump` | Dosing pump SiLA server | `rxn_bench_atlas_ezo_pmp_driver` (Atlas Scientific EZO-PMP) |
+| `rxn_bench_client` | Experiment script client | Script-friendly session manager and instrument wrappers (no driver split - not device-specific) |
+| `rxn_bench_template` | Device template | Reference capability package for adding future devices (no real driver - see below) |
 
 The frontend is a PySide6 app with a stable split between core shell code and per-device plugins.
 
@@ -35,28 +35,42 @@ Per-package class/package UML diagrams (generated via `make uml`, see each packa
 
 ### Device-first layout
 
-Each device is a self-contained top-level folder, not split across the `rxnbench/backend` and `rxnbench/frontend` trees. Each `devices/<name>/{backend,frontend}` folder is now also its own git repo, wired into this checkout as a **git submodule** (`.gitmodules`) — one step towards the JOSS-publication goal of the Automated_Chem_Bench repo becoming a master/meta repo over `rxnbench`, `rxn_bench_client`, and per-device repos. `.gitmodules` currently points at local paths (`../rxn-bench-device-repos/rxn-bench-<name>-<side>`) pending those repos being pushed to GitHub — a fresh clone needs `git submodule update --init` (or `git clone --recurse-submodules`) before anything under `devices/` is populated:
+Each device is a self-contained top-level folder, not split across the `rxnbench/backend` and `rxnbench/frontend` trees. Each `devices/<name>/{capability,driver}` folder is now also its own git repo, wired into this checkout as a **git submodule** (`.gitmodules`) — one step towards the JOSS-publication goal of the Automated_Chem_Bench repo becoming a master/meta repo over `rxnbench`, `rxn_bench_client`, and per-device/per-driver repos. `.gitmodules` currently points at local paths (`../rxn-bench-device-repos/rxn-bench-<name>-<side>`) pending those repos being pushed to GitHub — a fresh clone needs `git submodule update --init` (or `git clone --recurse-submodules`) before anything under `devices/` is populated:
 
 ```text
 devices/
 ├── gantry/
-│   ├── backend/    ← rxn_bench_gantry SiLA server package (submodule)
-│   └── frontend/   ← rxn_bench_gantry_frontend plugin package (submodule)
+│   ├── capability/    ← rxn_bench_gantry (backend/) + rxn_bench_gantry_frontend (frontend/) (submodule)
+│   └── driver/        ← rxn_bench_moonraker_driver + hardware_models/ (SV08 mounting hardware) (submodule)
 ├── ph_sensor/
-│   ├── backend/    ← rxn_bench_ph SiLA server package (submodule)
-│   └── frontend/   ← rxn_bench_ph_sensor_frontend plugin package (submodule)
+│   ├── capability/    ← rxn_bench_ph (backend/) + rxn_bench_ph_sensor_frontend (frontend/) (submodule)
+│   └── driver/        ← rxn_bench_atlas_ezo_ph_driver + hardware_models/ + toolhead/ (ph_probe_toolhead.yaml) (submodule)
 ├── camera/
-│   ├── backend/    ← rxn_bench_camera SiLA server package (submodule)
-│   └── frontend/   ← rxn_bench_camera_frontend plugin package (submodule)
+│   ├── capability/    ← rxn_bench_camera (backend/) + rxn_bench_camera_frontend (frontend/) (submodule)
+│   └── driver/        ← rxn_bench_crowsnest_camera_driver (submodule)
 ├── dosing_pump/
-│   ├── backend/    ← rxn_bench_dosing_pump SiLA server package (submodule)
-│   └── frontend/   ← rxn_bench_dosing_pump_frontend plugin package (submodule)
+│   ├── capability/    ← rxn_bench_dosing_pump (backend/) + rxn_bench_dosing_pump_frontend (frontend/) (submodule)
+│   └── driver/        ← rxn_bench_atlas_ezo_pmp_driver (submodule)
 └── device_template/
-    ├── backend/    ← reference backend package for new devices (submodule)
-    └── frontend/   ← reference frontend plugin package for new devices (submodule)
+    └── capability/    ← reference capability package for new devices (backend/ + frontend/) (submodule; no driver/ - see below)
 ```
 
-This is a file-layout convention only — it does **not** relax the hard machine-separation rule below. `devices/<name>/backend/` still only ships to the device host (a Raspberry Pi in the reference deployment); `devices/<name>/frontend/` still only runs on the operator machine as part of the single `rxn_bench_ui` app; nothing under `frontend/` imports anything under `backend/`. `rxnbench/backend/` (uv workspace root, `client/`, `install.sh`) and `rxnbench/frontend/` (the app itself: `core/`, `connections/`, `proto/`) hold the code that isn't specific to one device. Submodule status is orthogonal to the uv workspace/editable-path wiring: `rxnbench/backend/pyproject.toml`'s `[tool.uv.workspace] members` and `rxnbench/frontend/pyproject.toml`'s `[tool.uv.sources]` editable paths reference these folders by the same relative path regardless of whether git tracks them as plain directories or submodules, so splitting into submodules required zero changes there.
+This is a file-layout convention only — it does **not** relax the hard machine-separation rule below. `devices/<name>/capability/backend/` and `devices/<name>/driver/backend/` still only ship to the device host (a Raspberry Pi in the reference deployment); `devices/<name>/capability/frontend/` still only runs on the operator machine as part of the single `rxn_bench_ui` app; nothing under `frontend/` imports anything under `backend/`. `rxnbench/backend/` (uv workspace root, `client/`, `install.sh`) and `rxnbench/frontend/` (the app itself: `core/`, `connections/`, `proto/`) hold the code that isn't specific to one device. Submodule status is orthogonal to the uv workspace/editable-path wiring: `rxnbench/backend/pyproject.toml`'s `[tool.uv.workspace] members` and `rxnbench/frontend/pyproject.toml`'s `[tool.uv.sources]` editable paths reference these folders by the same relative path regardless of whether git tracks them as plain directories or submodules, so splitting into submodules required zero changes there.
+
+### Capability + driver split
+
+Every device backend already separated a **capability** (a `Protocol` + SiLA feature implementation, hardware-agnostic) from a **driver** (the concrete class implementing that Protocol) at the file level - `PHSensorProtocol` vs. `AtlasScientificEZOUart`, `CameraProtocol` vs. `CrowsnestCamera`, `DosingPumpProtocol` vs. `AtlasDosingPump`, `MotionClientProtocol` vs. `MoonrakerClient`. The capability/driver package split just promotes that existing boundary to a package (and repo) boundary:
+
+- **Capability package** (`rxn_bench_<name>`, keeps its existing name): SiLA feature, Protocol interface(s), generic mock (one that satisfies the Protocol directly with no vendor wire-protocol emulation - `MockPHSensor`, `MockCamera`, `MockMoonrakerClient`), session/image logging, `_cli.py`, `server.py`. Depends on `unitelabs-cdk` and its default driver package, nothing hardware-specific.
+- **Driver package** (`rxn_bench_<vendor>_driver`, new): the concrete vendor driver, its wire-protocol emulator mocks (`MockI2CBus`, `MockEZOUart` - these emulate the *vendor's byte-level protocol*, unlike the capability's generic mock, so they live here), that hardware's CAD (`hardware_models/`), and its toolhead config if it mounts on the gantry (`toolhead/<name>_toolhead.yaml`). Registers under a `rxn_bench.<name>_drivers` entry-point group (e.g. `rxn_bench.ph_drivers`) so the capability's `server.py` has **zero import-time dependency on any concrete driver** - a second vendor's driver for the same capability (e.g. a different pH probe brand) registers under the same group with no capability-side changes, exactly like frontend plugin discovery (§2).
+
+`server.py`'s driver selection: `RXN_BENCH_<NAME>_DRIVER` (default: the reference driver's registered name, e.g. `atlas_ezo` for pH) picks which entry point to load via `importlib.metadata.entry_points(group=...)`; `RXN_BENCH_MOCK=1` still short-circuits to the capability's own generic mock **except** for the dosing pump, where the existing mock (`MockDosingPump`) is itself built on the real Atlas driver stack over a protocol emulator (`class MockDosingPump(AtlasDosingPump)` - preserves realistic command encoding/timing) and so lives in the driver package too, loaded via a second registered entry point (`atlas_ezo_pmp_mock`) rather than a capability-side import.
+
+**Uv workspace note:** only capability packages are `[tool.uv.workspace] members`; driver packages are reached via a plain `{path = ..., editable = true}` dependency of their capability (same pattern as `rxn-bench-client`), **not** `{workspace = true}`. Declaring both capability and driver as explicit workspace members with reciprocal `{workspace = true}` sources breaks package-metadata builds from a clean venv/lockfile on uv 0.11.21 ("references a workspace... but is not a workspace member", even though it is) - a real uv limitation hit while doing this split, not a design choice. Driver tests run via plain `uv run pytest <path>` (no `--package`, since they're not workspace members) but are still installed into the shared workspace venv transitively.
+
+**Toolhead config aggregation:** a toolhead config (e.g. the pH probe's mount geometry/engage-depth YAML) is data the *driver* owns - gantry doesn't know what a pH probe is, it just mounts whatever config it's handed - but `rxn_bench_gantry.toolhead_config.ToolheadConfig.load()` reads from one bundled directory (`rxn_bench_gantry/toolheads/<name>/<name>_toolhead.yaml`). `rxnbench/backend/scripts/aggregate_toolheads.py` bridges this at install time: it copies every `devices/*/driver/toolhead/*_toolhead.yaml` into gantry's bundled `toolheads/` directory before gantry's venv is built (wired into `make install` and `install_offline.sh`, ahead of `install_service.sh`). The aggregated per-toolhead folders are gitignored build output, not checked in - re-run `make install` (or `python3 rxnbench/backend/scripts/aggregate_toolheads.py` directly) after a fresh checkout/submodule init or gantry's `test_toolhead_manager.py` tests fail with the toolhead missing.
+
+`device_template` has no driver package: its mock is a generic Protocol stub (`MockMyDevice`, not vendor-specific), so there's nothing to split out. A real new device following this template adds a `driver/` package alongside its own hardware, using the pH sensor split as the worked example (it exercises every piece: two transports, wire-protocol mocks, hardware CAD, and a toolhead config).
 
 ---
 
@@ -85,7 +99,7 @@ rxnbench/frontend/src/rxn_bench_ui/
 Each device's actual plugin code lives outside this tree, in its own repo (submodule at the same path), as a pip-installable package under `devices/<name>/frontend/src/rxn_bench_<name>_frontend/` — the same `src/` layout backend device packages already used:
 
 ```text
-devices/gantry/frontend/
+devices/gantry/capability/frontend/
 ├── pyproject.toml           ← declares the "gantry" entry in the rxn_bench.devices group
 └── src/rxn_bench_gantry_frontend/
     ├── __init__.py
@@ -103,7 +117,7 @@ devices/gantry/frontend/
     ├── assets/
     └── ui/
 
-devices/ph_sensor/frontend/
+devices/ph_sensor/capability/frontend/
 ├── pyproject.toml
 └── src/rxn_bench_ph_sensor_frontend/
     ├── __init__.py
@@ -116,7 +130,7 @@ devices/ph_sensor/frontend/
     │   └── ph_sensor_pb2.py
     └── ui/
 
-devices/camera/frontend/
+devices/camera/capability/frontend/
 ├── pyproject.toml
 └── src/rxn_bench_camera_frontend/
     ├── __init__.py
@@ -128,7 +142,7 @@ devices/camera/frontend/
         ├── camera.proto
         └── camera_pb2.py
 
-devices/dosing_pump/frontend/
+devices/dosing_pump/capability/frontend/
 ├── pyproject.toml
 └── src/rxn_bench_dosing_pump_frontend/
     ├── __init__.py
@@ -143,7 +157,7 @@ devices/dosing_pump/frontend/
         └── dosing_pump_widget.ui
 ```
 
-`devices/device_template/frontend/` mirrors the same shape (`src/rxn_bench_device_template_frontend/`), including its own
+`devices/device_template/capability/frontend/` mirrors the same shape (`src/rxn_bench_device_template_frontend/`), including its own
 `proto/my_device{.proto,_pb2.py}` stubs, so the template teaches the compiled-stub
 pattern end-to-end (the hand-rolled varint helpers it used to demonstrate are gone).
 
@@ -169,7 +183,7 @@ The two don't collide: a migrated device's code lives under `src/rxn_bench_<name
 
 ### Standalone executable packaging
 
-`rxnbench/frontend/packaging/` holds a PyInstaller setup (`rxn-bench-ui.spec`, `entrypoint.py`) that produces a onedir build of the app. The five first-party device packages are baked into the bundle at build time now (see below), not staged as a folder — `make dist` runs PyInstaller, then `packaging/copy_device_plugins.py` (now only relevant to the directory-scan fallback: it stages any `devices/<name>/frontend/` with a flat `__init__.py` into a `devices/` folder next to the executable; the five first-party devices have none, so it stages nothing for them today), then `packaging/copy_workflows.py`, which stages `rxnbench/backend/client/scripts/` into a `Scripts/` folder and `devices/gantry/backend/src/rxn_bench_gantry/workspace/definitions/*.yaml` into a `Workspaces/` folder next to it - so an install ships ready-to-run example experiment scripts and importable workspace templates, not just the app itself. `Workspaces/` is explicitly examples to import-and-edit, not live device config: the gantry backend has its own copy of `workspace/definitions/` on the bench Pi that it actually loads named workspaces from. The Experiment Runner's "Browse" dialog (`core/experiment_panel.py`) and the gantry plugin's "Import Workspace YAML" dialog (`rxn_bench_gantry_frontend/workspace_loader.py`) both default to these staged folders when frozen (and to the equivalent source-tree paths in a dev checkout), via `_default_scripts_dir()`/`_default_workspaces_dir()`. The CI Windows build (`.github/workflows/windows-installer.yml`) runs the same three staging steps directly rather than via `make dist`, so both call sites need updating together. `installer.iss` needs no changes for this - its `[Files]` section already copies everything under the build dir recursively. `.ui` files and `assets/` under `rxn_bench_ui/core/` are bundled explicitly as PyInstaller `datas` (not picked up by static analysis since they're loaded at runtime via `QUiLoader`/`Path(__file__).parent`).
+`rxnbench/frontend/packaging/` holds a PyInstaller setup (`rxn-bench-ui.spec`, `entrypoint.py`) that produces a onedir build of the app. The five first-party device packages are baked into the bundle at build time now (see below), not staged as a folder — `make dist` runs PyInstaller, then `packaging/copy_device_plugins.py` (now only relevant to the directory-scan fallback: it stages any `devices/<name>/frontend/` with a flat `__init__.py` into a `devices/` folder next to the executable; the five first-party devices have none, so it stages nothing for them today), then `packaging/copy_workflows.py`, which stages `rxnbench/backend/client/scripts/` into a `Scripts/` folder and `devices/gantry/capability/backend/src/rxn_bench_gantry/workspace/definitions/*.yaml` into a `Workspaces/` folder next to it - so an install ships ready-to-run example experiment scripts and importable workspace templates, not just the app itself. `Workspaces/` is explicitly examples to import-and-edit, not live device config: the gantry backend has its own copy of `workspace/definitions/` on the bench Pi that it actually loads named workspaces from. The Experiment Runner's "Browse" dialog (`core/experiment_panel.py`) and the gantry plugin's "Import Workspace YAML" dialog (`rxn_bench_gantry_frontend/workspace_loader.py`) both default to these staged folders when frozen (and to the equivalent source-tree paths in a dev checkout), via `_default_scripts_dir()`/`_default_workspaces_dir()`. The CI Windows build (`.github/workflows/windows-installer.yml`) runs the same three staging steps directly rather than via `make dist`, so both call sites need updating together. `installer.iss` needs no changes for this - its `[Files]` section already copies everything under the build dir recursively. `.ui` files and `assets/` under `rxn_bench_ui/core/` are bundled explicitly as PyInstaller `datas` (not picked up by static analysis since they're loaded at runtime via `QUiLoader`/`Path(__file__).parent`).
 
 Because both the directory-scanned fallback plugins and the five entry-point packages are only ever reached dynamically at runtime (`importlib.util.spec_from_file_location` for the former, `importlib.metadata.entry_points()` for the latter), none of their imports are visible to PyInstaller's static analysis — this bit in practice twice. First: the original directory-scan path threw `ModuleNotFoundError` (`yaml`, `rxn_bench_ui.connections.base`) the moment a device widget actually got constructed, since `connections/base.py` and `pyyaml` are only reachable through that dynamic path — fixed via `collect_submodules("rxn_bench_ui")` (covers first-party gaps without hand-listing every submodule; only walks the real installed `rxn_bench_ui` package tree) plus an explicit `"yaml"` in `hiddenimports`. Second, migrating to entry points introduced a *different* invisible-import problem: `collect_all()` per device package (`rxn_bench_gantry_frontend`, etc.) bundles their code, but `entry_points()` itself works by scanning `*.dist-info` metadata on `sys.path` — metadata `collect_all()` does **not** bundle. Without `copy_metadata("rxn-bench-gantry-frontend")` (and one per device) added explicitly, a frozen build would launch fine but silently discover zero devices (no error — `entry_points(group=...)` just returns empty). Verified against a real onedir Linux build via `make dist-check`: all 5 device widgets construct successfully inside the frozen exe.
 
@@ -206,12 +220,12 @@ This keeps regeneration useful without letting generated code sprawl into the hu
 
 ## 4. Backend Layout
 
-`rxnbench/backend/pyproject.toml` is still the uv workspace root and still owns the shared dev venv, `Makefile`, `install.sh`, and `scripts/install_service.sh` — but its `[tool.uv.workspace] members` now point out to `../../devices/<name>/backend` instead of holding the packages directly. `client/` is not a device and stays inside `rxnbench/backend/`.
+`rxnbench/backend/pyproject.toml` is still the uv workspace root and still owns the shared dev venv, `Makefile`, `install.sh`, and `scripts/install_service.sh` — but its `[tool.uv.workspace] members` now point out to `../../devices/<name>/capability/backend` (plus each real device's `../../devices/<name>/driver/backend`, reached from the capability's own editable path dependency rather than being a workspace member itself - see "Capability + driver split" in §1) instead of holding the packages directly. `client/` is not a device and stays inside `rxnbench/backend/`.
 
 ### Gantry package
 
 ```text
-devices/gantry/backend/src/rxn_bench_gantry/
+devices/gantry/capability/backend/src/rxn_bench_gantry/
 ├── server.py
 ├── _cli.py
 ├── feature.py
@@ -221,9 +235,7 @@ devices/gantry/backend/src/rxn_bench_gantry/
 ├── homing_manager.py
 ├── toolhead_manager.py
 ├── workspace_manager.py
-├── moonraker_client.py
-├── mock_moonraker.py
-├── moonraker_discovery.py
+├── mock_moonraker.py        ← generic MotionClientProtocol simulator, no Moonraker wire emulation - stays capability-side
 ├── machine_config.py
 ├── workspace_config.py
 ├── plate_geometry.py
@@ -232,15 +244,20 @@ devices/gantry/backend/src/rxn_bench_gantry/
 ├── session_log.py
 ├── errors.py
 ├── labware/
-├── toolheads/
+├── toolheads/               ← aggregation target for every device driver's toolhead config, see §1
 └── workspace/
+
+devices/gantry/driver/backend/src/rxn_bench_moonraker_driver/
+├── moonraker_client.py
+└── moonraker_discovery.py
+devices/gantry/driver/hardware_models/   ← SV08 mounting brackets, belt clamps, etc.
 ```
 
 Main responsibilities:
 
 - Expose the Gantry SiLA feature.
 - Keep controller logic hardware-agnostic through `MotionClientProtocol`.
-- Route physical movement through `MotionEngine` and Moonraker.
+- Route physical movement through `MotionEngine` and the registered `rxn_bench.gantry_drivers` driver (`moonraker` by default).
 - Persist homing and workspace state.
 - Enforce safe-clearance movement and toolhead-aware bounds.
 - Log session events to append-only JSONL files.
@@ -248,23 +265,27 @@ Main responsibilities:
 ### pH package
 
 ```text
-devices/ph_sensor/backend/src/rxn_bench_ph/
+devices/ph_sensor/capability/backend/src/rxn_bench_ph/
 ├── server.py
 ├── _cli.py
 ├── feature.py
 ├── interfaces.py
+├── base_sensor.py
+├── mock_ph_sensor.py
+├── enums.py
+└── session_log.py
+
+devices/ph_sensor/driver/backend/src/rxn_bench_atlas_ezo_ph_driver/
 ├── atlas_ph_sensor.py
 ├── ezo_commands.py                 ← transport-agnostic EZO command set (shared)
 ├── atlas_scientific_driver.py      ← EZO over I2C (commands + status-byte parsing)
 ├── atlas_scientific_uart_driver.py ← EZO over UART/serial
-├── base_sensor.py
 ├── base_driver.py                  ← I2C transport base (AbstractI2CDriver)
 ├── i2c_bus.py                      ← SMBusI2C adapter
 ├── mock_i2c.py                     ← EZO I2C protocol emulator
-├── mock_uart.py                    ← EZO UART protocol emulator
-├── mock_ph_sensor.py
-├── enums.py
-└── session_log.py
+└── mock_uart.py                    ← EZO UART protocol emulator
+devices/ph_sensor/driver/hardware_models/   ← pH probe toolhead housing CAD
+devices/ph_sensor/driver/toolhead/ph_probe_toolhead.yaml
 ```
 
 Main responsibilities:
@@ -274,10 +295,12 @@ Main responsibilities:
 - Speak the Atlas EZO-pH command protocol over **either I2C or UART**: `ezo_commands.EZOCommandSet`
   holds the transport-agnostic commands (`read_ph`, `calibrate_*`, `get_slope`, …) once, and the two
   drivers (`AtlasScientificEZO` for I2C, `AtlasScientificEZOUart` for UART) each supply only the
-  byte-level send/receive. `server.py` selects the transport at startup via `RXN_BENCH_PH_TRANSPORT`
+  byte-level send/receive. The driver package's `build_sensor()` (registered as `atlas_ezo` under
+  `rxn_bench.ph_drivers`) selects the transport at startup via `RXN_BENCH_PH_TRANSPORT`
   (`i2c` default / `uart`), with `RXN_BENCH_PH_SERIAL_PORT`/`RXN_BENCH_PH_BAUD` for the serial path.
-- Support mock pH readings for development (`MockPHSensor`), plus `MockI2CBus` **and** `MockEZOUart`,
-  protocol emulators that exercise the *real* driver stack end-to-end without hardware on each transport.
+- Support mock pH readings for development (`MockPHSensor`, capability-side), plus `MockI2CBus`
+  **and** `MockEZOUart` (driver-side), protocol emulators that exercise the *real* driver stack
+  end-to-end without hardware on each transport.
 - Bridge smbus2 to the driver's raw write/read interface via `i2c_bus.SMBusI2C`
   (EZO circuits speak raw I2C byte streams, not the SMBus register protocol); the UART driver talks to
   a pyserial `Serial` (or any `write`/`read_until` object) directly.
@@ -286,23 +309,25 @@ Main responsibilities:
 ### Camera package
 
 ```text
-devices/camera/backend/src/rxn_bench_camera/
+devices/camera/capability/backend/src/rxn_bench_camera/
 ├── server.py
 ├── _cli.py
 ├── feature.py
 ├── interfaces.py
-├── crowsnest_camera.py
 ├── camera_config.py
 ├── mock_camera.py
 ├── session_log.py
 └── image_log.py
+
+devices/camera/driver/backend/src/rxn_bench_crowsnest_camera_driver/
+└── crowsnest_camera.py
 ```
 
 Main responsibilities:
 
 - Expose the Camera SiLA feature (`LatestImage` observable property, `SetCaptureInterval` command).
 - Keep feature logic decoupled from concrete camera implementation through `CameraProtocol` (one method: `capture() -> bytes`).
-- Bridge to Crowsnest's underlying streamer (ustreamer by default) over plain HTTP via `crowsnest_camera.CrowsnestCamera` - Crowsnest itself has no API, it only supervises the real streamer process.
+- Bridge to Crowsnest's underlying streamer (ustreamer by default) over plain HTTP via `crowsnest_camera.CrowsnestCamera` (registered as `crowsnest` under `rxn_bench.camera_drivers`) - Crowsnest itself has no API, it only supervises the real streamer process.
 - Support a mock camera for development (`MockCamera`, returns a dependency-free placeholder PPM image - no imaging library needed).
 - Archive every capture to `logs/images/` (`image_log.ImageLog`, pruned after 7 days - shorter than the 30-day JSONL default since binary frames are heavier) alongside the usual JSONL event log.
 - SiLA's `Binary` basic type (`bytes` Python annotation) is used for the image property; `gen_proto.py`/`gen_connections.py` gained generic support for it (a `message Binary { bytes value = 1; }` wrapper, matching the CDK's own inline-payload wire encoding for payloads under its 2**21-byte binary-transfer threshold) - the first non-Real/Boolean/SString primitive type used by any device.
@@ -310,17 +335,20 @@ Main responsibilities:
 ### Dosing pump package
 
 ```text
-devices/dosing_pump/backend/src/rxn_bench_dosing_pump/
+devices/dosing_pump/capability/backend/src/rxn_bench_dosing_pump/
 ├── server.py
 ├── _cli.py
 ├── feature.py
 ├── interfaces.py
+└── session_log.py
+
+devices/dosing_pump/driver/backend/src/rxn_bench_atlas_ezo_pmp_driver/
 ├── atlas_dosing_pump.py             ← DosingPumpProtocol impl over a command driver
 ├── ezo_pmp_commands.py              ← transport-agnostic EZO-PMP command set
 ├── atlas_scientific_uart_driver.py  ← EZO-PMP over UART/serial
 ├── mock_uart.py                     ← EZO-PMP protocol emulator (simulates dispensing)
-├── mock_device.py                   ← MockDosingPump: real driver stack over the emulator
-└── session_log.py
+└── mock_device.py                   ← MockDosingPump: real driver stack over the emulator (registered
+                                        as atlas_ezo_pmp_mock, NOT a generic capability-side mock - see §1)
 ```
 
 Main responsibilities:
@@ -414,7 +442,7 @@ Main responsibilities:
 | Intra-plate travel optimization | Done — `move_to_well` between wells of the *same* plate travels at just that plate's own top + padding (`GantryController._plate_clearance_z`) instead of the full-deck max, cutting raise/lower time on multi-well scans. "Same plate" is decided statelessly from the current tip position vs. the target plate's footprint (`WorkspaceManager.plate_footprint_bounds`); plain `move_to` and cross-plate hops keep the full clearance. Does NOT yet account for the X-gantry crossbar sweeping a taller same-Y-row plate (see gap). |
 | Well-depth-aware engagement depth (blended, not toolhead-only) | Done (second slice of TODO-AI.md §1.1) — `move_to_well` docks at the target well's actual opening (`WorkspaceManager.resolve_well()`'s Z is `origin_z + plate_height_mm`, not the raw plate mount height) instead of the workspace's generic clearance height, so the engagement descent is a physically meaningful drop into the well regardless of how tall the clearance height needed to be for other labware. The descent itself is no longer the toolhead's raw configured `z_engage` (one hand-tuned number): `GantryController._effective_engage_depth` blends it with the docked well's own measured `well_depth_mm` (mean of the two) and caps the result at `well_depth_mm - MachineConfig.engage_bottom_margin_mm` (default 2mm) so the tip always stops a fixed gap above the bottom. This *replaced* the earlier hard rejection of `z_engage > well_depth`: a toolhead configured deeper than a shallower plate's wells (e.g. the bench `ph_probe`'s `z_engage=40` in a 36mm-deep 96-well plate) now runs, capped, instead of refusing the move. The controller tracks the docked well (`_current_well_label`, set by `move_to_well`, cleared by any plain `move_to`/`jog`); with no docked well or no active toolhead there is nothing to blend against and `engage_tool(depth=…)` keeps its literal meaning. `disengage_tool` applies the same blend so an engage/disengage pair is symmetric (returns the tip to the opening). The frontend side-view engagement marker (`workspace_loader.effective_engage_depth`) mirrors the blend so the viz shows the real depth, minus the small backend-only bottom margin. `WorkspaceManager.get_well_depth()` remains the per-well depth source. |
 | Non-contact Z-reference calibration (hover + optional paper shim) | Done (third slice of TODO-AI.md §1.1 — the Z-reference/calibration UX rework) — both the homing dialog's Z Reference step and the toolhead calibration wizard's Z-touch step now offer hovering the tip at a known height instead of touching a surface directly. Homing: if a workspace with a `calibration_reference_well` is loaded, jogging to hover at that plate's known top surface (`resolve_reference_plate_height()`, new in `workspace_loader.py`) and confirming calls the newly-frontend-exposed `set_z(height)` (existed backend-side already; only the connection-layer wiring was missing) instead of always declaring 0 - falls back to the original touch-the-deck behavior when no workspace is loaded, since there's nothing else to hover over. Toolhead calibration: an optional "hover over reference plate" checkbox (only enabled when a reference plate is resolved) computes `tip_offset_z` from the known plate height instead of requiring a direct touch; the original touch method is kept as the always-available default, not replaced. Both dialogs also support an optional "paper shim" checkbox (default ~0.1mm, a rough estimate) so contact is felt by hand via a shim rather than the motor driving the tip into a hard surface - noted as likely impractical in wet-lab conditions, so eyeball-only stays the simple fallback. Verified end-to-end against a mock server (real `SetZ`/`CalibrateToolheadTipZ` RPCs, not just UI rendering). Gap: the *whole* homing state (X/Y limits and Z reference together) is still skippable only as one bundle via the existing "already homed?" page - Z isn't yet independently invalidatable the way X/Y limits are, so redoing X/Y after a bump also means redoing Z even if it was still good. |
-| X/Z and Y/Z workspace side views | Done (fourth slice of TODO-AI.md §1.1 — phase 3, the Z-reference/calibration UX rework, is deferred) — `devices/gantry/frontend/workspace_loader.py` gained `DeckSideViewCanvas` (X/Z or Y/Z elevation) and `DeckViewPanel` (a Top/Side-X/Side-Y selector over `WorkspaceCanvas` + two `DeckSideViewCanvas` instances, all three kept live regardless of which is visible). Both the Live and Configuration tabs now hold a `DeckViewPanel` instead of a bare `WorkspaceCanvas`. Side views draw each plate's height + well-bottom line, the deck floor (Z=0), the server's real safe clearance-travel height, and - for the active well, if a toolhead is active - a precise engagement-depth marker. Backend: `GantryController.get_safe_clearance_z()` (new) and `GetLimits`'s pipe-delimited string gained a 7th `safe_clearance_z` field (no proto change - it was already a single SString blob) so the frontend never keeps an independently-computed copy of the safety formula. `GantryConnection` re-fetches it after a workspace op and on toolhead switches (not just at connect), since both change the value. Verified by launching the real widget against an isolated mock server and screenshotting all 3 views in both tabs. |
+| X/Z and Y/Z workspace side views | Done (fourth slice of TODO-AI.md §1.1 — phase 3, the Z-reference/calibration UX rework, is deferred) — `devices/gantry/capability/frontend/workspace_loader.py` gained `DeckSideViewCanvas` (X/Z or Y/Z elevation) and `DeckViewPanel` (a Top/Side-X/Side-Y selector over `WorkspaceCanvas` + two `DeckSideViewCanvas` instances, all three kept live regardless of which is visible). Both the Live and Configuration tabs now hold a `DeckViewPanel` instead of a bare `WorkspaceCanvas`. Side views draw each plate's height + well-bottom line, the deck floor (Z=0), the server's real safe clearance-travel height, and - for the active well, if a toolhead is active - a precise engagement-depth marker. Backend: `GantryController.get_safe_clearance_z()` (new) and `GetLimits`'s pipe-delimited string gained a 7th `safe_clearance_z` field (no proto change - it was already a single SString blob) so the frontend never keeps an independently-computed copy of the safety formula. `GantryConnection` re-fetches it after a workspace op and on toolhead switches (not just at connect), since both change the value. Verified by launching the real widget against an isolated mock server and screenshotting all 3 views in both tabs. |
 | Workspace YAML source of truth | Done — `GetWorkspaceYaml`/`Subscribe_CurrentWorkspaceYaml` read from the controller's workspace manager, so name-loaded (`SetWorkspace`) and boot-restored workspaces are visible to clients (previously only `LoadWorkspaceYaml` updated a feature-level cache) |
 | Multi-toolhead support (two heads mounted at once) | Done — mount confirmations are **per-head** and survive activation switches: confirm each physically installed head once at setup, then scripts alternate between them unattended (`set_toolhead` is a pure software switch; `mount_toolhead` is idempotent). `move_to_well` refuses a head that was never confirmed mounted (`ToolheadNotMountedError`) or whose geometry is unvalidated. Homing invalidation moved from switching to the *physical-change* events (confirm/clear mounted, remove head), and only when state actually changes — so a mid-script switch no longer kills `save_and_park`. `ToolheadInfo` streams `mounted_toolheads` (pipe-delimited) so both UI slots show their own head's mount readiness; each slot's Activate switches the active head, the matching slot shows the ACTIVE badge, and mount/remove/calibrate only enable on the active slot. Verified end-to-end against a live mock server. |
 | Mock I2C bus (`MockI2CBus`) + SMBus adapter (`SMBusI2C`) | Done — the real pH driver stack runs end-to-end against the EZO emulator in tests; `SMBusI2C` fixes a latent crash where `smbus2.SMBus` was passed directly to a driver expecting raw `write`/`read` |
@@ -432,12 +460,14 @@ Main responsibilities:
 | Gantry backend real test suite (motion engine sequencing, homing state machine, toolhead-aware bounds, controller, feature, well/workspace math, mock Moonraker) | Done |
 | Experiment-lock frontend visibility | Done — banner + Pause/Resume/Stop wired to `experiment_active_changed` in the main widget (`_set_controls_locked` disables toolhead-management buttons, including the ones that launch the Homing/Toolhead Calibration dialogs). Homing and Toolhead Calibration dialogs also disable their own jog/confirm controls if the lock is acquired while already open. Backend-level RPC gating now backs this up (see the lock-token row above), so the UI disabling is defense-in-depth, not the only barrier. |
 | `generated_connection.py` drift check | Done — `make check-connections` (`rxnbench/frontend/Makefile`) regenerates every device's `generated_connection.py` from its `connection_spec.yaml` and diffs; `make gen-connections` regenerates in place. Loops over `devices/*/frontend/src/*/connection_spec.yaml` generically, so it covers new devices automatically. |
-| `motion_platform` proto stubs live under `devices/gantry/frontend/src/rxn_bench_gantry_frontend/proto/` | Done, moved out of the shared `proto/` tree, which now only holds `sila_service_pb2` (framework-level, genuinely shared). `gen_proto.py`, the `rxnbench/backend/Makefile` proto targets, and `connection_spec.yaml`'s `proto_module` all point at the current location; `make check-proto` still passes |
-| Device frontends split into standalone entry-points packages + all 10 device folders (5 frontend, 5 backend) split into their own git repos as submodules | Done — see "Device-first layout" (§1) and "Device plugin contract"/"Standalone executable packaging" (§2). Groundwork for the JOSS-publication repo restructure (master repo + per-package repos). Two coupling points existed identically across all five devices and were fixed the same way in each: the relative `from ...discovery import DiscoveredServer` import (now absolute `rxn_bench_ui.discovery`) and `generated_connection.py`'s absolute `rxn_bench_ui.devices.<name>.proto.X_pb2` import (now `rxn_bench_<name>_frontend.proto.X_pb2`, driven by each `connection_spec.yaml`'s `proto_module` field so the generator reproduces it correctly instead of reverting it). `rxn_bench_ui/devices/__init__.py`'s `all_devices()` now merges entry-point discovery with the pre-existing directory scan (kept as the zero-rebuild drop-in path). Verified: all 5 widgets construct headless via entry points, inside a real PyInstaller-frozen build (`make dist-check`), and via the full backend + frontend test suites. `.gitmodules` currently points at local repo paths pending GitHub hosting — CI's `submodules: true` checkout won't succeed until those are repointed. |
+| `motion_platform` proto stubs live under `devices/gantry/capability/frontend/src/rxn_bench_gantry_frontend/proto/` | Done, moved out of the shared `proto/` tree, which now only holds `sila_service_pb2` (framework-level, genuinely shared). `gen_proto.py`, the `rxnbench/backend/Makefile` proto targets, and `connection_spec.yaml`'s `proto_module` all point at the current location; `make check-proto` still passes |
+| Device frontends split into standalone entry-points packages | Done — see "Device plugin contract"/"Standalone executable packaging" (§2). Two coupling points existed identically across all five devices and were fixed the same way in each: the relative `from ...discovery import DiscoveredServer` import (now absolute `rxn_bench_ui.discovery`) and `generated_connection.py`'s absolute `rxn_bench_ui.devices.<name>.proto.X_pb2` import (now `rxn_bench_<name>_frontend.proto.X_pb2`, driven by each `connection_spec.yaml`'s `proto_module` field so the generator reproduces it correctly instead of reverting it). `rxn_bench_ui/devices/__init__.py`'s `all_devices()` merges entry-point discovery with the pre-existing directory scan (kept as the zero-rebuild drop-in path). Verified: all 5 widgets construct headless via entry points, inside a real PyInstaller-frozen build (`make dist-check`), and via the full backend + frontend test suites. |
+| Backend capability/driver split (all 4 real devices + repo topology for device_template) | Done — see "Capability + driver split" (§1) and the per-device package trees in §4. Every device's existing Protocol/driver file-level boundary was promoted to a package boundary: `rxn_bench_<name>` (capability, hardware-agnostic) + `rxn_bench_<vendor>_driver` (concrete implementation, hardware CAD, toolhead config), the latter registered under a `rxn_bench.<name>_drivers` entry-point group so `server.py` never imports a concrete driver directly. `rxnbench/backend/scripts/aggregate_toolheads.py` (new, wired into `make install`/`install_offline.sh`) copies each driver's toolhead config into gantry's bundled `toolheads/` directory at install time. Hit and worked around a real uv 0.11.21 limitation: two workspace members with reciprocal `{workspace = true}` sources fail package-metadata builds from a clean venv - drivers are plain editable-path dependencies of their capability instead, not workspace members. |
+| All 19 device folders (10 frontend/backend-era + 9 capability/driver-era) split into their own git repos as submodules | Done — groundwork for the JOSS-publication repo restructure (master repo + per-package repos); see "Device-first layout" (§1). `.gitmodules` currently points at local repo paths under `../rxn-bench-device-repos/` pending GitHub hosting — CI's `submodules: true` checkout won't succeed until those are repointed. Verified end-to-end after every restructuring pass: full backend test suite (`make test` - capability + driver tests for all 4 devices), `check-proto`, full frontend suite, `check-connections`, and a real PyInstaller-frozen build (`make dist-check`) constructing all 5 device widgets via entry points. |
 | Frozen-build-aware frontend plugin discovery + PyInstaller onedir packaging (Linux) | Done (groundwork for TODO-AI.md §1.2) — `rxn_bench_ui/devices/__init__.py` now resolves `devices/` from `sys.executable`'s directory when `sys.frozen` is set, instead of always walking up from `__file__`; dev-mode behavior is unchanged. `rxnbench/frontend/packaging/` (spec, entrypoint, `copy_device_plugins.py`) plus `make dist` produce a onedir build and stage `devices/*/frontend/` next to the executable. First pass looked fine (launched headlessly, discovery found the right modules) but only actually loading a device widget in the frozen build surfaced two `ModuleNotFoundError`s (`yaml`, `rxn_bench_ui.connections.base`) invisible to both PyInstaller's static analysis and that first verification pass — fixed via `collect_submodules("rxn_bench_ui")` + explicit `yaml` in the spec's `hiddenimports`. `make dist-check` (new) now actually constructs every discovered device widget inside the real frozen build and confirms no ImportError — all 4 pass. See "Standalone executable packaging" above. |
 | `new-device` dev-agent skill (TODO-AI.md §2.2) | Done — `.claude/skills/new-device/SKILL.md`, alongside the existing `debug`/`feature`/`review-design` skills. Before scaffolding anything, it requires reading every existing device's backend `Protocol`/feature and frontend widget/connection layer to check whether the new hardware fits an existing interface (e.g. a second pH-style probe should reuse `rxn_bench_ph`, not get its own package); only a genuine misfit walks the `device_template` copy/rename checklist. Explicitly caps generated complexity at `device_template`'s Protocol+mock+feature shape and treats falling back to `GenericDeviceWidget` (no custom frontend widget) as a valid outcome, not a shortcut to avoid. |
-| Dosing pump device (Atlas EZO-PMP) | Done — `rxn_bench_dosing_pump` SiLA server (port 50054) exposing all four datasheet dispensing modes (fixed volume, dose over time, constant flow rate, continuous) plus pause/stop/invert, single-point calibration, and net/absolute total-volume counters. `DosingPumpProtocol` is a new interface: the pump is an *actuator*, with no overlap with `PHSensorProtocol` (read/calibrate/slope), `CameraProtocol` (`capture()`), or the gantry's motion protocol — so it got its own device rather than reusing one. The Atlas EZO UART wire protocol *is* shared with `rxn_bench_ph`, but is deliberately duplicated per the per-device self-containment rule in §8. Frontend plugin (`devices/dosing_pump/frontend/`) has a hand-built widget with dispense/dose/flow-rate controls, live volume, and totals; `rxn_bench_client.DosingPump` adds `dispense_and_wait()` alongside the raw commands. Required extending `gen_proto.py` with an `Integer` primitive wrapper (SiLA `Integer` = int64) for `GetCalibrationStatus` — the second generic generator addition after the camera's `Binary`, and verified to decode correctly against a live server. Verified end-to-end against a real mock server: progressive dispensing over gRPC, `Stop`'s float return, unobservable-property reads, error propagation for `*MINVOL`/`*TOOFAST`, and the real Qt widget constructed and driven headlessly. See the gap below re: unverified real hardware and the serial-port conflict with the pH probe. |
-| Camera device (TODO-AI.md §2.1) | Done — `rxn_bench_camera` SiLA server (port 50053) streams a `LatestImage` observable property (SiLA `Binary`/`bytes`) captured from a Crowsnest-managed webcam stream via a plain-HTTP `CrowsnestCamera` driver, with a runtime-adjustable `SetCaptureInterval` command, mock camera path (dependency-free placeholder PPM image), and per-capture archiving to `logs/images/` alongside the usual JSONL event log. `CameraProtocol` is a single `capture() -> bytes` method, so Crowsnest is one implementation, not the whole abstraction, per the TODO's acceptance criteria. Frontend plugin (`devices/camera/frontend/`) shows the live image plus an interval control. `rxn_bench_client.Camera` adds `snapshot()`/`save_snapshot()`/`set_capture_interval()`. Required extending the shared `gen_proto.py`/`gen_connections.py` generators with a `Binary` primitive wrapper (`bytes` → SiLA's native `Binary` basic type) — the first non-Real/Boolean/SString primitive any device has needed; verified end-to-end against a live mock server (real gRPC subscribe + command call, not just unit tests). See the gap below re: unverified real Crowsnest wiring. |
+| Dosing pump device (Atlas EZO-PMP) | Done — `rxn_bench_dosing_pump` SiLA server (port 50054) exposing all four datasheet dispensing modes (fixed volume, dose over time, constant flow rate, continuous) plus pause/stop/invert, single-point calibration, and net/absolute total-volume counters. `DosingPumpProtocol` is a new interface: the pump is an *actuator*, with no overlap with `PHSensorProtocol` (read/calibrate/slope), `CameraProtocol` (`capture()`), or the gantry's motion protocol — so it got its own device rather than reusing one. The Atlas EZO UART wire protocol *is* shared with `rxn_bench_ph`, but is deliberately duplicated per the per-device self-containment rule in §8. Frontend plugin (`devices/dosing_pump/capability/frontend/`) has a hand-built widget with dispense/dose/flow-rate controls, live volume, and totals; `rxn_bench_client.DosingPump` adds `dispense_and_wait()` alongside the raw commands. Required extending `gen_proto.py` with an `Integer` primitive wrapper (SiLA `Integer` = int64) for `GetCalibrationStatus` — the second generic generator addition after the camera's `Binary`, and verified to decode correctly against a live server. Verified end-to-end against a real mock server: progressive dispensing over gRPC, `Stop`'s float return, unobservable-property reads, error propagation for `*MINVOL`/`*TOOFAST`, and the real Qt widget constructed and driven headlessly. See the gap below re: unverified real hardware and the serial-port conflict with the pH probe. |
+| Camera device (TODO-AI.md §2.1) | Done — `rxn_bench_camera` SiLA server (port 50053) streams a `LatestImage` observable property (SiLA `Binary`/`bytes`) captured from a Crowsnest-managed webcam stream via a plain-HTTP `CrowsnestCamera` driver, with a runtime-adjustable `SetCaptureInterval` command, mock camera path (dependency-free placeholder PPM image), and per-capture archiving to `logs/images/` alongside the usual JSONL event log. `CameraProtocol` is a single `capture() -> bytes` method, so Crowsnest is one implementation, not the whole abstraction, per the TODO's acceptance criteria. Frontend plugin (`devices/camera/capability/frontend/`) shows the live image plus an interval control. `rxn_bench_client.Camera` adds `snapshot()`/`save_snapshot()`/`set_capture_interval()`. Required extending the shared `gen_proto.py`/`gen_connections.py` generators with a `Binary` primitive wrapper (`bytes` → SiLA's native `Binary` basic type) — the first non-Real/Boolean/SString primitive any device has needed; verified end-to-end against a live mock server (real gRPC subscribe + command call, not just unit tests). See the gap below re: unverified real Crowsnest wiring. |
 
 ---
 
@@ -449,7 +479,8 @@ These are the active issues worth tracking now.
 |---|---|---:|---|
 | Verify real pH I2C path on the Pi | `rxn_bench_ph/i2c_bus.py` + physical bench | Low | Superseded: the reference bench runs the pH probe over **UART**, not I2C (the EZO is wired to the Pi's GPIO 14/15 TX/RX and left in its default UART mode). The **UART** path (`AtlasScientificEZOUart` on `/dev/ttyAMA0` @ 9600) is verified against the physical EZO circuit as of 2026-07-13 - live pH readings confirmed on the deployed `rxn-bench-ph` service. The I2C driver remains complete and mock-tested but is no longer on this bench's runtime path, so verifying it against real I2C hardware is now low priority. |
 | Migrate configs to pydantic | gantry config models | Medium | Gives validation, clearer errors, and JSON Schema export. |
-| Push the 10 split-out device repos to GitHub and repoint `.gitmodules` | `.gitmodules`, `rxn-bench-device-repos/` (currently local, sibling to this checkout) | High for the JOSS repo restructure | Each `devices/<name>/{backend,frontend}` is a submodule pointing at a local path today. CI's `submodules: true` checkout (`ci.yml`, `windows-installer.yml`) will not succeed until these are pushed somewhere reachable (presumably the RxnRover org) and `.gitmodules`/`git submodule set-url` are updated to match. Git history for these repos currently starts fresh at the split (single "Initial import" commit) — full history transplant via `git subtree split`/`git filter-repo` is an available follow-up, not done here. |
+| Push the split-out device repos to GitHub and repoint `.gitmodules` | `.gitmodules`, `rxn-bench-device-repos/` (currently local, sibling to this checkout) | High for the JOSS repo restructure | Each `devices/<name>/{capability,driver}` (or the earlier `{backend,frontend}` shape) is a submodule pointing at a local path today. CI's `submodules: true` checkout (`ci.yml`, `windows-installer.yml`) will not succeed until these are pushed somewhere reachable (presumably the RxnRover org) and `.gitmodules`/`git submodule set-url` are updated to match. Git history for these repos currently starts fresh at the split (single "Initial import" commit) — full history transplant via `git subtree split`/`git filter-repo` is an available follow-up, not done here. |
+| Re-verify the offline bundle pipeline end-to-end after the capability/driver split | `rxnbench/backend/scripts/build_offline_bundle.sh`, `install_offline.sh` | Medium-High before the next Pi deployment | Both scripts were inspected and patched for the new paths (bundle's tar `--exclude` now matches `devices/*/capability/frontend`; `install_offline.sh` now runs `aggregate_toolheads.py` before `install_service.sh`; `install_service.sh`'s `WORKING_DIR`/`DRIVER_HOOK` point at `capability/backend`/`driver/backend`) and the reasoning was verified line-by-line (each driver package is a plain dependency of its capability, so a single `-e capability/backend` install still pulls the driver in via its own `[tool.uv.sources]` path entry, unchanged install invocation) - but the actual bundle build + a from-scratch offline install on real or simulated Pi hardware has not been re-run since the split, unlike the rest of this change (which was verified via `make test`/`make dist-check`). |
 | Add TLS + authentication deployment guide | docs/config | Low until shared-network deployment | Bare, unauthenticated gRPC is acceptable for isolated bench development but not for a shared lab network. Note: Moonraker's own HTTP API on the Pi is itself unauthenticated by default, so network exposure bypasses *all* gantry safety logic (bounds, clearance, experiment lock) the moment this leaves an isolated bench network — TLS on the SiLA/gRPC layer alone would not close that hole. The experiment-lock token is a coordination mechanism, not authentication: any client on the network can still acquire the lock when it's free. |
 | Verify sample-holder labware dimensions | `labware/6_well_sample_holder.yaml` (+ header comment in `3_well_sample_holder.yaml` still says "6-Well") | Medium | The 6-well file was scaffolded with standard 6-well *plate* dimensions as placeholders — caliper-verify spacing/offsets against the physical holder before running wells on it. The 15-well and 3-well holders already carry measured-looking values. |
 | Verify `plate_height_mm` across all labware types | `labware/*.yaml` | Medium | New field (deck to plate top surface) added to every bundled labware file to drive dynamic safe clearance-travel height. All 6 are currently `well_depth_mm + ~3mm` estimates, not measured — caliper-verify before trusting them for collision safety, same as the existing well-geometry gap above. |
@@ -502,6 +533,7 @@ These are the active issues worth tracking now.
 - Multiple toolheads can be physically mounted at once; exactly one is *active* (its geometry drives targeting/bounds). Mount confirmations are per-head and survive activation switches — switching (`set_toolhead`) is a pure software change that preserves homing state, so scripts alternate between pre-confirmed heads without operator interaction. Homing invalidates on *physical* changes only (confirming/clearing a mount, removing a head) and only when the state actually changes (re-confirming is a no-op). Well-targeted moves require the active head to be confirmed mounted and geometry-validated; plain `move_to`/`jog` are ungated. The two frontend slots are selection presets over this model.
 - Frontend plugins talk to servers **only** through their device connection (`connection.py` / generated base). No raw `grpc.insecure_channel` or hand-rolled protobuf in widgets — the last two violations (workspace loader's ad-hoc channels; pH/template varint helpers) were removed in this pass.
 - Device repos and frontend plugin discovery are two separate concerns, kept orthogonal on purpose: whether a device's code lives in this checkout as a plain directory or a git submodule is a git-plumbing question (uv workspace members / editable path sources reference the same relative path either way, so the split required zero build-config changes beyond CI's checkout step); whether a device is *discovered* via entry points or the directory scan is a Python-packaging question, decided per device by whether it has a flat `devices/<name>/frontend/__init__.py` (directory-scanned) or a `src/rxn_bench_<name>_frontend/` package with its own `pyproject.toml` (entry-point-discovered). Don't conflate "split into its own repo" with "switch to entry points" — a device can be submoduled without migrating its discovery mechanism, and vice versa.
+- Every backend device separates a **capability** (SiLA feature + Protocol interface, hardware-agnostic - `rxn_bench_<name>`) from a **driver** (the concrete implementation, plus its hardware CAD and toolhead config - `rxn_bench_<vendor>_driver`), registered under a `rxn_bench.<name>_drivers` entry-point group so the capability never imports a concrete driver. This is the backend mirror of the frontend's entry-points plugin pattern (§2) - same reasoning: a capability should be reusable by a different vendor's hardware with zero changes on the capability side. A mock only belongs in the capability package if it satisfies the Protocol directly with no vendor wire-protocol emulation (`MockPHSensor`, `MockCamera`, `MockMoonrakerClient`); a mock built on the real driver stack over a protocol emulator (`MockDosingPump(AtlasDosingPump)`, `MockI2CBus`, `MockEZOUart`) is driver-side, registered as its own entry point, not a capability-side import - don't assume `RXN_BENCH_MOCK=1` always resolves inside the capability package.
 
 ---
 
