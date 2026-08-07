@@ -1,0 +1,532 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GantryWidget</class>
+ <widget class="QWidget" name="GantryWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1100</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Gantry Control</string>
+  </property>
+  <layout class="QVBoxLayout" name="root_layout">
+   <property name="spacing">
+    <number>4</number>
+   </property>
+   <property name="leftMargin">
+    <number>8</number>
+   </property>
+   <property name="topMargin">
+    <number>8</number>
+   </property>
+   <property name="rightMargin">
+    <number>8</number>
+   </property>
+   <property name="bottomMargin">
+    <number>8</number>
+   </property>
+   <item>
+    <layout class="QHBoxLayout" name="conn_layout">
+     <property name="spacing">
+      <number>6</number>
+     </property>
+     <property name="leftMargin">
+      <number>0</number>
+     </property>
+     <property name="topMargin">
+      <number>0</number>
+     </property>
+     <property name="rightMargin">
+      <number>0</number>
+     </property>
+     <property name="bottomMargin">
+      <number>0</number>
+     </property>
+     <item>
+      <widget class="QLabel" name="conn_dot">
+       <property name="text"><string>●</string></property>
+       <property name="maximumWidth"><number>16</number></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="conn_status_lbl">
+       <property name="text"><string>Connecting…</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="conn_spacer">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="server_addr_lbl">
+       <property name="text"><string></string></property>
+       <property name="alignment"><set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignVCenter</set></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="machine_state_lbl">
+       <property name="text"><string></string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="main_layout">
+     <property name="spacing">
+      <number>8</number>
+     </property>
+     <item>
+      <layout class="QVBoxLayout" name="sidebar_layout">
+       <property name="spacing">
+        <number>8</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="toolhead_group">
+         <property name="title">
+          <string>Toolheads</string>
+         </property>
+         <layout class="QVBoxLayout" name="toolhead_vbox">
+          <property name="spacing">
+           <number>10</number>
+          </property>
+          <item>
+           <widget class="QGroupBox" name="slot1_group">
+            <property name="title">
+             <string>Slot 1</string>
+            </property>
+            <property name="flat">
+             <bool>true</bool>
+            </property>
+            <layout class="QVBoxLayout" name="slot1_vbox">
+             <property name="spacing">
+              <number>4</number>
+             </property>
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QLabel" name="slot1_active_lbl">
+                 <property name="visible">
+                  <bool>false</bool>
+                 </property>
+                 <property name="text">
+                  <string>● ACTIVE</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer>
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>10</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QPushButton" name="activate_slot1_btn">
+                 <property name="toolTip">
+                  <string>Lower this toolhead into the active position</string>
+                 </property>
+                 <property name="text">
+                  <string>v Activate</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QComboBox" name="toolhead1_combo"/>
+             </item>
+             <item>
+              <widget class="QLabel" name="toolhead1_display_lbl">
+               <property name="text">
+                <string>None selected</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="toolhead1_mounted_lbl">
+               <property name="text">
+                <string>Not mounted</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QPushButton" name="confirm_mounted1_btn">
+                 <property name="text">
+                  <string>Mounted ✓</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="clear_mounted1_btn">
+                 <property name="text">
+                  <string>Clear</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QLabel" name="slot1_last_cal_lbl">
+               <property name="font">
+                <font>
+                 <pointsize>8</pointsize>
+                </font>
+               </property>
+               <property name="text">
+                <string>Last calibrated: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QPushButton" name="clear_toolhead1_btn">
+                 <property name="text">
+                  <string>Remove</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="calibrate_slot1_btn">
+                 <property name="toolTip">
+                  <string>Calibrate tip offset for this toolhead</string>
+                 </property>
+                 <property name="text">
+                  <string>Calibrate…</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="slot2_group">
+            <property name="visible">
+             <bool>false</bool>
+            </property>
+            <property name="title">
+             <string>Slot 2</string>
+            </property>
+            <property name="flat">
+             <bool>true</bool>
+            </property>
+            <layout class="QVBoxLayout" name="slot2_vbox">
+             <property name="spacing">
+              <number>4</number>
+             </property>
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QLabel" name="slot2_active_lbl">
+                 <property name="visible">
+                  <bool>false</bool>
+                 </property>
+                 <property name="text">
+                  <string>● ACTIVE</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer>
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>10</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QPushButton" name="activate_slot2_btn">
+                 <property name="toolTip">
+                  <string>Lower this toolhead into the active position</string>
+                 </property>
+                 <property name="text">
+                  <string>v Activate</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QComboBox" name="toolhead2_combo"/>
+             </item>
+             <item>
+              <widget class="QLabel" name="toolhead2_display_lbl">
+               <property name="text">
+                <string>None selected</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="toolhead2_mounted_lbl">
+               <property name="text">
+                <string>Not mounted</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QPushButton" name="confirm_mounted2_btn">
+                 <property name="text">
+                  <string>Mounted ✓</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="clear_mounted2_btn">
+                 <property name="text">
+                  <string>Clear</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QLabel" name="slot2_last_cal_lbl">
+               <property name="font">
+                <font>
+                 <pointsize>8</pointsize>
+                </font>
+               </property>
+               <property name="text">
+                <string>Last calibrated: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QPushButton" name="clear_toolhead2_btn">
+                 <property name="text">
+                  <string>Remove</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="calibrate_slot2_btn">
+                 <property name="toolTip">
+                  <string>Calibrate tip offset for this toolhead</string>
+                 </property>
+                 <property name="text">
+                  <string>Calibrate…</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout">
+            <item>
+             <spacer>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>10</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="add_slot2_btn">
+              <property name="toolTip">
+               <string>Attach a second toolhead slot (multi-head bracket required)</string>
+              </property>
+              <property name="text">
+               <string>+ Multi-head</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="homing_status_group">
+         <property name="title">
+          <string>Homing</string>
+         </property>
+         <layout class="QVBoxLayout" name="homing_status_vbox">
+          <property name="spacing">
+           <number>4</number>
+          </property>
+          <property name="leftMargin">
+           <number>6</number>
+          </property>
+          <property name="topMargin">
+           <number>6</number>
+          </property>
+          <property name="rightMargin">
+           <number>6</number>
+          </property>
+          <property name="bottomMargin">
+           <number>6</number>
+          </property>
+          <item>
+           <layout class="QHBoxLayout">
+            <item>
+             <widget class="QLabel" name="homing_dot">
+              <property name="text">
+               <string>●</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="homing_status_lbl">
+              <property name="text">
+               <string>Not homed</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>10</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="open_homing_btn">
+              <property name="text">
+               <string>Home…</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="last_homed_lbl">
+            <property name="font">
+             <font>
+              <pointsize>8</pointsize>
+             </font>
+            </property>
+            <property name="text">
+             <string>Last homed: -</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="position_group">
+         <property name="title">
+          <string>Position</string>
+         </property>
+         <layout class="QVBoxLayout">
+          <item>
+           <widget class="QLabel" name="x_lbl">
+            <property name="font">
+             <font>
+              <family>monospace</family>
+             </font>
+            </property>
+            <property name="text">
+             <string>X:   ---</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="y_lbl">
+            <property name="font">
+             <font>
+              <family>monospace</family>
+             </font>
+            </property>
+            <property name="text">
+             <string>Y:   ---</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="z_lbl">
+            <property name="font">
+             <font>
+              <family>monospace</family>
+             </font>
+            </property>
+            <property name="text">
+             <string>Z:   ---</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="sidebar_spacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QWidget" name="right_panel" native="true"/>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

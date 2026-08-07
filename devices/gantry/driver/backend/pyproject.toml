@@ -1,0 +1,40 @@
+[project]
+name = "rxn-bench-moonraker-driver"
+version = "0.1.0"
+description = "Moonraker/Klipper motion driver for the rxn-bench-gantry capability."
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+    "zeroconf>=0.131.0",
+]
+
+[project.entry-points."rxn_bench.gantry_drivers"]
+moonraker = "rxn_bench_moonraker_driver:build_motion_client"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rxn_bench_moonraker_driver"]
+
+[tool.black]
+line-length = 100
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = "rxn_bench_moonraker_driver"
+
+[tool.mypy]
+disallow_untyped_defs = true
+exclude = ["docs/"]
+
+[[tool.mypy.overrides]]
+module = ["requests.*", "zeroconf.*"]
+ignore_missing_imports = true

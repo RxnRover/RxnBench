@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DosingPumpWidget</class>
+ <widget class="QWidget" name="DosingPumpWidget">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>320</width><height>640</height></rect>
+  </property>
+  <property name="windowTitle"><string>Dosing Pump</string></property>
+
+  <layout class="QVBoxLayout" name="root_layout">
+   <property name="spacing"><number>8</number></property>
+   <property name="leftMargin"><number>10</number></property>
+   <property name="topMargin"><number>8</number></property>
+   <property name="rightMargin"><number>10</number></property>
+   <property name="bottomMargin"><number>8</number></property>
+
+   <!-- Connection status row -->
+   <item>
+    <layout class="QHBoxLayout" name="conn_row">
+     <property name="spacing"><number>6</number></property>
+     <item>
+      <widget class="QLabel" name="conn_dot_lbl">
+       <property name="text"><string>●</string></property>
+       <property name="maximumWidth"><number>16</number></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="conn_status_lbl">
+       <property name="text"><string>Connecting…</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="server_addr_lbl">
+       <property name="text"><string></string></property>
+       <property name="alignment"><set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignVCenter</set></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <!-- Live dispensed volume -->
+   <item>
+    <widget class="QLabel" name="volume_value_lbl">
+     <property name="text"><string>-</string></property>
+     <property name="alignment"><set>Qt::AlignmentFlag::AlignCenter</set></property>
+     <property name="minimumHeight"><number>84</number></property>
+     <property name="font">
+      <font><pointsize>44</pointsize><bold>true</bold></font>
+     </property>
+    </widget>
+   </item>
+
+   <!-- Unit + running state -->
+   <item>
+    <widget class="QLabel" name="volume_unit_lbl">
+     <property name="text"><string>ml dispensed</string></property>
+     <property name="alignment"><set>Qt::AlignmentFlag::AlignCenter</set></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="state_lbl">
+     <property name="text"><string>Idle</string></property>
+     <property name="alignment"><set>Qt::AlignmentFlag::AlignCenter</set></property>
+    </widget>
+   </item>
+
+   <!-- Graph placeholder - replaced at runtime with VolumeGraph -->
+   <item>
+    <widget class="QWidget" name="volume_graph_placeholder">
+     <property name="minimumHeight"><number>80</number></property>
+     <property name="maximumHeight"><number>100</number></property>
+    </widget>
+   </item>
+
+   <!-- Halt row -->
+   <item>
+    <layout class="QHBoxLayout" name="halt_row">
+     <property name="spacing"><number>8</number></property>
+     <item>
+      <widget class="QPushButton" name="pause_btn">
+       <property name="text"><string>Pause</string></property>
+       <property name="toolTip"><string>Pause or resume the dispense in progress</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="stop_btn">
+       <property name="text"><string>Stop</string></property>
+       <property name="toolTip"><string>Stop dispensing immediately</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <!-- Dispense group -->
+   <item>
+    <widget class="QGroupBox" name="dispense_group">
+     <property name="title"><string>Dispense</string></property>
+     <layout class="QVBoxLayout" name="dispense_vbox">
+      <property name="spacing"><number>6</number></property>
+
+      <!-- Mode row -->
+      <item>
+       <layout class="QHBoxLayout" name="mode_row">
+        <property name="spacing"><number>8</number></property>
+        <item>
+         <widget class="QLabel" name="mode_lbl">
+          <property name="text"><string>Mode</string></property>
+          <property name="minimumWidth"><number>52</number></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="mode_combo">
+          <item><property name="text"><string>Volume</string></property></item>
+          <item><property name="text"><string>Dose over time</string></property></item>
+          <item><property name="text"><string>Constant rate</string></property></item>
+          <item><property name="text"><string>Continuous</string></property></item>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- Volume row -->
+      <item>
+       <layout class="QHBoxLayout" name="volume_row">
+        <property name="spacing"><number>8</number></property>
+        <item>
+         <widget class="QLabel" name="volume_lbl">
+          <property name="text"><string>Volume</string></property>
+          <property name="minimumWidth"><number>52</number></property>
+         </widget>
+        </item>
+        <item>
+         <!-- Generic bounds only. Each pump enforces its own minimum dispense
+              and reports a rejection, which surfaces as an error - hardcoding
+              one model's floor here would stop this widget serving any other
+              DosingPump server. -->
+         <widget class="QDoubleSpinBox" name="volume_spin">
+          <property name="minimum"><double>0.010</double></property>
+          <property name="maximum"><double>10000.000</double></property>
+          <property name="value"><double>10.000</double></property>
+          <property name="decimals"><number>2</number></property>
+          <property name="singleStep"><double>0.50</double></property>
+          <property name="suffix"><string> ml</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- Rate row -->
+      <item>
+       <layout class="QHBoxLayout" name="rate_row">
+        <property name="spacing"><number>8</number></property>
+        <item>
+         <widget class="QLabel" name="rate_lbl">
+          <property name="text"><string>Rate</string></property>
+          <property name="minimumWidth"><number>52</number></property>
+         </widget>
+        </item>
+        <item>
+         <!-- Placeholder ceiling; replaced at runtime by the server's
+              MaxFlowRate, which is the authoritative per-pump limit. -->
+         <widget class="QDoubleSpinBox" name="rate_spin">
+          <property name="minimum"><double>0.010</double></property>
+          <property name="maximum"><double>10000.000</double></property>
+          <property name="value"><double>25.000</double></property>
+          <property name="decimals"><number>2</number></property>
+          <property name="singleStep"><double>1.00</double></property>
+          <property name="suffix"><string> ml/min</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- Duration row -->
+      <item>
+       <layout class="QHBoxLayout" name="minutes_row">
+        <property name="spacing"><number>8</number></property>
+        <item>
+         <widget class="QLabel" name="minutes_lbl">
+          <property name="text"><string>Time</string></property>
+          <property name="minimumWidth"><number>52</number></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="minutes_spin">
+          <property name="minimum"><double>0.000</double></property>
+          <property name="maximum"><double>10000.000</double></property>
+          <property name="value"><double>10.000</double></property>
+          <property name="decimals"><number>2</number></property>
+          <property name="singleStep"><double>1.00</double></property>
+          <property name="suffix"><string> min</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- Action row -->
+      <item>
+       <layout class="QHBoxLayout" name="action_row">
+        <property name="spacing"><number>8</number></property>
+        <item>
+         <widget class="QCheckBox" name="reverse_check">
+          <property name="text"><string>Reverse</string></property>
+          <property name="toolTip"><string>Pump toward the inlet instead of the outlet</string></property>
+         </widget>
+        </item>
+        <item>
+         <spacer>
+          <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+          <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+         </spacer>
+        </item>
+        <item>
+         <!-- One stable verb for every mode; the mode combo says which kind.
+              Tooltip is set per mode at runtime. -->
+         <widget class="QPushButton" name="run_btn">
+          <property name="text"><string>Dispense</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <!-- Totals & calibration group -->
+   <item>
+    <widget class="QGroupBox" name="totals_group">
+     <!-- No '&' in the title: Qt reads it as a mnemonic and underlines the next char. -->
+     <property name="title"><string>Totals / Calibration</string></property>
+     <layout class="QVBoxLayout" name="totals_vbox">
+      <property name="spacing"><number>6</number></property>
+
+      <!-- Totals row -->
+      <item>
+       <layout class="QHBoxLayout" name="totals_row">
+        <property name="spacing"><number>6</number></property>
+        <item>
+         <widget class="QLabel" name="totals_lbl">
+          <property name="text"><string>Total: -</string></property>
+         </widget>
+        </item>
+        <item>
+         <spacer>
+          <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+          <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="clear_totals_btn">
+          <property name="text"><string>Clear</string></property>
+          <property name="maximumWidth"><number>52</number></property>
+          <property name="toolTip"><string>Reset both total-volume counters</string></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="refresh_btn">
+          <property name="text"><string>Refresh</string></property>
+          <property name="maximumWidth"><number>64</number></property>
+          <property name="toolTip"><string>Re-read totals, max flow rate, and pump voltage</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- Limits row -->
+      <item>
+       <widget class="QLabel" name="limits_lbl">
+        <property name="text"><string>Metered max: -    Pump: -</string></property>
+       </widget>
+      </item>
+
+      <!-- Calibration row -->
+      <item>
+       <layout class="QHBoxLayout" name="cal_row">
+        <property name="spacing"><number>8</number></property>
+        <item>
+         <widget class="QLabel" name="cal_lbl">
+          <property name="text"><string>Measured</string></property>
+          <property name="minimumWidth"><number>52</number></property>
+          <property name="toolTip"><string>Volume that actually came out of the last dispense</string></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="cal_spin">
+          <property name="minimum"><double>0.000</double></property>
+          <property name="maximum"><double>10000.000</double></property>
+          <property name="value"><double>10.000</double></property>
+          <property name="decimals"><number>2</number></property>
+          <property name="singleStep"><double>0.10</double></property>
+          <property name="suffix"><string> ml</string></property>
+         </widget>
+        </item>
+        <item>
+         <spacer>
+          <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+          <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="cal_run_btn">
+          <property name="text"><string>Calibrate</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <!-- Vertical spacer -->
+   <item>
+    <spacer>
+     <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>20</width><height>8</height></size></property>
+    </spacer>
+   </item>
+
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

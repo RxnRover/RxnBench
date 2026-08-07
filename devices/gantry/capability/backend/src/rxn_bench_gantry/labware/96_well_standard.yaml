@@ -1,0 +1,12 @@
+# 96-Well Standard Plate
+
+rows: 8           # A-H
+columns: 12       # 1-12
+spacing_mm: 9.0   # centre-to-centre, both axes
+well_diameter_mm: 6.94
+well_depth_mm: 36
+plate_height_mm: 44   # mm, deck to plate top surface 
+a1_offset_x: 14.38   # mm, A1 from corner
+a1_offset_y: 11.24   # mm, A1 from corner
+width_mm: 127.76     # mm, plate footprint along X 
+height_mm: 85.48     # mm, plate footprint along Y 

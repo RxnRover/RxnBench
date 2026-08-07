@@ -1,0 +1,24 @@
+{
+  "sila_server": {
+    "hostname": "0.0.0.0",
+    "port": 50052,
+    "tls": false,
+    "require_client_auth": false,
+    "root_certificates": null,
+    "certificate_chain": null,
+    "private_key": null,
+    "options": {},
+    "uuid": "c1876353-a389-430e-81b0-c8d55cd56640",
+    "name": "pH Sensor",
+    "type": "LabAutomation",
+    "description": "Atlas Scientific EZO-pH sensor for the Ames Lab automated chemistry bench.",
+    "version": "0.1",
+    "vendor_url": "https://github.com",
+    "default_lifetime": 3600.0
+  },
+  "discovery": {
+    "ip_version": "ipv4",
+    "network_interfaces": []
+  },
+  "logging": null
+}
