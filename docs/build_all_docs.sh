@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build Sphinx HTML (and pyreverse UML, where a package defines it) for every
-# documented package in the repo. Run from anywhere — paths resolve against the
+# documented package in the repo. Run from anywhere - paths resolve against the
 # repo root, computed from this script's location.
 #
 #   ./docs/build_all_docs.sh          # html + uml for everything

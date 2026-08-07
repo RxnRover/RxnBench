@@ -276,6 +276,7 @@ class _LockCapableInstrument:
         self.sila = sila
         self.lock_acquired = False
         self.lock_released = False
+        self.parked = False
 
     def acquire_experiment_lock(self):
         self.lock_acquired = True
@@ -285,6 +286,9 @@ class _LockCapableInstrument:
 
     def get_experiment_state(self):
         return "running"
+
+    def save_and_park(self):
+        self.parked = True
 
 
 class _PlainInstrument:
@@ -341,3 +345,52 @@ def test_close_survives_release_failure(fake_sila):
 
     bench.close()  # must not raise
     assert all(c.closed for c in fake_sila.instances)
+
+
+# auto-park on close (normal completion, manual stop, or script failure)
+
+def test_normal_exit_parks_gantry(fake_sila):
+    with RxnBenchClient() as bench:
+        bench.connect("gantry", _LockCapableInstrument, host="h", port=1)
+    assert bench.gantry.parked
+    assert bench.gantry.lock_released
+
+
+def test_stop_requested_exit_parks_gantry_before_releasing_lock(fake_sila):
+    """Mirrors a script propagating ExperimentStopped out of the `with` block."""
+    order = []
+    with pytest.raises(ExperimentStopped):
+        with RxnBenchClient() as bench:
+            bench.connect("gantry", _LockCapableInstrument, host="h", port=1)
+            bench.gantry.save_and_park = lambda: order.append("park")
+            bench.gantry.release_experiment_lock = lambda: order.append("release")
+            raise ExperimentStopped("stopped by user")
+    assert order == ["park", "release"]
+
+
+def test_unhandled_exception_exit_parks_gantry(fake_sila):
+    """A mid-run failure (not just a user stop) must also leave the gantry parked."""
+    with pytest.raises(ValueError):
+        with RxnBenchClient() as bench:
+            bench.connect("gantry", _LockCapableInstrument, host="h", port=1)
+            raise ValueError("probe fault")
+    assert bench.gantry.parked
+
+
+def test_park_failure_does_not_prevent_lock_release(fake_sila):
+    """A dead motion server on the way out must not strand the experiment lock."""
+    with pytest.raises(ExperimentStopped):
+        with RxnBenchClient() as bench:
+            bench.connect("gantry", _LockCapableInstrument, host="h", port=1)
+
+            def _boom():
+                raise ConnectionError("server gone")
+            bench.gantry.save_and_park = _boom
+            raise ExperimentStopped("stopped by user")
+    assert bench.gantry.lock_released
+
+
+def test_close_skips_instruments_without_save_and_park(fake_sila):
+    """A connected PHProbe (no save_and_park) must not blow up close()."""
+    with RxnBenchClient() as bench:
+        bench.connect("ph", _PlainInstrument, host="h", port=1)

@@ -225,6 +225,14 @@ def test_shake_axis_selects_displacement_component(gantry, feature):
     assert (back["Dx"], back["Dy"], back["Dz"]) == (0.0, 0.0, -2.0)
 
 
+def test_shake_default_alternates_axes(gantry, feature):
+    gantry.shake(amplitude=1.0, cycles=4)  # default axis="xy": round-robin x, y, x, y
+    jogs = [kw for name, kw in feature.calls if name == "Jog"]
+    assert len(jogs) == 8  # two half-strokes per cycle
+    axes_hit = [(j["Dx"], j["Dy"], j["Dz"]) for j in jogs[::2]]  # one per cycle (the "out" jog)
+    assert axes_hit == [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+
+
 def test_shake_carries_experiment_token(gantry, feature):
     gantry.acquire_experiment_lock()
     gantry.shake(cycles=1)
@@ -304,7 +312,6 @@ def test_read_avg_averages_n_readings():
 
 _StabilityMonitor = instruments_module._StabilityMonitor
 _regression_slope = instruments_module._regression_slope
-PHStabilityTimeout = instruments_module.PHStabilityTimeout
 
 
 def _monitor(**overrides):
@@ -426,21 +433,14 @@ def test_read_stable_returns_window_mean_when_settled(monkeypatch):
     assert _probe([7.00]).read_stable() == pytest.approx(7.00)
 
 
-def test_read_stable_times_out_and_preserves_last_reading(monkeypatch):
+def test_read_stable_times_out_and_returns_best_effort_reading(monkeypatch, capsys):
     monkeypatch.setattr(instruments_module.time, "monotonic", _StepClock())
-    # A steep, never-settling ramp; the timeout fires before stability.
+    # A steep, never-settling ramp; the timeout fires before stability. Never
+    # raises - returns the latest valid reading instead of crashing the caller.
     probe = _probe([7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0])
-    with pytest.raises(PHStabilityTimeout) as exc:
-        probe.read_stable(timeout=5.0)
-    assert exc.value.reading == pytest.approx(9.5)   # best/latest reading kept
-    assert exc.value.elapsed == pytest.approx(5.0)
-
-
-def test_read_stable_timeout_is_a_timeout_error(monkeypatch):
-    # Subclassing TimeoutError keeps existing `except TimeoutError` handlers valid.
-    monkeypatch.setattr(instruments_module.time, "monotonic", _StepClock())
-    with pytest.raises(TimeoutError):
-        _probe([4.0, 5.0, 6.0, 7.0, 8.0, 9.0]).read_stable(timeout=5.0)
+    result = probe.read_stable(timeout=5.0)
+    assert result == pytest.approx(9.5)   # best/latest reading kept
+    assert "WARNING" in capsys.readouterr().out
 
 
 def test_read_stable_rejects_bad_config():

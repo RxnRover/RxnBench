@@ -98,7 +98,7 @@ def main() -> None:
             f"Note: It is important that the pH probe is fully submerged into the solution, and that the solution is well-mixed before taking a reading."
         )
         print(
-            f"      If the pH probe is not subermged increase the amount of solution, or adjust the engagement depth"
+            f"      If the pH probe is not submerged, increase the amount of solution, or adjust the engagement depth"
         )
 
         # Compensate readings for the buffer temperature

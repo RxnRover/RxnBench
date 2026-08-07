@@ -1,6 +1,6 @@
 ---
 name: review-design
-description: Senior-architect-style design review of Rxn Bench code or docs — separation of generated vs handwritten code, type safety, concurrency, testability, module boundaries. Use for architecture/design review requests, not routine PR diff review (use /code-review for that).
+description: Senior-architect-style design review of Rxn Bench code or docs - separation of generated vs handwritten code, type safety, concurrency, testability, module boundaries. Use for architecture/design review requests, not routine PR diff review (use /code-review for that).
 argument-hint: "[area or files to review, and the concern]"
 ---
 
@@ -19,7 +19,7 @@ Constraints:
 - Do not suggest a total rewrite unless the current design is fundamentally broken.
 - Prefer incremental changes.
 - Distinguish: must fix now / should fix soon / nice later.
-- Cross-check against [docs/ai/CURRENT_STATE.md](../../../docs/ai/CURRENT_STATE.md) section 8 (Stable Design Decisions) — don't recommend against a decision already made there without flagging that explicitly.
+- Cross-check against [docs/ai/CURRENT_STATE.md](../../../docs/ai/CURRENT_STATE.md) section 8 (Stable Design Decisions) - don't recommend against a decision already made there without flagging that explicitly.
 
 Return:
 1. Verdict

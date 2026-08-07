@@ -1,8 +1,13 @@
 Assembly,Part,Qty,3D Printed,Link
-Rxn Bench Computer,Raspberry Pi 5,1,No,
+Rxn Bench Platform,SOVOL SV08 3D Printer,1,No,https://www.sovol3d.com/products/sovol-sv08-3d-printer
+Rxn Bench Platform,Workspace,1,Yes
+Rxn Bench Platform,Footprints,5,Yes,
+6x2mm Neodymium Magnet,40,No,
+Rxn Bench Computer,Raspberry Pi 5,1,No,https://www.raspberrypi.com/products/raspberry-pi-5/
 Rxn Bench Computer,Raspberry Pi 5 Case,1,Yes,
 Rxn Bench Computer,Rxn Bench Case,1,Yes
-Rxn Bench Computer,
+Rxn Bench Computer,Raspberry Pi 5 Power Supply,1,No,https://www.raspberrypi.com/products/27w-power-supply/
+Rxn Bench Computer,5 Port Ethernet Switch,1,No,https://www.amazon.com/dp/B0D9JBTBZB?ref=ppx_yo2ov_dt_b_fed_asin_title&th=1
 pH Probe Assembly,pH Probe Mount,1,Yes,../hardware_models/ph-probe_assembly/pH Probe Mount.stl
 pH Probe Assembly,pH Probe Lid,1,Yes,../hardware_models/ph-probe_assembly/pH Probe Lid.stl
 pH Probe Assembly,EZO pH Circuit,1,No,https://atlas-scientific.com/embedded-solutions/ezo-ph-circuit/
@@ -12,9 +17,11 @@ pH Probe Assembly,M3x6mm Threaded Heat Insert,4,No,
 pH Probe Assembly,6x2mm Neodymium Magnet,4,No,
 Washing Station,EZO-PMP Basic Kit, 1, No, https://atlas-scientific.com/kits/ezo-pmp-kit/
 Washing Station,EZO-PMP Case, 1, Yes, 
-Washing Station,
-Washing Station,
-Washing Station,
+Washing Station,M3x6mm Threaded Heat Insert,2,No,
+Washing Station,Washing Station Footprint,1,Yes,
+Washing Station,Washing Station Shower Lid,1,Yes,
+Washing Station,Washing Station Base,1,Yes,
+Washing Station,6x2mm Neodymium Magnet,4,No,
 Liquid Handler Assembly,Pipette Cone Assembly,1,No,https://www.pipettesupplies.com/product/e1-clip-tip-tip-cone-assembly-single-channel-1250-l-t/
 Liquid Handler Assembly,Stepper Linear Actuator,1,No,https://www.haydonkerkpittman.com/products/linear-actuators/can-stack-stepper
 Single Tool Mount,Toolhead Mount w/ Magnets for MGN12 Carriage,1,Yes,../hardware_models/platform/Toolhead Mount For MGN12 Carriage.stl
@@ -45,6 +52,7 @@ Multi Tool Mount - Complex,M2x2mm Machine Screw,12,No,
 Required Tools,
 Set of metric screwdrivers and hex/allen wrenches (at least M3 and M5),
 Temperature-controlled soldering iron,
+Super glue,
 Hard flat surface,
 Mallet or hammer,
 3D printer,

@@ -203,6 +203,24 @@ def _rpc_base(feature_id: str) -> str:
     return f"/sila2.{orig}.{cat}.{cls.lower()}.{ver}.{cls}"
 
 
+def _decode_responses(
+    builder: FeatureMessageBuilder, cmd_id: str, responses: list[dict], raw: bytes
+) -> str:
+    """Decode a command's <Cmd>_Responses message into a display string.
+
+    Shared by _CmdRunner and _ObservableCmdRunner - a plain command's response
+    and an observable command's final result use the same wire message shape.
+    """
+    if not responses:
+        return "(done)"
+    cls = builder.get_message_class(f"{cmd_id}_Responses")
+    msg = cls()
+    msg.ParseFromString(raw)
+    return ", ".join(
+        f"{r['name']}={display_value(r['dtype'], getattr(msg, r['id']))}" for r in responses
+    )
+
+
 
 class _FdlFetcher(QThread):
     feature_parsed = Signal(str, dict)
@@ -297,21 +315,11 @@ class _CmdRunner(QThread):
         ch = grpc.insecure_channel(self._addr)
         try:
             raw = ch.unary_unary(path)(self._payload, timeout=_TIMEOUT)
-            self.result.emit(self._decode_result(bytes(raw)))
+            self.result.emit(_decode_responses(self._builder, self._cid, self._responses, bytes(raw)))
         except Exception as e:
             self.result.emit(f"Error: {e}")
         finally:
             ch.close()
-
-    def _decode_result(self, raw: bytes) -> str:
-        if not self._responses:
-            return "(done)"
-        cls = self._builder.get_message_class(f"{self._cid}_Responses")
-        msg = cls()
-        msg.ParseFromString(raw)
-        return ", ".join(
-            f"{r['name']}={display_value(r['dtype'], getattr(msg, r['id']))}" for r in self._responses
-        )
 
 
 class _ObservableCmdRunner(QThread):
@@ -364,21 +372,11 @@ class _ObservableCmdRunner(QThread):
                 return
 
             result_raw = ch.unary_unary(f"{base}/{self._cid}_Result")(uuid_bytes, timeout=_TIMEOUT)
-            self.result.emit(self._decode_result(bytes(result_raw)))
+            self.result.emit(_decode_responses(self._builder, self._cid, self._responses, bytes(result_raw)))
         except Exception as e:
             self.result.emit(f"Error: {e}")
         finally:
             ch.close()
-
-    def _decode_result(self, raw: bytes) -> str:
-        if not self._responses:
-            return "(done)"
-        cls = self._builder.get_message_class(f"{self._cid}_Responses")
-        msg = cls()
-        msg.ParseFromString(raw)
-        return ", ".join(
-            f"{r['name']}={display_value(r['dtype'], getattr(msg, r['id']))}" for r in self._responses
-        )
 
 
 
@@ -634,7 +632,7 @@ class _CommandPanel(QWidget):
         # header
         hdr = QHBoxLayout()
         hdr.setSpacing(8)
-        arrow = QLabel("▶")
+        arrow = QLabel(">")
         arrow.setStyleSheet(f"color: {t['text_muted']}; font-size: 9pt;")
         arrow.setFixedWidth(14)
         hdr.addWidget(arrow)
@@ -709,7 +707,7 @@ class _CommandPanel(QWidget):
 
         # response schema
         for resp in cmd.get("responses", []):
-            rlbl = QLabel(f"  → {resp['name']}: {resp['type']}")
+            rlbl = QLabel(f"  -> {resp['name']}: {resp['type']}")
             rlbl.setStyleSheet(f"color: {t['text_dim']}; font-size: 8pt;")
             rlbl.setContentsMargins(14, 0, 0, 0)
             layout.addWidget(rlbl)

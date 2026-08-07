@@ -9,8 +9,8 @@ This is a library, not a server - it has no entry point and no SiLA server of it
 ## Requirements
 
 - Python 3.10+
-- [`uv`](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- `rxn-bench-gantry` and/or `rxn-bench-ph` running (locally, mocked, or on a remote device host) — see [../../../docs/usage.md](../../../docs/usage.md)
+- [`uv`](https://docs.astral.sh/uv/) - install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- `rxn-bench-gantry` and/or `rxn-bench-ph` running (locally, mocked, or on a remote device host) - see [../../../docs/usage.md](../../../docs/usage.md)
 
 Install from the workspace root:
 
@@ -56,7 +56,7 @@ with RxnBenchClient() as bench:
 
 ### Adding a new device
 
-Any instrument class that accepts a `SilaClient` in its constructor can be connected the same way — see `instruments.py` for the `Gantry`/`PHProbe` pattern to follow:
+Any instrument class that accepts a `SilaClient` in its constructor can be connected the same way - see `instruments.py` for the `Gantry`/`PHProbe` pattern to follow:
 
 ```python
 bench.connect("conductivity", ConductivitySensor, server="rxn-bench-conductivity")
@@ -115,6 +115,6 @@ Use as a context manager (`with RxnBenchClient() as bench:`) to ensure connectio
 
 The client is a library meant to be imported in scripts that run **on the backend machine** (a Raspberry Pi in the reference deployment, or a machine on the same network as the backend host). Options for deploying scripts:
 
-- **`scp`** — copy the script file and run it over SSH
-- **Git pull** — keep experiment scripts in a repo and pull on the backend
-- **Script Runner SiLA service** — a planned future device package that accepts a script as a string and runs it server-side
+- **`scp`** - copy the script file and run it over SSH
+- **Git pull** - keep experiment scripts in a repo and pull on the backend
+- **Script Runner SiLA service** - a planned future device package that accepts a script as a string and runs it server-side

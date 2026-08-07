@@ -45,9 +45,14 @@ PH_CALIBRATION_LOG_FILE = "ph_calibration.csv"
 SAMPLE_LOG_FILE = "ph_sample.csv"
 
 # --- Sampling setup -----------------------------------------------------------
-SAMPLE_PLATE_NAME = "24-well1"
-SAMPLE_PLATE_NAME2 = "24-well2"
-SAMPLE_PLATE_NAME3 = "24-well3"
+# (plate name, well filter kwargs for _filter_wells). Plate 1 is only loaded in
+# A2-A6 and B2-B6 (column 1 and rows C/D are empty); plates 2 and 3 are fully
+# loaded except for column 1.
+SAMPLE_PLATES = [
+    ("24-well1", {"rows": {"A", "B"}, "min_col": 2}),
+    ("24-well2", {"min_col": 2}),
+    ("24-well3", {"min_col": 2}),
+]
 
 
 # --- Working parameters -----------------------------------------------------------
@@ -131,7 +136,7 @@ def main() -> None:
             f"Note: It is important that the pH probe is fully submerged into the solution, and that the solution is well-mixed before taking a reading."
         )
         print(
-            f"      If the pH probe is not subermged increase the amount of solution, or adjust the engagement depth"
+            f"      If the pH probe is not submerged, increase the amount of solution, or adjust the engagement depth"
         )
 
         # Compensate readings for the buffer temperature
@@ -151,73 +156,28 @@ def main() -> None:
             # Wash after each buffer to avoid carryover that would contaminate the next buffer.
             rinse_probe(bench)
 
-        # Read every well in the 24-Well plate now that the probe is calibrated.
-        bench.set_log_output(SAMPLE_LOG_FILE, columns=["well", "ph"])
-        # Plate 1 is only loaded in A2-A6 and B2-B6 (column 1 and rows C/D are
-        # empty); plates 2 and 3 are fully loaded except for column 1.
-        sample_wells = _filter_wells(
-            bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME), rows={"A", "B"}, min_col=2
-        )
-        sample_wells2 = _filter_wells(bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME2), min_col=2)
-        sample_wells3 = _filter_wells(bench.gantry.get_workspace_wells(SAMPLE_PLATE_NAME3), min_col=2)
+        # Read every well in each sample plate now that the probe is calibrated.
+        bench.set_log_output(SAMPLE_LOG_FILE, columns=["well", "ph", "settling_time"])
+        for plate_name, filter_kwargs in SAMPLE_PLATES:
+            wells = _filter_wells(bench.gantry.get_workspace_wells(plate_name), **filter_kwargs)
+            print(f"Reading pH of {len(wells)} wells in the {plate_name} plate...")
 
-        print(f"Reading pH of {len(sample_wells)} wells in the {SAMPLE_PLATE_NAME} plate...")
+            for well in wells:
+                bench.check_pause_stop()  # honor the UI pause/stop button
 
-        for well in sample_wells:
-            bench.check_pause_stop()  # honor the UI pause/stop button
+                # at_well moves to the well, engages the tool, and disengages on exit;
+                # it also tags the log row with the current well automatically.
+                with bench.at_well(well):
+                    beforeTime = time.time()
+                    print(f"Waiting for probe to settle in {well}...")
+                    ph = bench.ph.read_stable(timeout=300)
+                    afterTime = time.time()
+                    print(f"Probe settled in {afterTime - beforeTime:.1f} seconds.")
+                    bench.log(ph=ph, settling_time=afterTime - beforeTime)
+                    print(f"{well}: pH {ph:.2f}")
 
-            # at_well moves to the well, engages the tool, and disengages on exit;
-            # it also tags the log row with the current well automatically.
-            with bench.at_well(well):
-                beforeTime = time.time()
-                print(f"Waiting for probe to settle in {well}...")
-                ph = bench.ph.read_stable(timeout=300)
-                afterTime = time.time()
-                print(f"Probe settled in {afterTime - beforeTime:.1f} seconds.")
-                bench.log(ph=ph, settling_time=afterTime - beforeTime)
-                print(f"{well}: pH {ph:.2f}")
-
-            # Wash between wells to avoid carryover from the previous sample.
-            rinse_probe(bench)
-
-        print(f"Reading pH of {len(sample_wells2)} wells in the {SAMPLE_PLATE_NAME2} plate...")
-
-        for well in sample_wells2:
-            bench.check_pause_stop()  # honor the UI pause/stop button
-
-            # at_well moves to the well, engages the tool, and disengages on exit;
-            # it also tags the log row with the current well automatically.
-            with bench.at_well(well):
-                beforeTime = time.time()
-                print(f"Waiting for probe to settle in {well}...")
-                ph = bench.ph.read_stable(timeout=300)
-                afterTime = time.time()
-                print(f"Probe settled in {afterTime - beforeTime:.1f} seconds.")
-                bench.log(ph=ph, settling_time=afterTime - beforeTime)
-                print(f"{well}: pH {ph:.2f}")
-
-            # Wash between wells to avoid carryover from the previous sample.
-            rinse_probe(bench)
-
-
-        print(f"Reading pH of {len(sample_wells3)} wells in the {SAMPLE_PLATE_NAME3} plate...")
-
-        for well in sample_wells3:
-            bench.check_pause_stop()  # honor the UI pause/stop button
-
-            # at_well moves to the well, engages the tool, and disengages on exit;
-            # it also tags the log row with the current well automatically.
-            with bench.at_well(well):
-                beforeTime = time.time()
-                print(f"Waiting for probe to settle in {well}...")
-                ph = bench.ph.read_stable(timeout=300)
-                afterTime = time.time()
-                print(f"Probe settled in {afterTime - beforeTime:.1f} seconds.")
-                bench.log(ph=ph, settling_time=afterTime - beforeTime)
-                print(f"{well}: pH {ph:.2f}")
-
-            # Wash between wells to avoid carryover from the previous sample.
-            rinse_probe(bench)
+                # Wash between wells to avoid carryover from the previous sample.
+                rinse_probe(bench)
 
         # Always save and park at the end of a script.
         bench.gantry.save_and_park()

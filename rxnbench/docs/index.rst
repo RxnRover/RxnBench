@@ -1,7 +1,7 @@
 Automated Rxn Bench
 ====================
 
-Software documentation for the Ames National Lab automated chemistry bench —
+Software documentation for the Ames National Lab automated chemistry bench -
 a Sovol SV08 CoreXY motion platform controlled via SiLA2 RPC from a Raspberry
 Pi, with a PySide6 desktop client for interactive control.
 

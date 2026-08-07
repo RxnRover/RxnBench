@@ -13,7 +13,7 @@ help:
 html: apidoc
 	@$(SPHINXBUILD) -b html "$(SOURCEDIR)" "$(BUILDDIR)/html" -W --keep-going
 	@echo
-	@echo "Build finished → $(BUILDDIR)/html/index.html"
+	@echo "Build finished -> $(BUILDDIR)/html/index.html"
 
 # Auto-generate per-module RST files.
 # --force overwrites stale stubs; --module-first puts module docstring before submodule list.
@@ -41,6 +41,6 @@ clean:
 	rm -rf "$(BUILDDIR)"
 	rm -rf api/backend/generated api/frontend/generated
 
-# Live-reload dev server — requires sphinx-autobuild (pip install sphinx-autobuild)
+# Live-reload dev server - requires sphinx-autobuild (pip install sphinx-autobuild)
 livehtml: apidoc
 	sphinx-autobuild "$(SOURCEDIR)" "$(BUILDDIR)/html" --open-browser

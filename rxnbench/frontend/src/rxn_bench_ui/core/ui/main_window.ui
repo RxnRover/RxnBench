@@ -38,8 +38,8 @@
 
         <!--
           workspace_stack switches between two pages:
-            page_empty   (index 0) — shown when no devices are connected
-            page_devices (index 1) — shown once at least one device is added
+            page_empty   (index 0) - shown when no devices are connected
+            page_devices (index 1) - shown once at least one device is added
           Python switches pages and manages device_tabs.
         -->
         <item>
@@ -105,7 +105,7 @@
 
             <!--
               device_tabs holds one tab per connected device.
-              Each tab is a QScrollArea wrapping the device's widget panel —
+              Each tab is a QScrollArea wrapping the device's widget panel -
               so panels of any size work without breaking the layout.
               Python adds/removes tabs. tabsClosable lets the user disconnect.
             -->

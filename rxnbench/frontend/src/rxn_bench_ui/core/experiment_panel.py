@@ -278,7 +278,7 @@ class ExperimentPanel(QWidget):
         self._close_log_file()
         results_dir = self._resolve_results_dir()
         if results_dir is not None:
-            self._log.appendPlainText(f"# results → {results_dir}\n")
+            self._log.appendPlainText(f"# results -> {results_dir}\n")
             ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             stem = Path(script).stem
             log_path = results_dir / f"{stem}_{ts}.log"
@@ -286,7 +286,7 @@ class ExperimentPanel(QWidget):
                 self._log_fh = open(log_path, "w", encoding="utf-8")
                 self._log_fh.write(f"# {sys.executable} {script}\n")
                 self._log_fh.write(f"# started {datetime.datetime.now().isoformat()}\n\n")
-                self._status(f"Running → {log_path.name}")
+                self._status(f"Running -> {log_path.name}")
             except OSError as e:
                 self._log_fh = None
                 self._log.appendPlainText(f"[log file error: {e}]")
@@ -308,7 +308,7 @@ class ExperimentPanel(QWidget):
         else:
             self._runner.pause()
             self._paused = True
-            self._pause_btn.setText("▶  Resume")
+            self._pause_btn.setText(">  Resume")
             self._status("Paused")
 
     def _stop(self) -> None:

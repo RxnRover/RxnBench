@@ -4,9 +4,8 @@ from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
 # This script demonstrates how to use more exact control over the bench, including reading and logging pH values in different ways.
 
 def main() -> None:
+    # Keep your script inside this main() function to keep things simple.
     with RxnBenchClient() as bench:
-        """Keep your script inside this main() function to keep things simple."""
-
         # Tell the bench which instruments you're using and where to find them.
         # Server names are discovered automatically on the local network.
         bench.connect("gantry", Gantry, server="Gantry")

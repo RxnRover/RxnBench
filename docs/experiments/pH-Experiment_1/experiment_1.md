@@ -7,7 +7,7 @@
 ## Objective
 
 Perform a fully automated three-point calibration of the Atlas Scientific pH
-probe, then use the calibrated probe to read 24 samples spanning pH 1–4 in a
+probe, then use the calibrated probe to read 24 samples spanning pH 1-4 in a
 24-well plate.
 
 ## Equipment & Materials
@@ -33,7 +33,7 @@ between wells.
 
 ### Calibration
 
-Slope: **(97.7, 89.5)** — acid 97.7%, base 89.5%.
+Slope: **(97.7, 89.5)** - acid 97.7%, base 89.5%.
 
 | Point | Known pH | Reading before | Reading after | Settling time |
 |-------|----------|----------------|---------------|---------------|
@@ -41,7 +41,7 @@ Slope: **(97.7, 89.5)** — acid 97.7%, base 89.5%.
 | Low   | 4.00     | 4.08           | 4.00          | 124.5 s       |
 | High  | 10.00    | 9.68           | 10.01         | 155.6 s       |
 
-The high point required the largest correction (9.68 → 10.01), consistent with
+The high point required the largest correction (9.68 -> 10.01), consistent with
 the lower base slope (89.5%).
 
 ### pH Sample Readings

@@ -9,9 +9,9 @@ UMLDIR        = _uml
 
 help:
 	@echo "Usage:"
-	@echo "  make html   — build HTML documentation"
-	@echo "  make uml    — generate class/package UML diagrams (requires pylint)"
-	@echo "  make clean  — remove build artifacts"
+	@echo "  make html   - build HTML documentation"
+	@echo "  make uml    - generate class/package UML diagrams (requires pylint)"
+	@echo "  make clean  - remove build artifacts"
 
 html:
 	$(SPHINXBUILD) -b html $(SOURCEDIR) $(BUILDDIR)/html

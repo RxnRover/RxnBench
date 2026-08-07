@@ -62,8 +62,8 @@ autodoc_mock_imports = [
 # The gantry/ph_sensor frontend plugins live under devices/<name>/frontend/ and are
 # loaded into the rxn_bench_ui.devices.<name> namespace at runtime by a custom importlib
 # loader (rxn_bench_ui.devices.all_devices). autodoc never triggers that, so pre-register
-# the plugin packages here — with the autodoc mocks active so their submodule imports
-# resolve — otherwise autodoc can't import rxn_bench_ui.devices.<name>.* to document them.
+# the plugin packages here - with the autodoc mocks active so their submodule imports
+# resolve - otherwise autodoc can't import rxn_bench_ui.devices.<name>.* to document them.
 from sphinx.ext.autodoc.mock import mock as _mock  # noqa: E402
 
 with _mock(autodoc_mock_imports):

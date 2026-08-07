@@ -2,21 +2,22 @@
 Instrument strategy classes for RxnBenchClient.
 
 Each class wraps a single SiLA server and exposes the commands for one
-instrument type. Attach any of them to a session with bench.connect().
+instrument type. These four are auto-discovered via bench.devices.<name>
+(see rxn_bench_client.devices) - bench.connect() also still works, and is
+the only option for a custom instrument not in DEVICE_REGISTRY.
 
 To support a new instrument, follow the same pattern: accept a SilaClient
 in __init__ and expose methods that call it::
 
-    from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
+    from rxn_bench_client import RxnBenchClient, Spectrometer
 
     with RxnBenchClient() as bench:
-        bench.connect("gantry", Gantry,   server="rxn-bench-gantry")
-        bench.connect("ph",     PHProbe,  server="rxn-bench-ph")
+        bench.connect("spectrometer", Spectrometer, server="rxn-bench-spec")
 
-        bench.gantry.mount_toolhead("ph_probe")
-        for well in bench.gantry.get_workspace_wells("plate1"):
+        bench.devices.gantry.mount_toolhead("ph_probe")
+        for well in bench.devices.gantry.get_workspace_wells("plate1"):
             with bench.at_well(well, stabilize=3):
-                bench.log(ph=bench.ph.read())
+                bench.log(ph=bench.devices.ph.read())
 """
 
 from __future__ import annotations
@@ -123,27 +124,6 @@ class _StabilityMonitor:
         return sum(self._values) / len(self._values)
 
 
-class PHStabilityTimeout(TimeoutError):
-    """Raised when :meth:`PHProbe.read_stable` times out before settling.
-
-    The best (latest valid) reading and the window's final drift/range are
-    preserved as attributes so a caller that wants a best-effort value can
-    recover it (``except PHStabilityTimeout as exc: exc.reading``). Subclassing
-    :class:`TimeoutError` keeps existing ``except TimeoutError`` handlers working.
-    """
-
-    def __init__(self, *, reading: float, elapsed: float, slope: float, ptp: float) -> None:
-        self.reading = reading
-        self.elapsed = elapsed
-        self.slope = slope
-        self.ptp = ptp
-        super().__init__(
-            f"pH did not stabilize within {elapsed:.0f}s "
-            f"(last reading {reading:.3f}, drift {slope:+.4f} pH/s, "
-            f"range {ptp:.3f} pH)"
-        )
-
-
 def _well_labels(rows: int, cols: int) -> list[str]:
     return [f"{chr(65 + r)}{c + 1}" for r in range(rows) for c in range(cols)]
 
@@ -159,9 +139,13 @@ class Gantry:
         bench.gantry.move_to_well("plate1/A3")
         bench.gantry.engage_tool()
         bench.gantry.disengage_tool()
-        bench.gantry.save_and_park()
 
         wells = bench.gantry.get_workspace_wells("plate1")
+
+    ``save_and_park()`` moves to the home corner and persists homing state for
+    next session; ``RxnBenchClient.close()`` calls it automatically whenever a
+    connected gantry's session ends (script finished, stopped, or raised), so
+    scripts don't need to call it directly.
     """
 
     def __init__(self, sila: SilaClient) -> None:
@@ -312,38 +296,50 @@ class Gantry:
     def shake(
         self,
         *,
-        amplitude: float = 2.0,
-        cycles: int = 10,
-        axis: str = "y",
+        amplitude: float = 1.5,
+        cycles: int = 12,
+        axis: str = "xy",
     ) -> None:
-        """Oscillate the toolhead can be useful too fling off droplets on toolheads.
+        """Jitter the toolhead to fling off droplets on toolheads.
 
-        Jogs +/- *amplitude* mm along *axis* for *cycles* round trips and ends
-        back at the starting position. Handy after lifting the pH probe clear of
-        a well to shake loose water before the next reading, cutting carryover.
+        Jogs +/- *amplitude* mm for *cycles* round trips, cycling through each
+        axis in *axis* in turn (round-robin) rather than oscillating along a
+        single axis, and ends back at the starting position. Handy after
+        lifting the pH probe clear of a well to shake loose water before the
+        next reading, cutting carryover.
+
+        Short, frequent bursts across more than one axis shake harder than one
+        long oscillation on a single axis of the same total travel: each jog
+        is its own accel/decel burst, so more (shorter) jogs pack more
+        direction reversals into the same envelope, and alternating axes flings
+        droplets in more than one direction instead of just back and forth.
 
         The tip must already be clear of labware: the shake happens at the
         current position, so raise or disengage the tool first.
 
         Args:
-            amplitude: Half-stroke of each oscillation in mm (> 0).
-            cycles:    Number of back-and-forth round trips (>= 1).
-            axis:      Axis to shake along - "x", "y", or "z".
+            amplitude: Half-stroke of each burst in mm (> 0).
+            cycles:    Number of back-and-forth bursts (>= 1), split round-robin
+                       across the axes in *axis*.
+            axis:      Axis or axes to shake along, any combination of "x", "y",
+                       "z" - e.g. "y" for a single axis (the old default) or
+                       "xy"/"xyz" to alternate between them each cycle.
         """
         if amplitude <= 0.0:
             raise ValueError("amplitude must be positive")
         if cycles < 1:
             raise ValueError("cycles must be at least 1")
-        deltas = {
-            "x": (amplitude, 0.0, 0.0),
-            "y": (0.0, amplitude, 0.0),
-            "z": (0.0, 0.0, amplitude),
+        unit = {
+            "x": (1.0, 0.0, 0.0),
+            "y": (0.0, 1.0, 0.0),
+            "z": (0.0, 0.0, 1.0),
         }
-        try:
-            dx, dy, dz = deltas[axis.lower()]
-        except KeyError:
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}") from None
-        for _ in range(cycles):
+        axis = axis.lower()
+        if not axis or any(a not in unit for a in axis):
+            raise ValueError(f"axis must only contain 'x', 'y', or 'z', got {axis!r}")
+        for i in range(cycles):
+            ux, uy, uz = unit[axis[i % len(axis)]]
+            dx, dy, dz = ux * amplitude, uy * amplitude, uz * amplitude
             self.jog(dx=dx, dy=dy, dz=dz)
             self.jog(dx=-dx, dy=-dy, dz=-dz)
 
@@ -463,12 +459,15 @@ class PHProbe:
             timeout:       Give up after this many seconds without settling.
             interval:      Seconds between readings (~1.0 for the 1 Hz stream).
 
-        Returns:
-            The mean pH of the final settled window.
+        Never raises on a timeout: if *timeout* elapses before the probe
+        settles, a warning is printed (with the best/latest reading and the
+        window's final drift/range) and that best-effort reading is returned
+        instead - a slow-to-settle well shouldn't crash an otherwise-healthy
+        run.
 
-        Raises:
-            PHStabilityTimeout: *timeout* elapsed before the probe settled. The
-                best (latest valid) reading is preserved on the exception.
+        Returns:
+            The mean pH of the final settled window, or the best (latest
+            valid) reading if *timeout* elapsed first.
         """
         monitor = _StabilityMonitor(
             window=window,
@@ -487,12 +486,12 @@ class PHProbe:
             if monitor.update(elapsed, value):
                 return monitor.mean()
             if elapsed >= timeout:
-                raise PHStabilityTimeout(
-                    reading=last_valid,
-                    elapsed=elapsed,
-                    slope=monitor.slope(),
-                    ptp=monitor.ptp(),
+                print(
+                    f"WARNING: pH did not stabilize within {elapsed:.0f}s "
+                    f"(last reading {last_valid:.3f}, drift {monitor.slope():+.4f} pH/s, "
+                    f"range {monitor.ptp():.3f} pH) - using best-effort reading and continuing."
                 )
+                return last_valid
             time.sleep(interval)
 
     def wait_for(

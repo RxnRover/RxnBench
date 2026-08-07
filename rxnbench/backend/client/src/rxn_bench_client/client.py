@@ -3,30 +3,36 @@ Blocking Python client for Rxn Bench SiLA servers.
 
 Intended for use in experiment scripts run on the backend machine.
 
-Usage::
+Zero-boilerplate usage - ``bench.devices`` auto-discovers and connects the
+four built-in instrument types (see :mod:`rxn_bench_client.devices`), no
+``bench.connect(...)`` calls needed::
 
-    from rxn_bench_client import RxnBenchClient, Gantry, PHProbe
+    from rxn_bench_client import RxnBenchClient
 
     with RxnBenchClient() as bench:
-        bench.connect("gantry", Gantry,  server="rxn-bench-gantry")
-        bench.connect("ph",     PHProbe, server="rxn-bench-ph")
-
         bench.set_log_output("results.csv")
-        bench.gantry.mount_toolhead("ph_probe")
+        bench.devices.gantry.mount_toolhead("ph_probe")
 
-        for well in bench.gantry.get_workspace_wells("plate1"):
+        for well in bench.devices.gantry.get_workspace_wells("plate1"):
             with bench.at_well(well, stabilize=3):
-                bench.log(ph=bench.ph.read())
+                bench.log(ph=bench.devices.ph.read())
 
-        bench.gantry.save_and_park()
+    # leaving the `with` block parks a connected gantry automatically,
+    # whether the script finished, was stopped, or raised
 
-No gantry? No problem - just connect what you have::
+Explicit usage - for a custom instrument, an ambiguous network (more than one
+matching server), or just being explicit about host/port::
+
+    from rxn_bench_client import RxnBenchClient, PHProbe
 
     with RxnBenchClient() as bench:
         bench.connect("ph",          PHProbe,       server="rxn-bench-ph")
         bench.connect("spectrometer", Spectrometer, server="rxn-bench-spec")
 
         bench.log(ph=bench.ph.read(), abs600=bench.spectrometer.read(600))
+
+Both styles can be mixed freely in the same script, and both end up on
+``bench.<name>`` either way.
 """
 
 from __future__ import annotations
@@ -41,6 +47,8 @@ import time
 from typing import Any, Generator, Type
 
 from sila2.client import SilaClient
+
+from .devices import DeviceNamespace
 
 
 class ExperimentStopped(Exception):
@@ -60,15 +68,6 @@ def _next_available_path(path: pathlib.Path) -> pathlib.Path:
         if not candidate.exists():
             return candidate
         n += 1
-
-
-def _once(prop) -> object:
-    """Subscribe to a SiLA observable property, take one value, and cancel."""
-    sub = prop.subscribe()
-    try:
-        return next(sub)
-    finally:
-        sub.cancel()
 
 
 def _discover_sila_server(server_name: str, timeout: float = 5.0) -> tuple[str, int]:
@@ -144,12 +143,29 @@ class RxnBenchClient:
         """
         self._host = host
         self._instrument_clients: list[SilaClient] = []
+        self._instruments: list[Any] = []  # every wrapped instrument, in connect()/_attach() order
         self._lock_holder: Any = None  # instrument that owns the experiment lock
+        self.devices = DeviceNamespace(self)
 
         self._log_file: Any = None
         self._log_writer: Any = None
         self._log_columns: list[str] | None = None
         self._current_well: str | None = None
+
+    def _attach(self, name: str, cls: Type, sila: SilaClient) -> None:
+        """Wrap an already-connected SilaClient and expose it as ``bench.<name>``.
+
+        Shared by :meth:`connect` (explicit host/port/server) and
+        ``bench.devices.<name>`` (auto-discovered) so both paths get
+        identical instrument tracking and lock-acquisition behavior.
+        """
+        self._instrument_clients.append(sila)
+        instrument = cls(sila)
+        setattr(self, name, instrument)
+        self._instruments.append(instrument)
+        if self._lock_holder is None and hasattr(instrument, "acquire_experiment_lock"):
+            instrument.acquire_experiment_lock() # aquire a lock on the instrument to prevent other clients from competing for control
+            self._lock_holder = instrument
 
     def connect(
         self,
@@ -163,7 +179,9 @@ class RxnBenchClient:
         """Connect to a SiLA server and expose the instrument as ``bench.<name>``.
 
         Pass either ``server`` (discovered automatically via mDNS) or an
-        explicit ``host``/``port`` pair.
+        explicit ``host``/``port`` pair. For the four built-in instrument
+        types, ``bench.devices.<name>`` usually means this never needs to be
+        called explicitly - see the module docstring.
 
             bench.connect("gantry", Gantry,  server="rxn-bench-gantry")
             bench.connect("ph",     PHProbe, server="rxn-bench-ph")
@@ -183,12 +201,7 @@ class RxnBenchClient:
             h = host or self._host
             p = port or 50052 # just the default instrument SiLA port
         sila = SilaClient(h, p, insecure=True)
-        self._instrument_clients.append(sila)
-        instrument = cls(sila)
-        setattr(self, name, instrument)
-        if self._lock_holder is None and hasattr(instrument, "acquire_experiment_lock"):
-            instrument.acquire_experiment_lock() # aquire a lock on the instrument to prevent other clients from competing for control
-            self._lock_holder = instrument
+        self._attach(name, cls, sila)
 
     def check_pause_stop(self) -> None:
         """Check whether the UI has requested a pause or stop.
@@ -215,6 +228,22 @@ class RxnBenchClient:
             time.sleep(0.5)
 
     def close(self) -> None:
+        """Park a connected gantry, release the experiment lock, and close up.
+
+        Any connected instrument with a ``save_and_park()`` (i.e. a gantry) is
+        parked - moved to its home corner, homing state saved - before the
+        lock is released. This runs unconditionally, whatever the reason the
+        session is ending: normal completion, a manual stop, or an unhandled
+        exception, so a killed or failed run never leaves the gantry's saved
+        homing state stale enough to need a manual re-home.
+        """
+        for inst in self._instruments:
+            save_and_park = getattr(inst, "save_and_park", None)
+            if callable(save_and_park):
+                try:
+                    save_and_park()
+                except Exception:
+                    pass
         if self._lock_holder is not None:
             try:
                 self._lock_holder.release_experiment_lock()

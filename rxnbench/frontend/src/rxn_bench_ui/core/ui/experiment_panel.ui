@@ -52,7 +52,7 @@
      <item>
       <widget class="QLineEdit" name="log_folder_edit">
        <property name="readOnly"><bool>true</bool></property>
-       <property name="placeholderText"><string>Optional — log folder</string></property>
+       <property name="placeholderText"><string>Optional - log folder</string></property>
       </widget>
      </item>
      <item>
@@ -78,7 +78,7 @@
      <item>
       <widget class="QPushButton" name="play_btn">
        <property name="enabled"><bool>false</bool></property>
-       <property name="text"><string>▶  Run</string></property>
+       <property name="text"><string>>  Run</string></property>
       </widget>
      </item>
      <item>

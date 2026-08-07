@@ -15,35 +15,11 @@
 
 ## Overview
 
-Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform, with a Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor; a separate operator machine runs a frontend application [Rxn Bench](TODO: Eventually include repo link) that talks to those servers over gRPC/SiLA, and experiment scripts drive the bench through a Python client [Rxn Bench Client](TODO: Eventually include repo link).
+Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform, with an Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor; a separate operator machine runs a frontend application [Rxn Bench](TODO: Eventually include repo link) that talks to those servers over gRPC/SiLA, and experiment scripts drive the bench through a Python client [Rxn Bench Client](TODO: Eventually include repo link).
 
-### The Inspiration
+### Motivation
 
-#### Discovery increasingly runs on data
-
-Modern science depends on it;
-machine learning, high-throughput screening, and AI-assisted discovery all
-require large, reliable experimental datasets. Generating that data by
-hand is slow, inconsistent, and labor-intensive, making automated data
-collection a growing bottleneck for research.
-
-### The Problem
-
-#### Automation is the answer - but it's expensive and rigid
-
-Automated platforms improve repeatability, cut manual workload, and generate data
-at scale, but most remain costly, specialized, and locked to specific
-hardware and workflows. This puts automated experimentation out of
-reach for many labs.
-
-### The Solution
-
-#### Rxn Bench: accessible automation
-
-A low-cost, modular platform
-combining accessible hardware, modern lab software frameworks, and
-customizable 3D-printable components - letting labs integrate diverse
-devices, adapt workflows, and generate data at scale for under $1000.
+Machine learning, high-throughput screening, and AI-assisted discovery all depend on large, reliable experimental datasets, and generating that data by hand is slow, inconsistent, and labor-intensive. Commercial automation platforms solve the repeatability problem, but most are costly, specialized, and locked to specific hardware and workflows - out of reach for many labs. Rxn Bench is a low-cost, modular alternative: off-the-shelf hardware, open lab-software frameworks, and customizable 3D-printed components, letting a lab integrate diverse devices, adapt workflows, and generate data at scale for under $1000.
 
 ## Navigating this repository
 
@@ -57,7 +33,7 @@ See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the full architectu
 
 ## Requirements
 
-- A Sovol SV08 3D printer (or similar Klipper-based motion platform) and a computer device __i.e Raspberry Pi 5__ to control it
+- A Sovol SV08 3D printer (or similar Klipper-based motion platform) and a computer device (__e.g. a Raspberry Pi 5__) to control it
 - Python 3.10+ and [`uv`](https://docs.astral.sh/uv/) on both the Pi (backend) and the operator machine (frontend)
 - Atlas Scientific EZO pH kit and 3D-printed mounts (see Component List below) for pH sensing hardware
 
@@ -72,7 +48,7 @@ See [docs/usage.md](docs/usage.md) for commands to install dependencies and star
 Rxn Bench is a modular lab-automation platform for programmable scientific workflows, built from a repurposed SOVOL SV08 3D printer with
 custom 3D-printed components and open software interfaces.
 
-### Capability-based hardware abstraction.
+### Capability-based hardware abstraction
 
 Devices are represented through
 SiLA2 feature servers running on a backend computer (e.g., a Raspberry Pi),
@@ -84,9 +60,9 @@ treated as a duck.
 
 ### Desktop control + Python API
 
-[Rxn Bench]() provides a desktop
-interface for configuration and direct device control, while a [Rxn Bench Client]() API
-enables headless operation and experiment scripting
+[Rxn Bench](TODO: Eventually include repo link) provides a desktop
+interface for configuration and direct device control, while a [Rxn Bench Client](TODO: Eventually include repo link) API
+enables headless operation and experiment scripting.
 
 ### Component List
 
@@ -149,7 +125,6 @@ A 3D-printed cup, routed to waste through tubing, used to rinse the pH probe (or
 | Name                              | Link                                                                       | Purpose                                                                   |
 | --------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | SMA Male-to-Female Extender Cable | [Atlas Scientific](https://atlas-scientific.com/accessories/sma-extender/) | Extends the probe cable reach from the carrier board to the mounted probe |
-|                                   |                                                                            |
 
 #### Other components/items
 
@@ -224,6 +199,7 @@ The gantry docks multiple toolheads via a 3D-printed mount with linear-rails, in
 ### Core
 
 - [How to convert a 3D printer to a personal automated liquid handler for life science workflows](https://www.sciencedirect.com/science/article/pii/S2472630324001213#bib0043)
+- [Opentrons](https://opentrons.com/) - commercial lab-automation platform, referenced for cost/rigidity comparison
 - [SILA Standard](https://sila-standard.com/standards/)
 - [SILA Standard GitLab](https://gitlab.com/SiLA2)
 - [Klipper Firmware](https://www.klipper3d.org/)

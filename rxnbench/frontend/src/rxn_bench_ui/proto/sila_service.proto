@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-// SiLA2 standard SiLAService feature — GetImplementedFeatures only.
+// SiLA2 standard SiLAService feature - GetImplementedFeatures only.
 //
-// This file is STATIC — it mirrors the SiLA2 standard definition and will not
+// This file is STATIC - it mirrors the SiLA2 standard definition and will not
 // drift. No generator is needed. The SiLAService is always registered by the
 // CDK Connector; its structure is defined by the standard, not our dataclasses.
 //
