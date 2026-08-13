@@ -1,0 +1,12 @@
+# Washing Station
+
+rows: 1          
+columns: 1       
+spacing_mm: 0 
+well_diameter_mm: 50
+well_depth_mm: 40
+plate_height_mm: 100   # mm, deck to holder top surface
+a1_offset_x: 63.88   # mm, A1 from corner
+a1_offset_y: 46.79   # mm, A1 from corner
+width_mm: 127.76     # mm, plate footprint along X 
+height_mm: 93.58     # mm, plate footprint along Y 

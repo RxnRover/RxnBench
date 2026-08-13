@@ -1,0 +1,38 @@
+meta:
+  device: camera
+  package: rxn_bench_camera
+  feature_class: Camera
+  hardware_attr: _camera
+  originator: edu.iastate.ames
+  category: rxnbench
+  version: "1.0"
+  maturity_level: Draft
+  summary: |
+    Hardware interface contract for camera devices.
+
+    Any camera implementation (Crowsnest, a future direct-USB driver, etc.) only
+    needs to satisfy this - the SiLA feature never depends on a concrete driver.
+
+imports: []
+
+protocols:
+  - name: CameraProtocol
+    core: true
+    optional: false
+    doc: Minimum interface required by the Camera SiLA feature.
+    members:
+      - name: capture
+        returns: bytes
+        doc: Capture and return a single still image as JPEG-encoded bytes.
+
+feature_only:
+  - name: set_capture_interval
+    sila_kind: command
+    params:
+      - {name: seconds, type: float}
+    doc: >
+      Change how often latest_image captures and archives a new frame. Feature-local
+      state (self._interval), not part of CameraProtocol - the camera driver itself
+      has no notion of a capture interval.
+
+excluded_protocols: []

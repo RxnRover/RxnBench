@@ -10,8 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: astral-sh/setup-uv@v5
       - name: Install workspace
         working-directory: rxnbench/backend
@@ -45,8 +43,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: astral-sh/setup-uv@v5
       - name: Qt runtime libraries
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1

@@ -1,0 +1,147 @@
+meta:
+  device: dosing_pump
+  package: rxn_bench_dosing_pump
+  feature_class: DosingPump
+  hardware_attr: _pump
+  originator: edu.iastate.ames
+  category: rxnbench
+  version: "1.0"
+  maturity_level: Draft
+  summary: |
+    Interface contract for dosing pumps.
+
+    Split into a small core every dosing pump can satisfy, plus opt-in capability
+    protocols for features that are not universal. A pump only has to implement
+    :class:`DosingPumpProtocol`; the SiLA feature checks the optional protocols at
+    runtime (they are ``runtime_checkable``) and rejects the corresponding commands
+    with a clear message on hardware that lacks them.
+
+    The point is reuse: the feature, proto, client, and Qt widget depend on this
+    contract, not on any vendor. A second pump model implementing the core reuses
+    all of them without a line of new frontend code - see the SiLA-feature reuse
+    note in ``devices/dosing_pump/README.md``.
+
+imports: []
+
+protocols:
+  - name: DosingPumpProtocol
+    core: true
+    optional: false
+    doc: |
+      Core contract required by the DosingPump SiLA feature.
+
+      Volumes are millilitres and flow rates millilitres per minute throughout.
+      A negative volume or rate means reverse (pump toward the inlet).
+
+      Deliberately minimal: only operations any dosing pump can be expected to
+      support. Anything vendor-specific belongs in a capability protocol below.
+    members:
+      - name: read_volume_dispensed
+        returns: float
+        doc: Return the volume dispensed so far by the current or last dispense, in ml.
+      - name: dispense_volume
+        params:
+          - {name: volume, type: float}
+        doc: |
+          Dispense a fixed volume in ml. Negative dispenses in reverse.
+
+          Implementations reject volumes below whatever minimum the hardware has.
+      - name: dose_over_time
+        params:
+          - {name: volume, type: float}
+          - {name: minutes, type: float}
+        doc: Dispense a fixed volume in ml spread evenly over the given number of minutes.
+      - name: start_continuous_dispense
+        params:
+          - {name: reverse, type: bool, default: "False"}
+        doc: Run the pump at its top speed until stopped. The rate is not selectable.
+      - name: set_flow_rate
+        params:
+          - {name: rate, type: float}
+          - {name: minutes, type: "float | None", default: "None"}
+        doc: |
+          Hold a constant flow rate in ml/min.
+
+          Args:
+              rate: Target flow rate in ml/min, up to :meth:`max_flow_rate`.
+                  Negative runs in reverse.
+              minutes: How long to hold the rate; None runs until stopped.
+      - name: max_flow_rate
+        returns: float
+        doc: |
+          Return the fastest flow rate in ml/min that :meth:`set_flow_rate` can hold.
+
+          Typically below the pump's top speed, since holding a metered rate needs
+          a controlled regime that open-loop continuous dispensing does not.
+      - name: set_paused
+        params:
+          - {name: paused, type: bool}
+        doc: Pause or resume the dispense in progress. Idempotent.
+      - name: is_paused
+        returns: bool
+        doc: Return True while the dispense in progress is paused.
+      - name: stop_dispense
+        returns: float
+        doc: Stop dispensing immediately and return the volume dispensed, in ml.
+      - name: is_dispensing
+        returns: bool
+        doc: Return True while the pump is running.
+      - name: total_volume_dispensed
+        returns: float
+        doc: |
+          Return the net total volume pumped since the last clear, in ml.
+
+          Reverse dispensing subtracts from this, so it can be negative.
+      - name: absolute_total_volume
+        returns: float
+        doc: |
+          Return the total volume pumped since the last clear ignoring direction, in ml.
+
+          A pump keeping only one counter may return ``abs(total_volume_dispensed())``,
+          which differs after any reverse dispensing but is the closest available.
+      - name: clear_total_volume
+        doc: Reset the total-volume counters to zero.
+
+  - name: SupportsCalibration
+    core: false
+    optional: true
+    doc: Pumps that can be calibrated against a measured delivered volume.
+    members:
+      - name: calibrate
+        params:
+          - {name: volume, type: float}
+        doc: Calibrate against the volume actually delivered, in ml, by the last dispense.
+      - name: clear_calibration
+        doc: Erase all stored calibration data.
+      - name: calibration_status
+        returns: int
+        doc: |
+          Return 0 when uncalibrated, non-zero when calibrated.
+
+          The meaning of specific non-zero values is pump-defined (the EZO-PMP
+          uses 1 = fixed volume, 2 = volume over time, 3 = both).
+
+  - name: SupportsDirectionInvert
+    core: false
+    optional: true
+    doc: Pumps with a persistent direction flip, separate from per-command sign.
+    members:
+      - name: set_inverted
+        params:
+          - {name: inverted, type: bool}
+        doc: Set whether the pump's dispensing direction is flipped. Idempotent.
+      - name: is_inverted
+        returns: bool
+        doc: Return True if the dispensing direction is flipped.
+
+  - name: SupportsDiagnostics
+    core: false
+    optional: true
+    doc: Pumps that report their own electrical health.
+    members:
+      - name: pump_voltage
+        returns: float
+        doc: Return the motor supply voltage in volts.
+
+feature_only: []
+excluded_protocols: []

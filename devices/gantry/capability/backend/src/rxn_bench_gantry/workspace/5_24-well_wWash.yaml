@@ -1,0 +1,77 @@
+# Workspace definition template - copy and fill in.
+
+name: 5_24-well_wWash
+
+# Well used as the physical reference point during deck calibration.
+# Use "plate_id/well_label" format, e.g. "reagents/A1".
+calibration_reference_well: 24-well2/A1
+
+# Height of the shared deck/workplate top surface above Z=0 (the bed). The base
+# plate that all labware sits on is one physical layer, so its thickness lives
+# here once - swapping to a thicker/thinner deck is a one-line change, not an
+# edit to every plate below. Each plate's origin.z is then just that plate's own
+# footprint/mount height ABOVE this deck (0 = sits directly on it). A well's
+# opening Z = deck_height_mm + plate.origin.z + labware plate_height_mm.
+deck_height_mm: 5.0
+
+plates:
+
+  - id: 24-well1
+    plate_type: 24_well_5ml
+    origin:
+      x: 79.54
+      y: 175.0 
+      z: 3.0   
+    orientation: rotated_90
+    origin_mode: center
+
+  - id: 24-well2                     # unique id used in well labels, e.g. "plate1/A3"
+    plate_type: 24_well_5ml   # must match a file in labware/
+    origin:
+      x: 175.0  # mm, plate footprint reference point in gantry X (see origin_mode)
+      y: 175.0   # mm, plate footprint reference point in gantry Y (see origin_mode)
+      z: 3.0    # mm, thickness of the plate's footprint/mount above the deck top (see deck_height_mm)
+    orientation: rotated_90         # standard | rotated_90 | rotated_270
+    origin_mode: center            # center (default, rotates in place) | corner (origin = A1 corner, rotates around it)
+
+  - id: 24-well3
+    plate_type: 24_well_5ml
+    origin:
+      x: 270.46
+      y: 175.0
+      z: 3.0
+    orientation: rotated_90
+
+  - id: 24-well4
+    plate_type: 24_well_5ml
+    origin:
+      x: 79
+      y: 292
+      z: 3.0
+    orientation: standard
+
+  - id: 24-well5
+    plate_type: 24_well_5ml
+    origin:
+      x: 271
+      y: 292
+      z: 3.0
+    orientation: standard
+
+  - id: Wash-Station
+    plate_type: washing_station
+    origin:
+      x: 175
+      y: 58
+      z: 3.0
+    orientation: standard
+    origin_mode: center
+
+  - id: Calibration
+    plate_type: 3_well_sample_holder
+    origin:
+      x: 27.5
+      y: 58.0
+      z: 3.0
+    orientation: rotated_90
+    origin_mode: center    

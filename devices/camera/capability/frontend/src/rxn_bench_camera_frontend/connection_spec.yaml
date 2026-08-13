@@ -1,0 +1,29 @@
+# Manifest for the rxn-bench-camera SiLA feature (see ../backend).
+# Run from rxnbench/frontend/:
+#   python scripts/gen_connections.py \
+#     ../../devices/camera/frontend/connection_spec.yaml \
+#     --out ../../devices/camera/frontend/generated_connection.py
+#
+# Protobuf stubs come from the backend manifest: `camera` in _DEVICES in
+# rxnbench/backend/scripts/gen_proto.py, then `make gen-proto` (from
+# rxnbench/backend) to produce proto/camera_pb2.py next to this file.
+
+meta:
+  package: sila2.edu.iastate.ames.rxnbench.camera.v1
+  service: Camera
+  class_name: CameraConnectionBase
+  proto_module: rxn_bench_camera_frontend.proto.camera_pb2
+
+streams:
+  - rpc: Subscribe_LatestImage
+    decode_type: Subscribe_LatestImage_Responses
+    signal: latest_image_updated
+    signal_args: [bytes]
+    emit: ["r.LatestImage.value"]
+
+commands:
+  - method: set_capture_interval
+    rpc: SetCaptureInterval
+    params: SetCaptureInterval_Parameters
+    args:
+      - {name: seconds, field: seconds, type: float}

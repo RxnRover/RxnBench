@@ -1,0 +1,80 @@
+# TODO: rename every occurrence of "template" / "mydevice" in this file.
+#
+# Checklist:
+#   name            -> rxn-bench-<yourdevice>
+#   description     -> describe your device
+#   script key      -> rxn-bench-<yourdevice>
+#   script value    -> rxn_bench_<yourdevice>._cli:main
+#   packages        -> ["src/rxn_bench_<yourdevice>"]
+#   testpaths       -> ["tests"]   (no changes needed)
+#   Add any hardware-specific deps (e.g. smbus2, pyserial, minimalmodbus)
+
+[project]
+name = "rxn-bench-template"
+version = "0.1.0"
+description = "TODO: one-line description of this device."
+requires-python = ">=3.10"
+dependencies = [
+    "unitelabs-cdk",
+    # TODO: add hardware dependencies here, e.g.:
+    # "pyserial>=3.5",
+    # "smbus2>=0.4.3",
+]
+
+[project.optional-dependencies]
+# TODO: add optional hardware deps that only apply on specific platforms, e.g.:
+# rpi = ["smbus2>=0.4.3"]
+
+[project.scripts]
+rxn-bench-template = "rxn_bench_template._cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rxn_bench_template"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-p", "no:launch_testing",
+    "-p", "no:launch_testing_ros_pytest_entrypoint",
+    "-p", "no:ament-lint",
+    "-p", "no:ament-copyright",
+    "-p", "no:ament-flake8",
+    "-p", "no:ament-pep257",
+    "-p", "no:ament-xmllint",
+]
+
+[tool.black]
+line-length = 100
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = "rxn_bench_template"
+
+[tool.coverage.run]
+branch = true
+source = ["rxn_bench_template"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.mypy]
+disallow_untyped_defs = true
+exclude = ["tests/", "docs/"]
+
+[[tool.mypy.overrides]]
+module = ["unitelabs.*"]
+ignore_missing_imports = true

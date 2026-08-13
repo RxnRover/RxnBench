@@ -1,0 +1,134 @@
+meta:
+  device: gantry
+  package: rxn_bench_gantry
+  feature_class: Gantry
+  hardware_attr: _controller
+  originator: edu.iastate.ames
+  category: rxnbench
+  version: "1.0"
+  maturity_level: Draft
+  summary: Structural (Protocol) interfaces for the gantry motion layer.
+
+imports:
+  - "from rxn_bench_gantry.toolhead_config import ToolheadGeometry"
+
+protocols:
+  - name: GantryControllerProtocol
+    core: true
+    optional: false
+    doc: |
+      High-level gantry controller interface used by the Gantry SiLA feature.
+
+      Satisfied by GantryController. Consume this type in SiLA features rather than the
+      concrete class so tests can substitute a lightweight fake.
+    members:
+      - {name: has_saved_state, property: true, returns: bool}
+      - {name: toolhead_mounted, property: true, returns: bool}
+      - {name: get_position, returns: "dict[str, float]"}
+      - {name: get_state, returns: str}
+      - name: move_to
+        params:
+          - {name: x, type: "float | None", default: "None"}
+          - {name: y, type: "float | None", default: "None"}
+          - {name: z, type: "float | None", default: "None"}
+          - {name: speed, type: "float | None", default: "None"}
+      - name: jog
+        params:
+          - {name: dx, type: float, default: "0.0"}
+          - {name: dy, type: float, default: "0.0"}
+          - {name: dz, type: float, default: "0.0"}
+          - {name: speed, type: "float | None", default: "None"}
+      - name: engage_tool
+        params:
+          - {name: depth, type: float}
+          - {name: speed, type: "float | None", default: "None"}
+      - name: disengage_tool
+        params:
+          - {name: depth, type: float}
+          - {name: speed, type: "float | None", default: "None"}
+      - {name: home_auto}
+      - {name: start_manual_homing}
+      - {name: confirm_x_min}
+      - {name: confirm_x_max}
+      - {name: confirm_y_min}
+      - {name: confirm_y_max}
+      - {name: confirm_z_reference}
+      - {name: finish_homing}
+      - name: set_z
+        params: [{name: z, type: float}]
+      - {name: get_toolhead, returns: "ToolheadGeometry | None"}
+      - {name: get_toolhead_name, returns: str}
+      - {name: get_toolhead_display_name, returns: str}
+      - name: set_toolhead
+        params: [{name: name, type: str}]
+      - {name: clear_toolhead}
+      - name: set_toolhead_mounted
+        params: [{name: mounted, type: bool}]
+      - {name: get_mounted_toolheads, returns: "list[str]"}
+      - {name: list_toolheads, returns: "list[tuple[str, str]]"}
+      - name: calibrate_toolhead_tip
+        params:
+          - {name: measured_x, type: float}
+          - {name: measured_y, type: float}
+          - {name: wells, type: str}
+        returns: "dict[str, float]"
+      - name: calibrate_toolhead_tip_z
+        params: [{name: measured_z, type: float}]
+      - {name: save_and_park}
+      - {name: get_limits, returns: str}
+      - name: set_workspace
+        params: [{name: name, type: str}]
+      - name: load_workspace_from_yaml
+        params: [{name: content, type: str}]
+      - name: move_to_well
+        params:
+          - {name: label, type: str}
+          - {name: override_unvalidated, type: bool, default: "False"}
+        returns: "dict[str, float]"
+      - {name: list_workspaces, returns: "list[str]"}
+      - {name: get_workspace_name, returns: str}
+      - {name: get_workspace_yaml, returns: str}
+      - {name: get_labware_yaml, returns: str}
+
+feature_only:
+  - name: current_well
+    sila_kind: observable_property
+    doc: Label of the well the gantry most recently moved to, e.g. 'plate1/A3'.
+  - name: current_action
+    sila_kind: observable_property
+    doc: Human-readable description of what the gantry is currently doing.
+  - name: experiment_active
+    sila_kind: observable_property
+    doc: True while a script experiment holds the lock.
+  - name: acquire_experiment_lock
+    sila_kind: command
+    returns: str
+    doc: Claim exclusive experiment control.
+  - name: release_experiment_lock
+    sila_kind: command
+    params: [{name: token, type: str}]
+    doc: Release experiment control and return to idle.
+  - name: force_release_experiment_lock
+    sila_kind: command
+    doc: Forcibly release the experiment lock without the holder's token.
+  - name: pause_experiment
+    sila_kind: command
+    doc: Signal the running script to pause between wells.
+  - name: resume_experiment
+    sila_kind: command
+    doc: Resume a paused experiment.
+  - name: stop_experiment
+    sila_kind: command
+    doc: Signal the running script to stop after the current well.
+  - name: get_experiment_state
+    sila_kind: command
+    returns: str
+    doc: "Return the current experiment state: idle | running | paused | stop_requested."
+
+excluded_protocols:
+  - name: MotionClientProtocol
+    reason: >
+      Low-level hardware motion client consumed only by GantryController
+      (controller.py), not by feature.py. Internal driver-transport interface,
+      not part of the SiLA-facing capability contract. Stays 100% hand-written
+      in interfaces.py; permanently out of scope for this generator.
