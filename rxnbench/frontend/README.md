@@ -5,7 +5,7 @@ servers (gantry, pH, camera) over mDNS on the local network and drives them over
 gRPC. Device widgets are plugins - the 5 shipped devices are installed packages
 under `devices/*/capability/frontend/`, discovered via a Python entry point;
 a flat `devices/<name>/frontend/` (no install needed) still works too, as a
-drop-in fallback for a new/experimental device. See `docs/ai/CURRENT_STATE.md` §2.
+drop-in fallback for a new/experimental device. See `.claude/CURRENT_STATE.md` §2.
 
 Runs on a separate machine from the backend - all data goes over SiLA/gRPC.
 

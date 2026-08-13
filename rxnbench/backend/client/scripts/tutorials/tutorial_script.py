@@ -10,8 +10,7 @@ def main() -> None:
         bench.connect("gantry", Gantry, server="Gantry")
         bench.connect("ph", PHProbe, server="pH")
 
-        # Tell the bench where to save your results.
-        bench.set_log_output("results/ph_scan.csv")
+        bench.start_experiment(__file__)
 
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()

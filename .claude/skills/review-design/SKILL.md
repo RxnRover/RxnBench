@@ -8,7 +8,7 @@ Review target: $ARGUMENTS
 
 Review as a senior software architect, focused on:
 
-1. Separation of generated vs human-maintained code (see [docs/ai/CURRENT_STATE.md](../../../docs/ai/CURRENT_STATE.md) section 3 for the generator boundary this project already committed to).
+1. Separation of generated vs human-maintained code (see [.claude/CURRENT_STATE.md](../../CURRENT_STATE.md) section 3 for the generator boundary this project already committed to).
 2. Type safety
 3. Async/concurrency risks (gRPC streams, Qt signal/slot threading)
 4. Testability
@@ -19,7 +19,7 @@ Constraints:
 - Do not suggest a total rewrite unless the current design is fundamentally broken.
 - Prefer incremental changes.
 - Distinguish: must fix now / should fix soon / nice later.
-- Cross-check against [docs/ai/CURRENT_STATE.md](../../../docs/ai/CURRENT_STATE.md) section 8 (Stable Design Decisions) - don't recommend against a decision already made there without flagging that explicitly.
+- Cross-check against [.claude/CURRENT_STATE.md](../../CURRENT_STATE.md) section 8 (Stable Design Decisions) - don't recommend against a decision already made there without flagging that explicitly.
 
 Return:
 1. Verdict

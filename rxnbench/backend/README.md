@@ -66,7 +66,7 @@ make check-proto      # CI drift check
 ## Production / offline deployment
 
 Install each server as its own systemd service, or build an offline bundle for a
-Pi with no internet. See [../../docs/usage.md](../../docs/usage.md) and
+Pi with no internet. See [../../USAGE.md](../../USAGE.md) and
 [../../docs/deployment.md](../../docs/deployment.md).
 
 ## Updating the Pi over SSH

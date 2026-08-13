@@ -1,5 +1,4 @@
 import time
-from datetime import datetime
 from rxn_bench_client import RxnBenchClient, Gantry
 
 # This script demonstrates how to use more exact control over the bench, including reading and logging pH values in different ways.
@@ -10,9 +9,8 @@ def main() -> None:
         # Tell the bench which instruments you're using and where to find them.
         # Server names are discovered automatically on the local network.
         bench.connect("gantry", Gantry, server="Gantry")
-        bench.set_log_output("results/test_positioning.csv")
-        date = datetime.now().strftime("%m-%d-%y")
-        bench.set_log_output("results/dry-run_benchmark" + date + ".csv")
+
+        bench.start_experiment(__file__)
         bench.gantry.load_workspace_yaml() ## Load current workspace
 
         # Get the labels of all wells in the workspace

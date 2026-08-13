@@ -23,11 +23,15 @@ DEFAULT_WIDTH = 400
 
 CURATED: dict[str, tuple[str, int]] = {
     "docs/images/logos/rxn-bench_logo.png": ("logo.png", LOGO_WIDTH),
-    "docs/design/diagrams/high-level_block_diagram/ALH_System-Block-Diagram.png": (
+    "docs/design/diagrams/high-level_block_diagram/RxnBench_System-Diagram(Basic).png": (
         "system-block-diagram.jpg",
         HERO_WIDTH,
     ),
-    "docs/images/the-making-of/IMG_0398.png": ("assembled-bench-1.jpg", PAIR_WIDTH),
+    "docs/design/diagrams/high-level_block_diagram/Workflow-Simplified.png": (
+        "workflow-strip.jpg",
+        HERO_WIDTH,
+    ),
+    "docs/images/the-making-of/Rxn Bench Setup no background.png": ("assembled-bench-1.jpg", PAIR_WIDTH),
     "docs/images/the-making-of/IMG_0401.png": ("assembled-bench-2.jpg", PAIR_WIDTH),
     "docs/images/the-making-of/Screenshot_2026-06-20_02-46-40.png": ("ph-toolhead-cad.jpg", PAIR_WIDTH),
     "docs/images/the-making-of/IMG_0160.png": ("ph-toolhead-assembled.jpg", PAIR_WIDTH),

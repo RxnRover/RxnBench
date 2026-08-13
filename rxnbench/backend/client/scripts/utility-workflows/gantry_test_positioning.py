@@ -1,7 +1,6 @@
 # Created to test positioning and function of gantry
 # Gantry hovers over each well in the workspace
 
-from datetime import datetime
 from rxn_bench_client import RxnBenchClient, Gantry
 
 
@@ -12,9 +11,7 @@ def main() -> None:
         # Server names are discovered automatically on the local network.
         bench.connect("gantry", Gantry, server="Gantry")
 
-        # Tell the bench where to save your results.
-        date = datetime.now().strftime("%m-%d-%y")
-        bench.set_log_output("results/gantry_test_positioning" + date + ".csv")
+        bench.start_experiment(__file__)
 
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()

@@ -125,8 +125,12 @@ def main() -> None:
         bench.connect("ph", PHProbe, server="pH")
         bench.connect("pump", DosingPump, server="Dosing Pump")
 
+        # Calibration and sampling are two phases of one run, so they share
+        # one experiment folder.
+        bench.start_experiment(__file__)
+
         # Record each buffer reading before/after calibration for your records.
-        bench.set_log_output(PH_CALIBRATION_LOG_FILE)
+        bench.set_log_output(bench.experiment_dir / PH_CALIBRATION_LOG_FILE)
 
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()
@@ -157,7 +161,9 @@ def main() -> None:
             rinse_probe(bench)
 
         # Read every well in each sample plate now that the probe is calibrated.
-        bench.set_log_output(SAMPLE_LOG_FILE, columns=["well", "ph", "settling_time"])
+        bench.set_log_output(
+            bench.experiment_dir / SAMPLE_LOG_FILE, columns=["well", "ph", "settling_time"]
+        )
         for plate_name, filter_kwargs in SAMPLE_PLATES:
             wells = _filter_wells(bench.gantry.get_workspace_wells(plate_name), **filter_kwargs)
             print(f"Reading pH of {len(wells)} wells in the {plate_name} plate...")

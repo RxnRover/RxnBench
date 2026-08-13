@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import signal
 import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from PySide6.QtCore import QFile, QThread, Signal
 from PySide6.QtWidgets import (
-    QFileDialog, QLabel, QPlainTextEdit,
+    QFileDialog, QLabel, QMessageBox, QPlainTextEdit,
     QPushButton, QLineEdit, QVBoxLayout, QWidget,
 )
 from PySide6.QtUiTools import QUiLoader
@@ -46,16 +47,94 @@ def _default_scripts_dir() -> Path:
     return Path(__file__).resolve().parents[4] / "backend" / "client" / "scripts"
 
 
+def _workflow_manifest_path(script: str, results_dir: Path) -> Path:
+    """Where a script's bench.workflow manifest lives, by convention.
+
+    ``logs/<script-stem>_workflow.jsonl`` under the results folder - a
+    script using bench.workflow should call
+    ``bench.set_workflow_output(f"logs/{Path(__file__).stem}_workflow.jsonl")``
+    to match, so this launcher can check it *before* starting the script.
+    Not inside the per-run experiment folder start_experiment() creates:
+    that folder is fresh every run, and resume needs a *stable* path.
+    """
+    return results_dir / "logs" / f"{Path(script).stem}_workflow.jsonl"
+
+
+def _load_manifest_entries(manifest_path: Path) -> dict[str, dict[str, Any]]:
+    """Replay a bench.workflow JSONL manifest into ``{step_id: latest row}``.
+
+    Empty dict if the file doesn't exist or is unreadable. Deliberately
+    doesn't import rxn_bench_client for this - it's a scripting library for
+    experiment authors, not a frontend dependency, so this mirrors its tiny
+    manifest format (one JSON object per line, later lines override earlier
+    ones for the same step_id) directly instead.
+    """
+    if not manifest_path.exists():
+        return {}
+    entries: dict[str, dict[str, Any]] = {}
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                entries[row["step_id"]] = row
+    except (OSError, json.JSONDecodeError, KeyError):
+        return {}
+    return entries
+
+
+def _workflow_manifest_status(manifest_path: Path) -> tuple[str, dict[str, Any] | None]:
+    """Classify *manifest_path* for the pre-launch resume/restart check.
+
+    Returns one of:
+      ("none", None)      - no (readable) manifest - a normal fresh run.
+      ("pending", entry)  - entry is the first step that never reached
+                             "done" - a stopped/failed run to resume.
+      ("complete", None)  - every step is done - re-running as-is would do
+                             nothing (remaining() skips anything done), so
+                             this still needs a restart prompt, not "none".
+    """
+    entries = _load_manifest_entries(manifest_path)
+    if not entries:
+        return "none", None
+    for entry in entries.values():
+        if entry.get("status") != "done":
+            return "pending", entry
+    return "complete", None
+
+
+def _resume_choice_from_role(role: QMessageBox.ButtonRole) -> str | None:
+    """Map a clicked QMessageBox button's role to "resume"/"restart"/None.
+
+    Split out from the dialog construction/exec() in
+    ExperimentPanel._ask_resume_or_restart so this decision is testable
+    without a Qt event loop.
+    """
+    if role == QMessageBox.AcceptRole:
+        return "resume"
+    if role == QMessageBox.DestructiveRole:
+        return "restart"
+    return None
+
+
 class _ScriptRunner(QThread):
     """Runs a script in a subprocess and streams its output line by line."""
 
     line_ready = Signal(str)
     finished   = Signal(int)   # exit code
 
-    def __init__(self, script_path: str, results_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        script_path: str,
+        results_dir: Path | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> None:
         super().__init__()
         self._path        = script_path
         self._results_dir = results_dir
+        self._extra_env    = extra_env or {}
         self._proc: subprocess.Popen | None = None
 
     def _build_command(self) -> tuple[list[str], dict | None]:
@@ -85,6 +164,7 @@ class _ScriptRunner(QThread):
                 # than wherever the app was launched from.
                 cwd = str(self._results_dir)
                 env["RXN_BENCH_RESULTS_DIR"] = cwd
+            env.update(self._extra_env)
             self._proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -123,6 +203,11 @@ class _ScriptRunner(QThread):
         `with RxnBenchClient()` block still runs and releases the experiment
         lock. A bare terminate() kills Python before that cleanup, stranding
         the lock on the gantry server (recoverable only via Force release).
+
+        30s grace period, not a shorter one: close() parks the gantry (real,
+        possibly slow motion) *before* releasing the lock, so a short grace
+        period can let terminate() kill the process mid-park, after the
+        motion but before the lock is released - confirmed 2026-08-13.
         """
         proc = self._proc
         if proc and proc.poll() is None:
@@ -137,7 +222,7 @@ class _ScriptRunner(QThread):
                         proc.terminate()
                     except Exception:
                         pass
-            threading.Timer(5.0, _escalate).start()
+            threading.Timer(30.0, _escalate).start()
 
 
 class ExperimentPanel(QWidget):
@@ -270,19 +355,34 @@ class ExperimentPanel(QWidget):
             self._status("Script not found.")
             return
 
+        # Check before touching any UI state, so a Cancel leaves everything
+        # as it was.
+        results_dir = self._resolve_results_dir()
+        extra_env: dict[str, str] = {}
+        if results_dir is not None:
+            manifest_path = _workflow_manifest_path(script, results_dir)
+            state, pending = _workflow_manifest_status(manifest_path)
+            if state != "none":
+                choice = self._ask_resume_or_restart(pending)
+                if choice is None:
+                    return  # operator cancelled - don't run anything
+                if choice == "restart":
+                    extra_env["RXN_BENCH_WORKFLOW_RESTART"] = "1"
+
         self._log.clear()
         self._log.appendPlainText(f"$ {sys.executable} {script}\n")
         self._set_running(True)
         self._paused = False
 
         self._close_log_file()
-        results_dir = self._resolve_results_dir()
         if results_dir is not None:
             self._log.appendPlainText(f"# results -> {results_dir}\n")
             ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             stem = Path(script).stem
-            log_path = results_dir / f"{stem}_{ts}.log"
+            logs_dir = results_dir / "logs"
+            log_path = logs_dir / f"{stem}_{ts}.log"
             try:
+                logs_dir.mkdir(parents=True, exist_ok=True)
                 self._log_fh = open(log_path, "w", encoding="utf-8")
                 self._log_fh.write(f"# {sys.executable} {script}\n")
                 self._log_fh.write(f"# started {datetime.datetime.now().isoformat()}\n\n")
@@ -291,11 +391,54 @@ class ExperimentPanel(QWidget):
                 self._log_fh = None
                 self._log.appendPlainText(f"[log file error: {e}]")
 
-        self._runner = _ScriptRunner(script, results_dir)
+        self._runner = _ScriptRunner(script, results_dir, extra_env)
         self._runner.line_ready.connect(self._log.appendPlainText)
         self._runner.line_ready.connect(self._write_log_line)
         self._runner.finished.connect(self._on_finished)
         self._runner.start()
+
+    def _ask_resume_or_restart(self, pending: dict[str, Any] | None) -> str | None:
+        """Prompt when running this script as-is wouldn't start a normal fresh run.
+
+        Args:
+            pending: First step that never reached "done" (a stopped/failed
+                run to resume), or None if every step is already done.
+
+        Returns "resume", "restart", or None if the operator cancelled (in
+        which case the caller must not run the script at all).
+        """
+        if pending is not None:
+            step_id = pending.get("step_id", "?")
+            status  = pending.get("status", "?")
+            error   = pending.get("error")
+            text = (
+                f"This script has an unfinished run from before - "
+                f"step {step_id!r} was left {status}."
+            )
+            if error:
+                text += f"\n\n{error}"
+            text += "\n\nContinue where it left off, or start the whole workflow over?"
+        else:
+            text = (
+                "This script already completed successfully last time - "
+                "running it again as-is would skip every step and do nothing.\n\n"
+                "Run it again from the start?"
+            )
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Resume workflow?" if pending is not None else "Run again?")
+        box.setText(text)
+        continue_btn = box.addButton("Continue", QMessageBox.AcceptRole) if pending is not None else None
+        restart_btn = box.addButton(
+            "Start Over" if pending is not None else "Run Again", QMessageBox.DestructiveRole
+        )
+        box.addButton("Cancel", QMessageBox.RejectRole)
+        box.setDefaultButton(continue_btn or restart_btn)
+        box.exec()
+
+        clicked = box.clickedButton()
+        role = box.buttonRole(clicked) if clicked is not None else QMessageBox.RejectRole
+        return _resume_choice_from_role(role)
 
     def _pause_resume(self) -> None:
         if not self._runner:

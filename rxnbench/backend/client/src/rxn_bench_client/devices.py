@@ -7,18 +7,6 @@ instead of the explicit ``bench.connect(name, cls, server=...)`` dance::
     with RxnBenchClient() as bench:
         bench.devices.gantry.mount_toolhead("ph_probe")
         bench.devices.pump.set_flow_rate(2.0)
-
-The first ``bench.devices.<name>`` access scans the network once (via
-``sila2``'s built-in mDNS browser, which also probes each server's
-advertised SiLA features - no custom discovery code needed here) and caches
-the result, so later accesses on the same client are instant.
-
-Only wired up for the four built-in instrument types (see DEVICE_REGISTRY).
-Anything else - a one-off/custom device, or an ambiguous case with more than
-one matching server - still uses ``bench.connect(...)`` explicitly, or
-``bench.devices.raw(feature_name)`` for a device with no wrapper class at
-all: this is deliberate, so nothing is ever forced to conform to one of the
-four built-in instrument classes to be usable.
 """
 
 from __future__ import annotations
@@ -108,7 +96,7 @@ class DeviceNamespace:
         """Discover a server by SiLA feature name and return the raw feature
         proxy, with no wrapper class involved.
 
-        For a device that isn't one of the four built into DEVICE_REGISTRY -
+        For a device that isn't built already into the DEVICE_REGISTRY -
         no Instrument class to write, no registry entry to add::
 
             bench.devices.raw("Spectrometer").Read(Wavelength=600)

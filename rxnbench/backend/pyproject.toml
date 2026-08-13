@@ -1,3 +1,13 @@
+# Deliberately no [project] table here: this pyproject.toml is a pure uv
+# workspace root, and `uv sync` at a pure workspace root (no [project]) syncs
+# every member by default - install.sh/Makefile's `install` target rely on
+# that. Adding [project] turns this root into "the current package" and
+# narrows bare `uv sync` to just its own deps, silently uninstalling every
+# workspace member (verified - do not reintroduce without also auditing
+# every bare `uv sync` call site in install.sh/Makefile/CI).
+[dependency-groups]
+dev = ["pytest>=8.0", "pyyaml>=6.0"]
+
 [tool.uv.workspace]
 members = [
     "../../devices/gantry/capability/backend",
@@ -11,3 +21,6 @@ members = [
 [[tool.uv.index]]
 name = "unitelabs"
 url = "https://gitlab.com/api/v4/groups/1009252/-/packages/pypi/simple"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

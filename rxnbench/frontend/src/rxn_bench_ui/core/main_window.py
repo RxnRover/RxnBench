@@ -405,7 +405,9 @@ class MainWindow(QMainWindow):
         w, h = getattr(panel, "preferred_mdi_size", (720, 520))
         sub.resize(w, h)
         ws.mdi.addSubWindow(sub)
-        sub.setAttribute(Qt.WA_OpaquePaintEvent)
+        # Deliberately no Qt.WA_OpaquePaintEvent - it skips erasing old
+        # content before repaint, which left a visible trailing ghost when
+        # dragging a subwindow with a slow repaint (e.g. Camera's bitmap).
         sub.destroyed.connect(partial(self._on_device_closed, server.uuid, ws))
         sub.show()
 

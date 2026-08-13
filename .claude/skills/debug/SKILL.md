@@ -17,4 +17,4 @@ Do not shotgun random fixes. Trace the execution path.
    4. Safer long-term fix, if different from the minimal one
    5. A test case that would catch this regression
 4. Apply the minimal fix only after confirming the root cause, unless the user asked you to just diagnose.
-5. If a fix was applied: add a dated bullet to the `Unreleased` section of [CHANGELOG.md](../../../CHANGELOG.md) (prefixed with the affected area, e.g. `gantry`, `ph`), and update [docs/ai/CURRENT_STATE.md](../../../docs/ai/CURRENT_STATE.md) if the bug or its fix changes a listed gap, capability, or design decision.
+5. If a fix was applied: add a dated bullet to the `Unreleased` section of [CHANGELOG.md](../../../CHANGELOG.md) (prefixed with the affected area, e.g. `gantry`, `ph`), and update [.claude/CURRENT_STATE.md](../../CURRENT_STATE.md) if the bug or its fix changes a listed gap, capability, or design decision.

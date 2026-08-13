@@ -1,4 +1,8 @@
-.PHONY: install start-gantry start-ph start-camera start-pump start-mock test-gantry test-ph test-camera test-pump test-client test gen-proto check-proto
+.PHONY: install start-gantry start-ph start-camera start-pump start-mock test-gantry test-ph test-camera test-pump test-client test-gen-capability test gen-proto check-proto gen-capability check-capability
+
+# devices/*/capability/backend/src/*/*.capability.yaml specs, consumed by
+# gen-capability/check-capability below.
+CAPABILITY_SPECS := $(wildcard ../../devices/*/capability/backend/src/*/*.capability.yaml)
 
 # device-key:proto-stem pairs consumed by gen-proto/check-proto below.
 # Keys must match _DEVICES in scripts/gen_proto.py; stubs land in
@@ -86,7 +90,10 @@ test-pump:
 test-client:
 	PYTHONPATH="" uv run --package rxn-bench-client pytest client/tests/ -v
 
-test: test-gantry test-ph test-camera test-pump test-client
+test-gen-capability:
+	PYTHONPATH="" uv run pytest tests/ -v
+
+test: test-gantry test-ph test-camera test-pump test-client test-gen-capability
 
 gen-proto:
 	@for pair in $(PROTO_DEVICES); do \
@@ -109,4 +116,28 @@ check-proto:
 		fi; \
 	done; \
 	if [ $$status -eq 0 ]; then echo "OK: all frontend .proto files match their backend manifests."; fi; \
+	exit $$status
+
+gen-capability:
+	@for spec in $(CAPABILITY_SPECS); do \
+		uv run python scripts/gen_capability.py "$$spec"; \
+	done
+
+check-capability:
+	@status=0; \
+	for spec in $(CAPABILITY_SPECS); do \
+		dir=$$(dirname "$$spec"); \
+		feature=$$(uv run python -c "import yaml,sys; print(yaml.safe_load(open(sys.argv[1]))['meta']['feature_class'])" "$$spec"); \
+		cp "$$dir/interfaces.py" /tmp/_check_interfaces.py; \
+		uv run python scripts/gen_capability.py "$$spec" \
+			--out-interfaces /tmp/_check_interfaces.py --out-doc /tmp/_check_capability.md > /dev/null; \
+		if ! diff -q /tmp/_check_interfaces.py "$$dir/interfaces.py" > /dev/null 2>&1; then \
+			echo "ERROR: $$dir/interfaces.py is out of date. Run 'make gen-capability'."; status=1; \
+		fi; \
+		if ! diff -q /tmp/_check_capability.md "$$dir/$$feature.capability.md" > /dev/null 2>&1; then \
+			echo "ERROR: $$dir/$$feature.capability.md is out of date. Run 'make gen-capability'."; status=1; \
+		fi; \
+	done; \
+	rm -f /tmp/_check_interfaces.py /tmp/_check_capability.md; \
+	if [ $$status -eq 0 ]; then echo "OK: all interfaces.py/*.capability.md match their .capability.yaml specs."; fi; \
 	exit $$status

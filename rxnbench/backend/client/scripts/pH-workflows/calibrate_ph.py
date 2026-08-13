@@ -87,8 +87,10 @@ def main() -> None:
         bench.connect("gantry", Gantry, server="Gantry")
         bench.connect("ph", PHProbe, server="pH")
 
+        bench.start_experiment(__file__)
+
         # Record each buffer reading before/after calibration for your records.
-        bench.set_log_output("ph_calibration.csv")
+        bench.set_log_output(bench.experiment_dir / "ph_calibration.csv")
 
         # Load the workspace that's currently active in the UI.
         bench.gantry.load_workspace_yaml()

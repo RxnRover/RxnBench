@@ -235,7 +235,7 @@ When changes are applied:
    * `backend:`
    * `docs:`
 
-3. Update `docs/ai/CURRENT_STATE.md` when the change affects a listed:
+3. Update `.claude/CURRENT_STATE.md` when the change affects a listed:
 
    * Capability.
    * Known gap.

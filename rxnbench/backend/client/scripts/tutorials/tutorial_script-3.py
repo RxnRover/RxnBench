@@ -10,7 +10,7 @@ def main() -> None:
         bench.connect("gantry", Gantry, server="Gantry")
         bench.connect("ph", PHProbe, server="pH")
 
-        bench.set_log_output("results/ph_scan_control.csv")
+        bench.start_experiment(__file__)
         bench.gantry.load_workspace_yaml()
 
         # Read a well and branch depending on the result.

@@ -6,7 +6,7 @@ concrete implementation of that capability's Protocol, registered under a
 `rxn_bench.<capability>_drivers` entry-point group). A driver also owns
 anything specific to its physical product: the vendor's wire protocol, its
 hardware CAD (`hardware_models/`), and its toolhead config if it mounts on
-the gantry. See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) §1-2 for
+the gantry. See [.claude/CURRENT_STATE.md](.claude/CURRENT_STATE.md) §1-2 for
 the full architecture writeup.
 
 This table is the index: which capability a driver plugs into, and which

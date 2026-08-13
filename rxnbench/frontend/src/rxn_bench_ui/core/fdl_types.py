@@ -9,7 +9,7 @@ fields get exact types (int64 vs bool vs enum) instead of guessing from raw
 wire bytes.
 
 Wire shapes follow SiLAFramework.proto (ships with unitelabs-cdk / sila2) and
-were verified against a running mock server (see docs/ai/CURRENT_STATE.md
+were verified against a running mock server (see .claude/CURRENT_STATE.md
 section 9):
 
 - Every SiLA Basic type is a one-field wrapper message

@@ -1,6 +1,6 @@
 # Rxn Bench - DIY Automated Chemistry Bench
 
-![Rxn Bench logo](docs/images/resized/logo.png)
+![Rxn Bench logo](repo-assets/logo.png)
 
 ## Table of Contents
 
@@ -15,21 +15,21 @@
 
 ## Overview
 
-Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer as the XYZ motion platform, with an Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor; a separate operator machine runs a frontend application [Rxn Bench](TODO: Eventually include repo link) that talks to those servers over gRPC/SiLA, and experiment scripts drive the bench through a Python client [Rxn Bench Client](TODO: Eventually include repo link).
+Rxn Bench is a DIY automated chemistry bench built on a repurposed Sovol SV08 3D printer, with an Atlas Scientific probe for pH sensing. A Raspberry Pi on the printer runs Klipper/Moonraker plus SiLA2 device servers for the gantry and pH sensor. A separate operator machine runs the Rxn Bench<!-- TODO: link to the Rxn Bench repo once it's split into its own submodule --> desktop app, which talks to those servers over gRPC/SiLA, and experiment scripts can drive the bench directly through the Rxn Bench Client<!-- TODO: link to the Rxn Bench Client repo once it's split into its own submodule --> Python API.
 
 ### Motivation
 
-Machine learning, high-throughput screening, and AI-assisted discovery all depend on large, reliable experimental datasets, and generating that data by hand is slow, inconsistent, and labor-intensive. Commercial automation platforms solve the repeatability problem, but most are costly, specialized, and locked to specific hardware and workflows - out of reach for many labs. Rxn Bench is a low-cost, modular alternative: off-the-shelf hardware, open lab-software frameworks, and customizable 3D-printed components, letting a lab integrate diverse devices, adapt workflows, and generate data at scale for under $1000.
+Manual sampling is slow and inconsistent, which makes it a bad fit for data-hungry methods like ML and high-throughput screening. Commercial lab automation fixes that, but it typically costs tens of thousands of dollars and locks you into one vendor's hardware. Rxn Bench is a cheaper, open alternative: off-the-shelf parts, 3D-printed labware, and an open software stack, for around $1000.
 
 ## Navigating this repository
 
 - [`rxnbench/`](rxnbench/) - app code that isn't specific to one device: `frontend/` (the desktop UI shell, discovery, device selection, generic fallback UI) and `backend/` (the uv workspace root, the shared `client/` Python API, install scripts).
 - [`devices/`](devices/) - one self-contained plugin per physical device (`gantry`, `ph_sensor`, `camera`, `dosing_pump`), each split into a `capability/` (the SiLA2 server + operator-UI widget - hardware-agnostic) and a `driver/` (the actual vendor hardware code that plugs into it, plus that hardware's CAD and any mount/toolhead config). See [Supported-Devices.md](Supported-Devices.md) for which driver backs which capability. A device folder can be dropped in or removed without touching the app shell.
 - [`hardware_models/`](hardware_models/) - placeholders for future devices without hardware yet. Each existing device's CAD lives with its driver instead - see `devices/<name>/driver/hardware_models/`.
-- [`docs/`](docs/) - usage/deployment guides, architecture and design docs, datasheets, and the images used throughout this README.
+- [`repo-assets/`](repo-assets/) - images used throughout this README.
 - [`notes/`](notes/) - working notes.
 
-See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the full architecture snapshot, package layout, and active design decisions.
+See [.claude/CURRENT_STATE.md](.claude/CURRENT_STATE.md) for the full architecture snapshot, package layout, and active design decisions.
 
 ## Requirements
 
@@ -39,30 +39,21 @@ See [docs/ai/CURRENT_STATE.md](docs/ai/CURRENT_STATE.md) for the full architectu
 
 ## Usage
 
-See [docs/usage.md](docs/usage.md) for commands to install dependencies and start the backend servers (real or mocked) and the frontend UI.
+See [USAGE.md](USAGE.md) for commands to install dependencies and start the backend servers (real or mocked) and the frontend UI.
 
 ## Implementation and design
 
-![Rxn Bench high-level system block diagram: operator UI talks to the Raspberry Pi's SILA server, which drives the Sovol SV08 MCU (XYZ motion), and the EZO pH circuit/probe](docs/images/resized/system-block-diagram.jpg)
-
-Rxn Bench is a modular lab-automation platform for programmable scientific workflows, built from a repurposed SOVOL SV08 3D printer with
-custom 3D-printed components and open software interfaces.
+![Rxn Bench high-level system block diagram: the desktop client talks to SiLA device servers, which expose one feature per capability (gantry, pH sensor, tool/I/O) and drive the underlying hardware - the SOVOL SV08 gantry and Atlas Scientific EZO-pH probe, with the tool/I/O slot open for future instruments](repo-assets/system-block-diagram.jpg)
 
 ### Capability-based hardware abstraction
 
-Devices are represented through
-SiLA2 feature servers running on a backend computer (e.g., a Raspberry Pi),
-which expose standardized commands and properties for each capability:
-pH sensor, gantry, pump, etc. New hardware plugs into the same feature
-interface, so a device can be swapped or added with minimal frontend
-and backend changes. If it walks like a duck and talks like a duck, it's
-treated as a duck.
+Each instrument is exposed as a SiLA2 feature server on a backend computer (e.g., a Raspberry Pi): a gantry capability, a pH sensor capability, a pump capability, etc. New hardware plugs into the same feature interface, so a device can be swapped or added with minimal frontend and backend changes - if it walks like a duck and talks like a duck, it's treated as a duck.
 
 ### Desktop control + Python API
 
-[Rxn Bench](TODO: Eventually include repo link) provides a desktop
-interface for configuration and direct device control, while a [Rxn Bench Client](TODO: Eventually include repo link) API
-enables headless operation and experiment scripting.
+Rxn Bench<!-- TODO: link to the Rxn Bench repo once it's split into its own submodule --> is a desktop app for direct device control, and Rxn Bench Client<!-- TODO: link to the Rxn Bench Client repo once it's split into its own submodule --> is a Python API for headless scripting. Both talk to the same device servers, so nothing about a script needs a special "automation-only" code path.
+
+![The operator workflow end to end: set up hardware, start the app, connect to discovered SiLA servers, calibrate, run the experiment, collect logged data](repo-assets/workflow-strip.jpg)
 
 ### Component List
 
@@ -87,7 +78,7 @@ enables headless operation and experiment scripting.
 
 ##### Workspace
 
-A workspace is a YAML-defined deck layout ([`devices/gantry/capability/backend/src/rxn_bench_gantry/workspace/`](devices/gantry/capability/backend/src/rxn_bench_gantry/workspace/)) that tells the gantry backend which labware sits where: sample plates, wash/waste beakers, a calibration station, and the washing station can all be mixed in whatever arrangement fits the deck and the experiment. Swapping workspaces (or editing one in the desktop UI's workspace editor) is a config change, not a rebuild - see [docs/usage.md](docs/usage.md) for how to load one.
+A workspace is a YAML-defined deck layout ([`devices/gantry/capability/backend/src/rxn_bench_gantry/workspace/`](devices/gantry/capability/backend/src/rxn_bench_gantry/workspace/)) that tells the gantry backend which labware sits where: sample plates, wash/waste beakers, a calibration station, and the washing station can all be mixed in whatever arrangement fits the deck and the experiment. Swapping workspaces (or editing one in the desktop UI's workspace editor) is a config change, not a rebuild - see [USAGE.md](USAGE.md) for how to load one.
 
 ##### Sample-Plates
 
@@ -138,7 +129,7 @@ A 3D-printed cup, routed to waste through tubing, used to rinse the pH probe (or
 
 | Assembled, pipette over a well plate                                                                                     | Running on the bench next to the operator laptop                                                                                     |
 | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| ![Assembled Rxn Bench with the pipette toolhead positioned over a well plate](docs/images/resized/assembled-bench-1.jpg) | ![Rxn Bench running on the lab bench next to the operator laptop running the frontend UI](docs/images/resized/assembled-bench-2.jpg) |
+| ![Assembled Rxn Bench with the pipette toolhead positioned over a well plate](repo-assets/assembled-bench-1.jpg) | ![Rxn Bench running on the lab bench next to the operator laptop running the frontend UI](repo-assets/assembled-bench-2.jpg) |
 
 ### pH probe toolhead
 
@@ -146,7 +137,7 @@ CAD design next to the assembled 3D-printed housing around the Atlas Scientific 
 
 | CAD design                                                                                                                        | Assembled                                                                                        |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| ![CAD render of the pH probe toolhead, exploded to show the EZO pH circuit board inside](docs/images/resized/ph-toolhead-cad.jpg) | ![Assembled 3D-printed pH probe toolhead housing](docs/images/resized/ph-toolhead-assembled.jpg) |
+| ![CAD render of the pH probe toolhead, exploded to show the EZO pH circuit board inside](repo-assets/ph-toolhead-cad.jpg) | ![Assembled 3D-printed pH probe toolhead housing](repo-assets/ph-toolhead-assembled.jpg) |
 
 ### Toolhead docking mount
 
@@ -154,7 +145,7 @@ The gantry docks multiple toolheads via a 3D-printed mount with linear-rails, in
 
 | CAD design                                                                                                       | Assembled                                                                                       |
 | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| ![CAD render of the toolhead docking mount with linear rail bearings](docs/images/resized/docking-mount-cad.jpg) | ![Assembled 3D-printed toolhead docking mount](docs/images/resized/docking-mount-assembled.jpg) |
+| ![CAD render of the toolhead docking mount with linear rail bearings](repo-assets/docking-mount-cad.jpg) | ![Assembled 3D-printed toolhead docking mount](repo-assets/docking-mount-assembled.jpg) |
 
 ### Labware
 
@@ -162,37 +153,37 @@ The gantry docks multiple toolheads via a 3D-printed mount with linear-rails, in
 
 | Planned layout                                                                                                                                                                                               | Assembled deck                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ![Example workspace layout diagram showing sample plates, wash/waste beakers, a calibration station, and a pipette-tip disposal zone arranged on the deck](docs/images/resized/labware-workspace-layout.jpg) | ![Assembled deck with sample holders, a 96-well plate, and a beaker mounted on the footprint grid](docs/images/resized/labware-workspace-assembled.jpg) |
+| ![Example workspace layout diagram showing sample plates, wash/waste beakers, a calibration station, and a pipette-tip disposal zone arranged on the deck](repo-assets/labware-workspace-layout.jpg) | ![Assembled deck with sample holders, a 96-well plate, and a beaker mounted on the footprint grid](repo-assets/labware-workspace-assembled.jpg) |
 
 #### Sample-Plates
 
 | 24-Well Sample Holder                                                                                  | 15-Well Sample Holder                                                                                         |
 | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| ![CAD render of the 24-well sample holder block](docs/images/resized/labware-sample-plates-24well.jpg) | ![Dimensioned CAD drawing of the 15-well sample holder](docs/images/resized/labware-sample-plates-15well.jpg) |
+| ![CAD render of the 24-well sample holder block](repo-assets/labware-sample-plates-24well.jpg) | ![Dimensioned CAD drawing of the 15-well sample holder](repo-assets/labware-sample-plates-15well.jpg) |
 
 #### Footprints
 
-![CAD render of the modular footprint tiles that labware mounts onto, shown apart from the deck](docs/images/resized/labware-footprints.jpg)
+![CAD render of the modular footprint tiles that labware mounts onto, shown apart from the deck](repo-assets/labware-footprints.jpg)
 
 #### Washing-Station
 
-![The pH probe toolhead docked over the washing station cup, flanked by sample holders on the deck](docs/images/resized/labware-washing-station.jpg)
+![The pH probe toolhead docked over the washing station cup, flanked by sample holders on the deck](repo-assets/labware-washing-station.jpg)
 
 ### Rxn Bench UI
 
 #### Main interface
 
-![Rxn Bench UI main screen showing the Gantry widget, pH Sensor widget, and Experiment Runner widget](docs/images/resized/ui-main.jpg)
+![Rxn Bench UI main screen showing the Gantry widget, pH Sensor widget, and Experiment Runner widget](repo-assets/ui-main.jpg)
 
 #### Sensor and control widgets
 
 | Gantry                                            | pH Probe                                              | Experiment Runner                                                       |
 | ------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| ![Gantry view](docs/images/resized/ui-gantry.jpg) | ![pH Probe view](docs/images/resized/ui-ph-probe.jpg) | ![Experiment Runner view](docs/images/resized/ui-experiment-runner.jpg) |
+| ![Gantry view](repo-assets/ui-gantry.jpg) | ![pH Probe view](repo-assets/ui-ph-probe.jpg) | ![Experiment Runner view](repo-assets/ui-experiment-runner.jpg) |
 
 #### Adding a device
 
-![Add Device view](docs/images/resized/ui-add-device.jpg)
+![Add Device view](repo-assets/ui-add-device.jpg)
 
 ## References and helpful material
 
@@ -222,22 +213,11 @@ The gantry docks multiple toolheads via a 3D-printed mount with linear-rails, in
 
 ## Authors and Contributors
 
-### Co-authors
+- __John Brittain__ - software, system design, hardware, project lead
+- __Felisha Kuo__ - experimental setup, lab workflows, chemistry integration lead
+- __David Lee__ - lab support and equipment
+- __Lun An__ - chemistry supervision and review
+- __Long Qi__ - project sponsorship and direction
+- __Zachery Crandall__ - engineering/software supervision and review
 
-__John Brittain__* - Software development, system design, hardware design, fabrication, integration, and project lead for the Rxn Bench platform.
-
-__Felisha Kuo__* - Experimental setup, laboratory workflow development, hardware fabrication, testing, and project lead for the chemistry-side integration.
-
-__David Lee__ - Laboratory expertise, practical setup support, equipment ordering, and experimental workflow insight.
-
-__Lun An__ - Chemistry supervision, project planning, experimental guidance, chemistry expertise, and technical review.
-
-__Long Qi__ - Project sponsorship, overall direction, supervision, planning, and organizational guidance.
-
-__Zachery Crandall__ - Engineering and software supervision, project planning, technical guidance, and formal review.
-
-*These authors contributed equally to the work.
-
-### Acknowledgements
-
-This work was supported by the [SuLI internship program](https://science.osti.gov/wdts/suli) at [Ames National Laboratory](https://www.ameslab.gov/). The authors thank the program organizers and mentors for providing the opportunity, resources, and guidance that made this project possible.
+Built during the [SULI internship program](https://science.osti.gov/wdts/suli) at [Ames National Laboratory](https://www.ameslab.gov/).

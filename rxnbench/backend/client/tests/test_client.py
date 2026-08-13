@@ -5,11 +5,14 @@ monkeypatched out, and time.sleep is disabled. Mirrors the fake-based style of
 the gantry/pH backend suites.
 """
 import csv
+import json
+import pathlib
 
 import pytest
 
 import rxn_bench_client.client as client_module
 from rxn_bench_client.client import ExperimentStopped, RxnBenchClient
+from rxn_bench_client.instruments.motion import Gantry
 
 
 class _FakeGantry:
@@ -257,6 +260,82 @@ def test_relative_path_falls_back_to_cwd_without_env(bench, tmp_path, monkeypatc
     assert (tmp_path / "results.csv").exists()
 
 
+# Workflow (bench.workflow / set_workflow_output)
+
+def test_workflow_without_output_raises(bench):
+    with pytest.raises(RuntimeError, match="set_workflow_output"):
+        bench.workflow
+
+
+def test_workflow_step_tracks_status(bench, tmp_path):
+    bench.set_workflow_output(tmp_path / "wf.jsonl")
+    with bench.workflow.step("a"):
+        pass
+    assert bench.workflow.is_done("a")
+
+
+def test_workflow_manifest_persists_across_a_new_client_session(bench, tmp_path):
+    manifest = tmp_path / "wf.jsonl"
+    bench.set_workflow_output(manifest)
+    with bench.workflow.step("a"):
+        pass
+    bench.close()
+
+    resumed = RxnBenchClient()
+    resumed.set_workflow_output(manifest)
+    try:
+        assert resumed.workflow.is_done("a")
+    finally:
+        resumed.close()
+
+
+def test_close_closes_the_workflow_manifest(bench, tmp_path):
+    bench.set_workflow_output(tmp_path / "wf.jsonl")
+    workflow = bench.workflow
+    bench.close()
+    assert workflow._file.closed
+
+
+def test_set_workflow_output_resumes_by_default(bench, tmp_path):
+    manifest = tmp_path / "wf.jsonl"
+    bench.set_workflow_output(manifest)
+    with bench.workflow.step("a"):
+        pass
+    bench.set_workflow_output(manifest)  # reconfigure, same path
+    assert bench.workflow.is_done("a")
+
+
+def test_set_workflow_output_restart_true_ignores_prior_manifest(bench, tmp_path):
+    manifest = tmp_path / "wf.jsonl"
+    bench.set_workflow_output(manifest)
+    with bench.workflow.step("a"):
+        pass
+    bench.set_workflow_output(manifest, restart=True)
+    assert not bench.workflow.is_done("a")
+
+
+def test_set_workflow_output_respects_restart_env_var(bench, tmp_path, monkeypatch):
+    manifest = tmp_path / "wf.jsonl"
+    bench.set_workflow_output(manifest)
+    with bench.workflow.step("a"):
+        pass
+
+    monkeypatch.setenv("RXN_BENCH_WORKFLOW_RESTART", "1")
+    bench.set_workflow_output(manifest)
+    assert not bench.workflow.is_done("a")
+
+
+def test_set_workflow_output_explicit_restart_overrides_env_var(bench, tmp_path, monkeypatch):
+    manifest = tmp_path / "wf.jsonl"
+    bench.set_workflow_output(manifest)
+    with bench.workflow.step("a"):
+        pass
+
+    monkeypatch.setenv("RXN_BENCH_WORKFLOW_RESTART", "1")
+    bench.set_workflow_output(manifest, restart=False)
+    assert bench.workflow.is_done("a")
+
+
 # connect() / close() session wiring
 
 class _FakeSilaClient:
@@ -277,6 +356,9 @@ class _LockCapableInstrument:
         self.lock_acquired = False
         self.lock_released = False
         self.parked = False
+        self.workspace_yaml = ""
+        self.position = (1.0, 2.0, 3.0)
+        self.position_raises = False
 
     def acquire_experiment_lock(self):
         self.lock_acquired = True
@@ -289,6 +371,14 @@ class _LockCapableInstrument:
 
     def save_and_park(self):
         self.parked = True
+
+    def get_position(self):
+        if self.position_raises:
+            raise RuntimeError("gantry offline")
+        return self.position
+
+    def get_workspace_yaml(self):
+        return self.workspace_yaml
 
 
 class _PlainInstrument:
@@ -394,3 +484,353 @@ def test_close_skips_instruments_without_save_and_park(fake_sila):
     """A connected PHProbe (no save_and_park) must not blow up close()."""
     with RxnBenchClient() as bench:
         bench.connect("ph", _PlainInstrument, host="h", port=1)
+
+
+# start_experiment() - self-contained per-run results folder
+
+def test_start_experiment_creates_timestamped_folder(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# a script")
+
+    folder = bench.start_experiment(script)
+
+    assert folder.is_dir()
+    assert folder.parent == tmp_path
+    assert folder.name.startswith("my_tour_")
+    assert bench.experiment_dir == folder
+
+
+def test_start_experiment_points_log_output_at_the_folder(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# a script")
+
+    folder = bench.start_experiment(script)
+    bench.log(ph=7.0)
+
+    assert (folder / "results.csv").exists()
+
+
+def test_start_experiment_copies_the_script_into_the_folder(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# original contents")
+
+    folder = bench.start_experiment(script)
+
+    assert (folder / "my_tour.py").read_text() == "# original contents"
+
+
+def test_start_experiment_handles_missing_script_gracefully(bench, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    folder = bench.start_experiment(tmp_path / "does_not_exist.py")
+
+    assert folder.is_dir()  # folder itself is still created
+    assert not (folder / "does_not_exist.py").exists()
+    assert "Could not copy script" in capsys.readouterr().out
+
+
+def test_start_experiment_skips_workspace_snapshot_without_gantry(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# a script")
+
+    folder = bench.start_experiment(script)
+
+    assert not (folder / "workspace.yaml").exists()
+
+
+def test_start_experiment_saves_workspace_snapshot_when_gantry_attached(fake_sila, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# a script")
+
+    with RxnBenchClient() as bench:
+        bench.connect("gantry", _LockCapableInstrument, host="h", port=1)
+        bench.gantry.workspace_yaml = "name: bench\nplates: []\n"
+
+        folder = bench.start_experiment(script)
+
+        assert (folder / "workspace.yaml").read_text() == "name: bench\nplates: []\n"
+
+
+def test_start_experiment_writes_running_status_immediately(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# a script")
+
+    folder = bench.start_experiment(script)
+    data = json.loads((folder / "experiment.json").read_text())
+
+    assert data["script"] == "my_tour.py"
+    assert data["status"] == "running"
+    assert data["finished"] is None
+    assert data["started"] is not None
+
+
+def test_close_marks_experiment_completed_on_normal_exit(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# a script")
+    folder = None
+
+    with RxnBenchClient() as bench:
+        folder = bench.start_experiment(script)
+
+    data = json.loads((folder / "experiment.json").read_text())
+    assert data["status"] == "completed"
+    assert data["finished"] is not None
+
+
+def test_exit_marks_experiment_failed_when_the_with_block_raises(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# a script")
+    folder = None
+
+    with pytest.raises(ValueError):
+        with RxnBenchClient() as bench:
+            folder = bench.start_experiment(script)
+            raise ValueError("boom")
+
+    data = json.loads((folder / "experiment.json").read_text())
+    assert data["status"] == "failed"
+
+
+def test_experiment_index_records_attached_device_names(fake_sila, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "my_tour.py"
+    script.write_text("# a script")
+
+    with RxnBenchClient() as bench:
+        bench.connect("gantry", _LockCapableInstrument, host="h", port=1)
+        bench.connect("ph", _PlainInstrument, host="h", port=2)
+        folder = bench.start_experiment(script)
+
+    data = json.loads((folder / "experiment.json").read_text())
+    assert data["devices"] == ["gantry", "ph"]
+
+
+# bench.snapshot() and bench.workflow.step()'s automatic done/failed calls
+
+class _FakeCamera:
+    def __init__(self, raise_error: bool = False):
+        self.saved_paths: list[str] = []
+        self._raise = raise_error
+
+    def save_snapshot(self, path):
+        if self._raise:
+            raise RuntimeError("camera offline")
+        self.saved_paths.append(path)
+        pathlib.Path(path).write_bytes(b"fake-jpeg-bytes")
+
+
+def test_safe_filename_replaces_unsafe_characters():
+    assert client_module._safe_filename("well:24-well4/A1") == "well_24-well4_A1"
+
+
+def _read_jsonl(path):
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def test_snapshot_without_camera_is_a_noop(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+    bench.start_experiment(script)
+
+    bench.snapshot("engaged")
+
+    assert not (bench.experiment_dir / "images").exists()
+
+
+def test_snapshot_without_experiment_dir_is_a_noop(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    bench.camera = _FakeCamera()
+
+    bench.snapshot("engaged")
+
+    assert bench.camera.saved_paths == []
+
+
+def test_snapshot_called_directly_outside_any_step(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+    bench.camera = _FakeCamera()
+    bench.start_experiment(script)
+
+    bench.snapshot("pre-dispense")
+
+    rows = _read_jsonl(bench.experiment_dir / "images" / "images.jsonl")
+    assert len(rows) == 1
+    assert rows[0]["step_id"] is None  # no active bench.workflow.step()
+    assert rows[0]["label"] == "pre-dispense"
+    assert "pre-dispense" in rows[0]["image"]
+
+
+def test_snapshot_called_multiple_times_inside_one_step(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+    bench.camera = _FakeCamera()
+    bench.start_experiment(script)
+    bench.set_workflow_output("wf.jsonl")
+
+    with bench.workflow.step("well:A1"):
+        bench.snapshot("engaged")
+        bench.snapshot("disengaged")
+
+    rows = _read_jsonl(bench.experiment_dir / "images" / "images.jsonl")
+    # 2 ad hoc snapshots + 1 automatic "done" on successful step exit
+    assert [r["label"] for r in rows] == ["engaged", "disengaged", "done"]
+    assert all(r["step_id"] == "well:A1" for r in rows)
+
+
+def test_workflow_step_saves_snapshot_on_failure(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+    bench.camera = _FakeCamera()
+    bench.start_experiment(script)
+    bench.set_workflow_output("wf.jsonl")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with bench.workflow.step("well:A1", idempotent=True):
+            raise RuntimeError("boom")
+
+    rows = _read_jsonl(bench.experiment_dir / "images" / "images.jsonl")
+    assert rows[0]["label"] == "failed"
+    assert rows[0]["step_id"] == "well:A1"
+    # the real tracking outcome is unaffected by the snapshot
+    assert not bench.workflow.is_done("well:A1")
+
+
+def test_snapshot_logs_gantry_position(fake_sila, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+
+    with RxnBenchClient() as bench:
+        bench.connect("gantry", _LockCapableInstrument, host="h", port=1)
+        bench.gantry.position = (10.0, 20.0, 30.0)
+        bench.camera = _FakeCamera()
+        bench.start_experiment(script)
+
+        bench.snapshot("engaged")
+
+        rows = _read_jsonl(bench.experiment_dir / "images" / "images.jsonl")
+
+    images = list((bench.experiment_dir / "images").glob("*.jpg"))
+    assert len(rows) == 1
+    assert rows[0]["position"] == {"x": 10.0, "y": 20.0, "z": 30.0}
+    assert rows[0]["image"] == images[0].name
+
+
+def test_snapshot_logs_null_position_without_gantry(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+    bench.camera = _FakeCamera()
+    bench.start_experiment(script)
+
+    bench.snapshot()
+
+    rows = _read_jsonl(bench.experiment_dir / "images" / "images.jsonl")
+    assert rows[0]["position"] is None
+
+
+def test_snapshot_logs_null_position_when_gantry_read_fails(fake_sila, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+
+    with RxnBenchClient() as bench:
+        bench.connect("gantry", _LockCapableInstrument, host="h", port=1)
+        bench.gantry.position_raises = True
+        bench.camera = _FakeCamera()
+        bench.start_experiment(script)
+
+        bench.snapshot()
+
+        rows = _read_jsonl(bench.experiment_dir / "images" / "images.jsonl")
+
+    # the image is still saved and the row still written, just without a position
+    assert len(list((bench.experiment_dir / "images").glob("*.jpg"))) == 1
+    assert rows[0]["position"] is None
+
+
+def test_snapshot_camera_error_does_not_raise(bench, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+    bench.camera = _FakeCamera(raise_error=True)
+    bench.start_experiment(script)
+
+    bench.snapshot()  # must not raise
+
+    assert "Could not save snapshot" in capsys.readouterr().out
+
+
+def test_workflow_step_camera_error_does_not_break_step_tracking(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+    bench.camera = _FakeCamera(raise_error=True)
+    bench.start_experiment(script)
+    bench.set_workflow_output("wf.jsonl")
+
+    with bench.workflow.step("a"):
+        pass  # step body succeeds even though the camera is broken
+
+    assert bench.workflow.is_done("a")
+
+
+# End-to-end: a real Gantry (not workflow.step()) auto-snapshotting via the
+# real _attach() -> instrument._bench wiring, not just the instruments/
+# unit tests exercising _snapshot() directly.
+
+class _FakeGantrySilaFeature:
+    def AcquireExperimentLock(self):
+        return ("tok",)
+
+    def ReleaseExperimentLock(self, **kw):
+        pass
+
+    def MoveToWell(self, **kw):
+        pass
+
+
+class _FakeGantrySila:
+    def __init__(self):
+        self.Gantry = _FakeGantrySilaFeature()
+
+    def close(self):
+        pass
+
+
+def test_gantry_move_to_well_auto_snapshots_through_real_attach(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "s.py"
+    script.write_text("# s")
+    bench.camera = _FakeCamera()
+    bench.start_experiment(script)
+
+    bench._attach("gantry", Gantry, _FakeGantrySila())
+    bench.gantry.move_to_well("plate1/A1")
+
+    rows = _read_jsonl(bench.experiment_dir / "images" / "images.jsonl")
+    assert rows[-1]["label"] == "move_to_well"
+
+
+def test_workflow_remaining_and_is_done_pass_through_the_wrapper(bench, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    bench.set_workflow_output("wf.jsonl")
+
+    with bench.workflow.step("a"):
+        pass
+
+    assert list(bench.workflow.remaining(["a", "b"], key=lambda x: x)) == ["b"]
+    assert bench.workflow.is_done("a")

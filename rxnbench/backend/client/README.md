@@ -10,7 +10,7 @@ This is a library, not a server - it has no entry point and no SiLA server of it
 
 - Python 3.10+
 - [`uv`](https://docs.astral.sh/uv/) - install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- `rxn-bench-gantry` and/or `rxn-bench-ph` running (locally, mocked, or on a remote device host) - see [../../../docs/usage.md](../../../docs/usage.md)
+- `rxn-bench-gantry` and/or `rxn-bench-ph` running (locally, mocked, or on a remote device host) - see [../../../USAGE.md](../../../USAGE.md)
 
 Install from the workspace root:
 

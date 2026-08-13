@@ -34,6 +34,12 @@ jobs:
       - name: Proto drift check
         working-directory: rxnbench/backend
         run: make check-proto
+      - name: Capability-spec drift check
+        working-directory: rxnbench/backend
+        run: make check-capability
+      - name: Capability generator tests
+        working-directory: rxnbench/backend
+        run: make test-gen-capability
 
   frontend:
     runs-on: ubuntu-latest

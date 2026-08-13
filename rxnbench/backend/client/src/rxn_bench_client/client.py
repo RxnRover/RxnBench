@@ -3,8 +3,7 @@ Blocking Python client for Rxn Bench SiLA servers.
 
 Intended for use in experiment scripts run on the backend machine.
 
-Zero-boilerplate usage - ``bench.devices`` auto-discovers and connects the
-four built-in instrument types (see :mod:`rxn_bench_client.devices`), no
+auto-discovers and connects the built-in instrument types (see :mod:`rxn_bench_client.devices`), no
 ``bench.connect(...)`` calls needed::
 
     from rxn_bench_client import RxnBenchClient
@@ -40,15 +39,19 @@ from __future__ import annotations
 import contextlib
 import csv
 import datetime
+import json
 import os
 import pathlib
+import re
+import shutil
 import socket
 import time
-from typing import Any, Generator, Type
+from typing import Any, Generator, Iterable, Type
 
 from sila2.client import SilaClient
 
 from .devices import DeviceNamespace
+from .workflows import WorkflowRunner
 
 
 class ExperimentStopped(Exception):
@@ -68,6 +71,56 @@ def _next_available_path(path: pathlib.Path) -> pathlib.Path:
         if not candidate.exists():
             return candidate
         n += 1
+
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
+
+
+def _safe_filename(s: str) -> str:
+    """Replace characters that don't belong in a filename (e.g. ``/`` in a
+    step_id like ``"well:24-well4/A1"``) with ``_``."""
+    return _UNSAFE_FILENAME_CHARS.sub("_", s)
+
+
+class _CameraAwareWorkflow:
+    """Wraps a WorkflowRunner so bench.workflow.step() automatically calls
+    bench.snapshot() on completion and on failure, and tags any snapshot
+    taken during the step with its step_id - lives here rather than in
+    WorkflowRunner since that stays capability-agnostic. Every other method
+    just passes through unchanged.
+    """
+
+    def __init__(self, bench: "RxnBenchClient", runner: WorkflowRunner) -> None:
+        self._bench = bench
+        self._runner = runner
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._runner, name)
+
+    @contextlib.contextmanager
+    def step(
+        self,
+        step_id: str,
+        *,
+        devices: Iterable[str] = (),
+        idempotent: bool = False,
+        confirm_retry: bool = False,
+    ) -> Generator[None, None, None]:
+        with self._runner.step(
+            step_id, devices=devices, idempotent=idempotent, confirm_retry=confirm_retry
+        ):
+            prev_step = self._bench._current_workflow_step
+            self._bench._current_workflow_step = step_id
+            try:
+                try:
+                    yield
+                except Exception:
+                    self._bench.snapshot("failed")
+                    raise
+                else:
+                    self._bench.snapshot("done")
+            finally:
+                self._bench._current_workflow_step = prev_step
 
 
 def _discover_sila_server(server_name: str, timeout: float = 5.0) -> tuple[str, int]:
@@ -144,6 +197,7 @@ class RxnBenchClient:
         self._host = host
         self._instrument_clients: list[SilaClient] = []
         self._instruments: list[Any] = []  # every wrapped instrument, in connect()/_attach() order
+        self._instrument_names: list[str] = []  # parallel to _instruments - for the experiment index
         self._lock_holder: Any = None  # instrument that owns the experiment lock
         self.devices = DeviceNamespace(self)
 
@@ -151,6 +205,12 @@ class RxnBenchClient:
         self._log_writer: Any = None
         self._log_columns: list[str] | None = None
         self._current_well: str | None = None
+        self._workflow: WorkflowRunner | None = None
+
+        self._experiment_dir: pathlib.Path | None = None
+        self._experiment_script: str | None = None
+        self._experiment_started: str | None = None
+        self._current_workflow_step: str | None = None
 
     def _attach(self, name: str, cls: Type, sila: SilaClient) -> None:
         """Wrap an already-connected SilaClient and expose it as ``bench.<name>``.
@@ -161,8 +221,10 @@ class RxnBenchClient:
         """
         self._instrument_clients.append(sila)
         instrument = cls(sila)
+        instrument._bench = self  # lets a few instrument methods auto-snapshot; see instruments/_util.py
         setattr(self, name, instrument)
         self._instruments.append(instrument)
+        self._instrument_names.append(name)
         if self._lock_holder is None and hasattr(instrument, "acquire_experiment_lock"):
             instrument.acquire_experiment_lock() # aquire a lock on the instrument to prevent other clients from competing for control
             self._lock_holder = instrument
@@ -227,7 +289,7 @@ class RxnBenchClient:
                 return
             time.sleep(0.5)
 
-    def close(self) -> None:
+    def close(self, *, failed: bool = False) -> None:
         """Park a connected gantry, release the experiment lock, and close up.
 
         Any connected instrument with a ``save_and_park()`` (i.e. a gantry) is
@@ -236,6 +298,13 @@ class RxnBenchClient:
         session is ending: normal completion, a manual stop, or an unhandled
         exception, so a killed or failed run never leaves the gantry's saved
         homing state stale enough to need a manual re-home.
+
+        Args:
+            failed: Record the experiment (if :meth:`start_experiment` was
+                called) as "failed" rather than "completed" in
+                ``experiment.json``. Set automatically by ``__exit__`` when
+                the ``with`` block raised - not something a script normally
+                passes itself.
         """
         for inst in self._instruments:
             save_and_park = getattr(inst, "save_and_park", None)
@@ -253,14 +322,19 @@ class RxnBenchClient:
         if self._log_file:
             self._log_file.close()
             self._log_file = self._log_writer = None
+        if self._workflow is not None:
+            self._workflow.close()
+            self._workflow = None
+        if self._experiment_dir is not None:
+            self._write_experiment_index(status="failed" if failed else "completed")
         for c in self._instrument_clients:
             c.close()
 
     def __enter__(self) -> "RxnBenchClient":
         return self
 
-    def __exit__(self, *_: Any) -> None:
-        self.close()
+    def __exit__(self, exc_type: type[BaseException] | None, *_: Any) -> None:
+        self.close(failed=exc_type is not None)
 
     # Motion convenience - requires bench.gantry to be connected
     @contextlib.contextmanager
@@ -388,3 +462,182 @@ class RxnBenchClient:
             self._log_file.flush()
         except OSError as e:
             print(f"[bench.log] Could not write log row, skipping: {e}", flush=True)
+
+    # Workflow / resume tracking
+    def set_workflow_output(
+        self,
+        path: str | pathlib.Path,
+        *,
+        restart: bool | None = None,
+    ) -> None:
+        """Configure the manifest file used by :attr:`workflow`.
+
+        Args:
+            path: Where to persist step status. Resolves like
+                :meth:`set_log_output` - don't prefix with ``"results/"``.
+                Must be a *stable* name (no timestamp): resume relies on
+                pointing two runs at the same path, and the Experiment
+                Runner's resume prompt looks for exactly
+                ``f"logs/{Path(script).stem}_workflow.jsonl"``::
+
+                    bench.set_workflow_output(f"logs/{Path(__file__).stem}_workflow.jsonl")
+
+                    for well in bench.workflow.remaining(wells, key=lambda w: f"well:{w}"):
+                        with bench.workflow.step(f"well:{well}", devices=["gantry", "ph"]):
+                            with bench.at_well(well, stabilize=3):
+                                bench.log(ph=bench.ph.read())
+            restart: Force starting over (True) or resuming (False),
+                regardless of what's on disk. Defaults to checking the
+                ``RXN_BENCH_WORKFLOW_RESTART`` env var - how the Experiment
+                Runner's resume prompt reaches a launched script.
+        """
+        if restart is None:
+            restart = os.environ.get("RXN_BENCH_WORKFLOW_RESTART") == "1"
+        if self._workflow is not None:
+            self._workflow.close()
+        self._workflow = WorkflowRunner(path, restart=restart)
+
+    @property
+    def workflow(self) -> WorkflowRunner:
+        """The active :class:`WorkflowRunner`. Call :meth:`set_workflow_output` first.
+
+        ``.step()`` automatically saves a camera snapshot per step (and on
+        failure) whenever :attr:`camera` is attached and
+        :meth:`start_experiment` has been called - no extra code needed.
+        """
+        if self._workflow is None:
+            raise RuntimeError(
+                "Call bench.set_workflow_output('results/my_workflow.jsonl') "
+                "before bench.workflow."
+            )
+        return _CameraAwareWorkflow(self, self._workflow)
+
+    # Experiment folder
+    @property
+    def experiment_dir(self) -> pathlib.Path | None:
+        """The folder created by :meth:`start_experiment`, or None if it wasn't called."""
+        return self._experiment_dir
+
+    def start_experiment(self, script_path: str | pathlib.Path) -> pathlib.Path:
+        """Create a self-contained results folder for this run.
+
+        Makes ``<script-stem>_<timestamp>/`` under the results location
+        (same resolution as :meth:`set_log_output`), and points
+        :meth:`set_log_output` at ``results.csv`` inside it by default (call
+        it again afterward for a different name in the same folder). Also
+        copies *script_path* in and, if a gantry is attached, saves the
+        active workspace as ``workspace.yaml``. Writes an ``experiment.json``
+        index now, updated by :meth:`close`.
+
+        A *new* folder is created every call - unlike
+        :meth:`set_workflow_output`, whose manifest deliberately stays at a
+        separate, stable path so resume still works across fresh folders.
+
+        Args:
+            script_path: Typically ``__file__`` - identifies both the folder
+                name and the file copied into it::
+
+                    bench.start_experiment(__file__)
+
+        Returns:
+            The created experiment directory (also available as
+            :attr:`experiment_dir`).
+        """
+        script_path = pathlib.Path(script_path)
+        base = os.environ.get("RXN_BENCH_RESULTS_DIR")
+        root = pathlib.Path(base) if base else pathlib.Path.cwd()
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        folder = root / f"{script_path.stem}_{ts}"
+        folder.mkdir(parents=True, exist_ok=True)
+
+        self._experiment_dir = folder
+        self._experiment_script = script_path.name
+        self._experiment_started = datetime.datetime.now().isoformat(timespec="milliseconds")
+
+        self.set_log_output(folder / "results.csv")
+
+        try:
+            shutil.copy2(script_path, folder / script_path.name)
+        except OSError as e:
+            print(f"[bench.start_experiment] Could not copy script into folder: {e}", flush=True)
+
+        gantry = getattr(self, "gantry", None)
+        if gantry is not None:
+            try:
+                yaml_text = gantry.get_workspace_yaml()
+                if yaml_text:
+                    (folder / "workspace.yaml").write_text(yaml_text, encoding="utf-8")
+            except Exception as e:
+                print(f"[bench.start_experiment] Could not save workspace snapshot: {e}", flush=True)
+
+        self._write_experiment_index(status="running")
+        return folder
+
+    def _write_experiment_index(self, *, status: str) -> None:
+        data = {
+            "script": self._experiment_script,
+            "started": self._experiment_started,
+            "finished": None if status == "running" else
+                datetime.datetime.now().isoformat(timespec="milliseconds"),
+            "status": status,
+            "devices": list(self._instrument_names),
+        }
+        (self._experiment_dir / "experiment.json").write_text(
+            json.dumps(data, indent=2), encoding="utf-8"
+        )
+
+    def snapshot(self, label: str = "") -> None:
+        """Save a camera snapshot (+ gantry position, if attached), logged
+        to experiment_dir/images/images.jsonl.
+
+        Call this anywhere - not just automatically at step boundaries - for
+        an image per physical action, e.g.::
+
+            with bench.workflow.step(f"well:{well}"):
+                with bench.at_well(well):
+                    bench.snapshot("engaged")
+                    ph = bench.ph.read()
+                bench.snapshot("disengaged")
+
+        Tagged with the active bench.workflow.step()'s step_id, if any.
+        No-ops silently unless both :attr:`camera` is attached and
+        :meth:`start_experiment` has been called - never raises, since a
+        camera problem must never break the actual experiment.
+
+        Args:
+            label: Freeform tag for this moment (e.g. ``"engaged"``,
+                ``"pre-dispense"``). Optional.
+        """
+        camera = getattr(self, "camera", None)
+        if camera is None or self._experiment_dir is None:
+            return
+        images_dir = self._experiment_dir / "images"
+        try:
+            images_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            parts = [p for p in (self._current_workflow_step, label) if p]
+            prefix = _safe_filename("_".join(parts)) + "_" if parts else ""
+            filename = f"{prefix}{ts}.jpg"
+            camera.save_snapshot(str(images_dir / filename))
+
+            position = None
+            gantry = getattr(self, "gantry", None)
+            if gantry is not None:
+                try:
+                    x, y, z = gantry.get_position()
+                    position = {"x": x, "y": y, "z": z}
+                except Exception:
+                    pass  # image is still worth having without a position
+
+            row = {
+                "image": filename,
+                "step_id": self._current_workflow_step,
+                "label": label or None,
+                "position": position,
+                "timestamp": datetime.datetime.now().isoformat(timespec="milliseconds"),
+            }
+            with open(images_dir / "images.jsonl", "a", encoding="utf-8") as f:
+                json.dump(row, f)
+                f.write("\n")
+        except Exception as e:
+            print(f"[bench.snapshot] Could not save snapshot: {e}", flush=True)
